@@ -25,7 +25,6 @@
 		10A32DCB2F4327A60009BB45 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC42F4327A60009BB45 /* User.swift */; };
 		10A32DCC2F4327A60009BB45 /* SSOCaptchaProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */; };
 		10A32DCD2F4327A60009BB45 /* LoginRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC62F4327A60009BB45 /* LoginRepository.swift */; };
-		10A32DCF2F4327A60009BB45 /* SSOSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */; };
 		19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */; };
 		2A6F9D26FB8E49BDC6BC0719 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA77F7A401878E68B8284D4 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift */; };
 		3D5EA0A44D60577AA027C3F3 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */; };
@@ -85,7 +84,6 @@
 		10A32DC32F4327A60009BB45 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		10A32DC42F4327A60009BB45 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		10A32DC62F4327A60009BB45 /* LoginRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginRepository.swift; sourceTree = "<group>"; };
-		10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOSessionService.swift; sourceTree = "<group>"; };
 		10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOCaptchaProcessor.swift; sourceTree = "<group>"; };
 		164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Models/EventRegistrationModels.swift; sourceTree = "<group>"; };
 		1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = academic_calendar.json; sourceTree = "<group>"; };
@@ -409,7 +407,6 @@
 			children = (
 				10A32DC62F4327A60009BB45 /* LoginRepository.swift */,
 				10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */,
-				10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -587,7 +584,6 @@
 				10A32DCB2F4327A60009BB45 /* User.swift in Sources */,
 				10A32DCC2F4327A60009BB45 /* SSOCaptchaProcessor.swift in Sources */,
 				10A32DCD2F4327A60009BB45 /* LoginRepository.swift in Sources */,
-				10A32DCF2F4327A60009BB45 /* SSOSessionService.swift in Sources */,
 				10A32DB52F431F630009BB45 /* MinimalToast.swift in Sources */,
 				10A32DB62F431F630009BB45 /* MinimalTextField.swift in Sources */,
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,

@@ -30,6 +30,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCalendarsWriteOnlyUsageDescription</key>
+	<string>將課表匯出至行事曆，以便在 iOS 行事曆中查看每週課程安排。</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>將課表匯出至行事曆，以便在 iOS 行事曆中查看每週課程安排。</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>

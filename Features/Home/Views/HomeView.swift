@@ -112,6 +112,42 @@ struct HomeView: View {
     
 	    private var featureCards: some View {
 	        VStack(spacing: Theme.Spacing.medium) {
+	            // 我的課表
+	            NavigationLink(destination: ClassScheduleView()) {
+	                HStack(spacing: Theme.Spacing.medium) {
+                    Image(systemName: "tablecells")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundColor(.black)
+                        .frame(width: 50, height: 50)
+                        .background(
+                            Circle()
+                                .strokeBorder(Color.black.opacity(0.2), lineWidth: 1)
+                        )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("我的課表")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.black)
+
+                        Text("查看每週課程安排")
+                            .font(.system(size: 13, weight: .light))
+                            .foregroundColor(.black.opacity(0.5))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .light))
+                        .foregroundColor(.black.opacity(0.3))
+	                }
+	                .padding(Theme.Spacing.medium)
+	                .background(
+	                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+	                        .strokeBorder(Color.black.opacity(0.1), lineWidth: 1)
+	                )
+	            }
+	            .buttonStyle(PlainButtonStyle())
+
 	            // 學年度行事曆
 	            NavigationLink(destination: AcademicCalendarView()) {
 	                HStack(spacing: Theme.Spacing.medium) {

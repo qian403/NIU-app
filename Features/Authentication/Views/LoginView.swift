@@ -62,7 +62,11 @@ struct LoginView: View {
             focusedField = nil
         }
         .onAppear {
-            viewModel.autoLogin()
+            // Skip auto-login if the user explicitly pressed logout,
+            // so they are required to press Sign In themselves.
+            if !appState.didExplicitlyLogout {
+                viewModel.autoLogin()
+            }
         }
         .onChange(of: viewModel.shouldProceedToHome) { _, shouldProceed in
             if shouldProceed, let result = viewModel.ssoResult {
