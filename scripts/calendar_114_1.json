@@ -1,0 +1,564 @@
+{
+  "semesters": [
+    {
+      "id": "semester_114_1",
+      "name": "114-1",
+      "year": 114,
+      "semester": 1,
+      "events": [
+        {
+          "id": "event_114_1_001",
+          "title": "114 學年度第1 學期開始",
+          "description": "114 學年度第1 學期開始",
+          "startDate": "2025-08-01",
+          "endDate": "2025-08-01",
+          "type": "semester"
+        },
+        {
+          "id": "event_114_1_002",
+          "title": "送交暑修成績截止",
+          "description": "送交暑修成績截止",
+          "startDate": "2025-08-19",
+          "endDate": "2025-08-19",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_003",
+          "title": "網路初選（新生、轉學生、復學生）及舊生第2 次初選",
+          "description": "網路初選（新生、轉學生、復學生）及舊生第2 次初選",
+          "startDate": "2025-08-22",
+          "endDate": "2025-08-25",
+          "type": "registration"
+        },
+        {
+          "id": "event_114_1_004",
+          "title": "研究生新生註冊繳費截止",
+          "description": "研究生新生註冊繳費截止",
+          "startDate": "2025-08-28",
+          "endDate": "2025-08-28",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_005",
+          "title": "新生宿舍入宿",
+          "description": "新生宿舍入宿",
+          "startDate": "2025-08-30",
+          "endDate": "2025-09-01",
+          "type": "important"
+        },
+        {
+          "id": "event_114_1_006",
+          "title": "新生家長親師座談會",
+          "description": "新生家長親師座談會；9/2~5 新生入學輔導及新鮮人營隊",
+          "startDate": "2025-09-01",
+          "endDate": "2025-09-01",
+          "type": "activity"
+        },
+        {
+          "id": "event_114_1_007",
+          "title": "第二梯次大學部畢業證書核發",
+          "description": "第二梯次大學部畢業證書核發",
+          "startDate": "2025-09-02",
+          "endDate": "2025-09-02",
+          "type": "activity"
+        },
+        {
+          "id": "event_114_1_008",
+          "title": "註冊繳費截止日",
+          "description": "註冊繳費截止日",
+          "startDate": "2025-09-05",
+          "endDate": "2025-09-05",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_009",
+          "title": "申請提前畢業截止、新生申請保留入學截止、（113 學年度第2...",
+          "description": "申請提前畢業截止、新生申請保留入學截止、（113 學年度第2 學期）",
+          "startDate": "2025-09-05",
+          "endDate": "2025-09-05",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_010",
+          "title": "網路加退選",
+          "description": "網路加退選",
+          "startDate": "2025-09-05",
+          "endDate": "2025-09-19",
+          "type": "registration"
+        },
+        {
+          "id": "event_114_1_011",
+          "title": "班級幹部訓練",
+          "description": "班級幹部訓練",
+          "startDate": "2025-09-10",
+          "endDate": "2025-09-10",
+          "type": "activity"
+        },
+        {
+          "id": "event_114_1_012",
+          "title": "輔系、雙主修、課程抵免申請截止",
+          "description": "輔系、雙主修、課程抵免申請截止",
+          "startDate": "2025-09-19",
+          "endDate": "2025-09-19",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_013",
+          "title": "孔子誕辰紀念日（適逢假日）",
+          "description": "孔子誕辰紀念日（適逢假日）",
+          "startDate": "2025-09-28",
+          "endDate": "2025-09-28",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_1_014",
+          "title": "孔子誕辰紀念日補假（放假一天）",
+          "description": "孔子誕辰紀念日補假（放假一天）",
+          "startDate": "2025-09-29",
+          "endDate": "2025-09-29",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_1_015",
+          "title": "國慶日（放假一天）",
+          "description": "國慶日（放假一天）",
+          "startDate": "2025-10-10",
+          "endDate": "2025-10-10",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_1_016",
+          "title": "期中教師教學評量調查",
+          "description": "期中教師教學評量調查",
+          "startDate": "2025-10-20",
+          "endDate": "2025-11-14",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_1_017",
+          "title": "臺灣光復暨金門古寧頭大捷紀念日補假（放假一天）",
+          "description": "臺灣光復暨金門古寧頭大捷紀念日補假（放假一天）",
+          "startDate": "2025-10-24",
+          "endDate": "2025-10-24",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_1_018",
+          "title": "臺灣光復暨金門古寧頭大捷紀念日（適逢假日）",
+          "description": "臺灣光復暨金門古寧頭大捷紀念日（適逢假日）",
+          "startDate": "2025-10-25",
+          "endDate": "2025-10-25",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_1_019",
+          "title": "申請停修期間",
+          "description": "申請停修期間",
+          "startDate": "2025-10-27",
+          "endDate": "2025-11-28",
+          "type": "important"
+        },
+        {
+          "id": "event_114_1_020",
+          "title": "期中考試（評量時間自行安排）",
+          "description": "期中考試（評量時間自行安排）",
+          "startDate": "2025-10-27",
+          "endDate": "2025-11-09",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_1_021",
+          "title": "碩博士學位考試申請截止",
+          "description": "碩博士學位考試申請截止",
+          "startDate": "2025-11-30",
+          "endDate": "2025-11-30",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_1_022",
+          "title": "行憲紀念日（放假一天）",
+          "description": "行憲紀念日（放假一天）",
+          "startDate": "2025-12-25",
+          "endDate": "2025-12-25",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_1_023",
+          "title": "網路初選",
+          "description": "網路初選",
+          "startDate": "2025-12-29",
+          "endDate": "2026-01-02",
+          "type": "registration"
+        },
+        {
+          "id": "event_114_1_024",
+          "title": "第17、18 週教學彈性週（依教學大綱公告為準）",
+          "description": "第17、18 週教學彈性週（依教學大綱公告為準）",
+          "startDate": "2025-12-29",
+          "endDate": "2026-01-11",
+          "type": "important"
+        },
+        {
+          "id": "event_114_1_025",
+          "title": "開國紀念日（放假一天）",
+          "description": "開國紀念日（放假一天）",
+          "startDate": "2026-01-01",
+          "endDate": "2026-01-01",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_1_026",
+          "title": "申請休學截止",
+          "description": "申請休學截止",
+          "startDate": "2026-01-02",
+          "endDate": "2026-01-02",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_027",
+          "title": "預警輔導截止",
+          "description": "預警輔導截止",
+          "startDate": "2026-01-11",
+          "endDate": "2026-01-11",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_028",
+          "title": "寒假開始",
+          "description": "寒假開始",
+          "startDate": "2026-01-12",
+          "endDate": "2026-01-12",
+          "type": "important"
+        },
+        {
+          "id": "event_114_1_029",
+          "title": "送交學期成績截止",
+          "description": "送交學期成績截止",
+          "startDate": "2026-01-16",
+          "endDate": "2026-01-16",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_1_030",
+          "title": "郵寄學期成績單",
+          "description": "郵寄學期成績單",
+          "startDate": "2026-01-26",
+          "endDate": "2026-01-26",
+          "type": "important"
+        },
+        {
+          "id": "event_114_1_031",
+          "title": "本學期研究生學位考試截止日",
+          "description": "本學期研究生學位考試截止日",
+          "startDate": "2026-01-31",
+          "endDate": "2026-01-31",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_1_032",
+          "title": "114 學年度第1 學期結束",
+          "description": "114 學年度第1 學期結束",
+          "startDate": "2026-01-31",
+          "endDate": "2026-01-31",
+          "type": "semester"
+        }
+      ]
+    },
+    {
+      "id": "semester_114_2",
+      "name": "114-2",
+      "year": 114,
+      "semester": 2,
+      "events": [
+        {
+          "id": "event_114_2_001",
+          "title": "114 學年第2 學期開始",
+          "description": "114 學年第2 學期開始",
+          "startDate": "2026-02-01",
+          "endDate": "2026-02-01",
+          "type": "semester"
+        },
+        {
+          "id": "event_114_2_002",
+          "title": "核發114 學年度第1 學期大學部畢業證書",
+          "description": "核發114 學年度第1 學期大學部畢業證書",
+          "startDate": "2026-02-05",
+          "endDate": "2026-02-05",
+          "type": "activity"
+        },
+        {
+          "id": "event_114_2_003",
+          "title": "除夕前一日（適逢假日）",
+          "description": "除夕前一日（適逢假日）；2/16 除夕",
+          "startDate": "2026-02-15",
+          "endDate": "2026-02-15",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_004",
+          "title": "春節",
+          "description": "春節；2/20 除夕前一日補假（放假一天）",
+          "startDate": "2026-02-17",
+          "endDate": "2026-02-19",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_2_005",
+          "title": "宿舍入宿",
+          "description": "宿舍入宿",
+          "startDate": "2026-02-21",
+          "endDate": "2026-02-22",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_006",
+          "title": "開學日",
+          "description": "開學日",
+          "startDate": "2026-02-23",
+          "endDate": "2026-02-23",
+          "type": "semester"
+        },
+        {
+          "id": "event_114_2_007",
+          "title": "註冊繳費截止日",
+          "description": "註冊繳費截止日",
+          "startDate": "2026-02-23",
+          "endDate": "2026-02-23",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_2_008",
+          "title": "網路加退選",
+          "description": "網路加退選",
+          "startDate": "2026-02-23",
+          "endDate": "2026-03-06",
+          "type": "registration"
+        },
+        {
+          "id": "event_114_2_009",
+          "title": "碩士班甄試新生申請提前入學截止",
+          "description": "碩士班甄試新生申請提前入學截止",
+          "startDate": "2026-02-23",
+          "endDate": "2026-02-23",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_2_010",
+          "title": "班級幹部訓練",
+          "description": "班級幹部訓練",
+          "startDate": "2026-02-25",
+          "endDate": "2026-02-25",
+          "type": "activity"
+        },
+        {
+          "id": "event_114_2_011",
+          "title": "和平紀念日補假（放假一天）",
+          "description": "和平紀念日補假（放假一天）",
+          "startDate": "2026-02-27",
+          "endDate": "2026-02-27",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_2_012",
+          "title": "和平紀念日（適逢假日）",
+          "description": "和平紀念日（適逢假日）",
+          "startDate": "2026-02-28",
+          "endDate": "2026-02-28",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_2_013",
+          "title": "教師申請更正成績截止",
+          "description": "教師申請更正成績截止",
+          "startDate": "2026-03-06",
+          "endDate": "2026-03-06",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_2_014",
+          "title": "輔系、雙主修、課程抵免申請截止",
+          "description": "輔系、雙主修、課程抵免申請截止",
+          "startDate": "2026-03-06",
+          "endDate": "2026-03-06",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_2_015",
+          "title": "校際活動日（停課）",
+          "description": "校際活動日（停課），授課教師自行擇期補課",
+          "startDate": "2026-04-02",
+          "endDate": "2026-04-02",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_016",
+          "title": "學期1/3 退費基準日",
+          "description": "學期1/3 退費基準日",
+          "startDate": "2026-04-03",
+          "endDate": "2026-04-03",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_017",
+          "title": "兒童節補假（放假一天）",
+          "description": "兒童節補假（放假一天）；4/4 兒童節（適逢假日）",
+          "startDate": "2026-04-03",
+          "endDate": "2026-04-03",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_2_018",
+          "title": "清明節（適逢假日）",
+          "description": "清明節（適逢假日）",
+          "startDate": "2026-04-05",
+          "endDate": "2026-04-05",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_019",
+          "title": "清明節補假（放假一天）",
+          "description": "清明節補假（放假一天）",
+          "startDate": "2026-04-06",
+          "endDate": "2026-04-06",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_2_020",
+          "title": "期中教師教學評量調查",
+          "description": "期中教師教學評量調查",
+          "startDate": "2026-04-06",
+          "endDate": "2026-05-01",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_2_021",
+          "title": "申請停修期間",
+          "description": "申請停修期間",
+          "startDate": "2026-04-13",
+          "endDate": "2026-05-15",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_022",
+          "title": "碩博士學位考試申請截止",
+          "description": "碩博士學位考試申請截止",
+          "startDate": "2026-04-30",
+          "endDate": "2026-04-30",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_2_023",
+          "title": "勞動節（放假一天）",
+          "description": "勞動節（放假一天）",
+          "startDate": "2026-05-01",
+          "endDate": "2026-05-01",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_2_024",
+          "title": "學期2/3 退費基準日",
+          "description": "學期2/3 退費基準日",
+          "startDate": "2026-05-15",
+          "endDate": "2026-05-15",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_025",
+          "title": "畢業典禮",
+          "description": "畢業典禮",
+          "startDate": "2026-05-30",
+          "endDate": "2026-05-30",
+          "type": "activity"
+        },
+        {
+          "id": "event_114_2_026",
+          "title": "期末教師教學評量調查",
+          "description": "期末教師教學評量調查",
+          "startDate": "2026-06-01",
+          "endDate": "2026-06-18",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_2_027",
+          "title": "網路初選（舊生）",
+          "description": "網路初選（舊生）",
+          "startDate": "2026-06-15",
+          "endDate": "2026-06-22",
+          "type": "registration"
+        },
+        {
+          "id": "event_114_2_028",
+          "title": "申請休學截止",
+          "description": "申請休學截止",
+          "startDate": "2026-06-18",
+          "endDate": "2026-06-18",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_2_029",
+          "title": "端午節（放假一天）",
+          "description": "端午節（放假一天）",
+          "startDate": "2026-06-19",
+          "endDate": "2026-06-19",
+          "type": "holiday"
+        },
+        {
+          "id": "event_114_2_030",
+          "title": "第17、18 週教學彈性週（依教學大綱公告為準）",
+          "description": "第17、18 週教學彈性週（依教學大綱公告為準）",
+          "startDate": "2026-06-15",
+          "endDate": "2026-06-28",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_031",
+          "title": "預警輔導截止",
+          "description": "預警輔導截止",
+          "startDate": "2026-06-28",
+          "endDate": "2026-06-28",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_2_032",
+          "title": "暑假開始",
+          "description": "暑假開始",
+          "startDate": "2026-06-29",
+          "endDate": "2026-06-29",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_033",
+          "title": "送交學期成績截止",
+          "description": "送交學期成績截止",
+          "startDate": "2026-07-03",
+          "endDate": "2026-07-03",
+          "type": "deadline"
+        },
+        {
+          "id": "event_114_2_034",
+          "title": "暑修開始",
+          "description": "暑修開始",
+          "startDate": "2026-07-13",
+          "endDate": "2026-07-13",
+          "type": "important"
+        },
+        {
+          "id": "event_114_2_035",
+          "title": "本學期研究生學位考試截止日",
+          "description": "本學期研究生學位考試截止日",
+          "startDate": "2026-07-31",
+          "endDate": "2026-07-31",
+          "type": "exam"
+        },
+        {
+          "id": "event_114_2_036",
+          "title": "114 學年度第2 學期結束",
+          "description": "114 學年度第2 學期結束",
+          "startDate": "2026-07-31",
+          "endDate": "2026-07-31",
+          "type": "semester"
+        }
+      ]
+    }
+  ]
+}

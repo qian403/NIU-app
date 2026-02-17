@@ -110,28 +110,82 @@ struct HomeView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     
-    private var featureCards: some View {
-        VStack(spacing: Theme.Spacing.medium) {
-            MinimalCard(
-                icon: "square.grid.2x2",
-                title: "Dashboard",
-                subtitle: "Overview & Analytics"
-            )
-            
-            MinimalCard(
-                icon: "chart.bar",
-                title: "Statistics",
-                subtitle: "Data & Reports"
-            )
-            
-            MinimalCard(
-                icon: "gear",
-                title: "Settings",
-                subtitle: "Preferences & Account"
-            )
-        }
-    }
-}
+	    private var featureCards: some View {
+	        VStack(spacing: Theme.Spacing.medium) {
+	            // 學年度行事曆
+	            NavigationLink(destination: AcademicCalendarView()) {
+	                HStack(spacing: Theme.Spacing.medium) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundColor(.black)
+                        .frame(width: 50, height: 50)
+                        .background(
+                            Circle()
+                                .strokeBorder(Color.black.opacity(0.2), lineWidth: 1)
+                        )
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("學年度行事曆")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.black)
+                        
+                        Text("查看學期重要日程")
+                            .font(.system(size: 13, weight: .light))
+                            .foregroundColor(.black.opacity(0.5))
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .light))
+                        .foregroundColor(.black.opacity(0.3))
+                }
+                .padding(Theme.Spacing.medium)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                        .strokeBorder(Color.black.opacity(0.1), lineWidth: 1)
+                )
+	            }
+	            .buttonStyle(PlainButtonStyle())
+	            
+	            // 活動報名
+	            NavigationLink(destination: EventRegistrationView()) {
+	                HStack(spacing: Theme.Spacing.medium) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundColor(.black)
+                        .frame(width: 50, height: 50)
+                        .background(
+                            Circle()
+                                .strokeBorder(Color.black.opacity(0.2), lineWidth: 1)
+                        )
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("活動報名")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.black)
+                        
+                        Text("查看與報名校園活動")
+                            .font(.system(size: 13, weight: .light))
+                            .foregroundColor(.black.opacity(0.5))
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .light))
+                        .foregroundColor(.black.opacity(0.3))
+                }
+                .padding(Theme.Spacing.medium)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                        .strokeBorder(Color.black.opacity(0.1), lineWidth: 1)
+                )
+	            }
+	            .buttonStyle(PlainButtonStyle())
+	        }
+	    }
+	}
 
 #Preview {
     HomeView()
