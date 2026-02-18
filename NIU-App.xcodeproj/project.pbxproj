@@ -19,6 +19,7 @@
 		10A32DB92F431F630009BB45 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DAE2F431F630009BB45 /* Theme.swift */; };
 		10A32DBA2F431F630009BB45 /* MinimalSecureField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DA82F431F630009BB45 /* MinimalSecureField.swift */; };
 		10A32DBB2F431F630009BB45 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DA12F431F630009BB45 /* HomeView.swift */; };
+		AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02BC11AA02BC11AA02BC11 /* SettingsView.swift */; };
 		10A32DBD2F431F630009BB45 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32D9E2F431F630009BB45 /* LoginView.swift */; };
 		10A32DBE2F431F630009BB45 /* LoginViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32D9C2F431F630009BB45 /* LoginViewModel.swift */; };
 		10A32DCA2F4327A60009BB45 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC32F4327A60009BB45 /* AppState.swift */; };
@@ -48,8 +49,23 @@
 		AA01BC02AA01BC02AA01BC02 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */; };
 		AA01BC03AA01BC03AA01BC03 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC13AA01BC13AA01BC13 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift */; };
 		AA01BC04AA01BC04AA01BC04 /* Features/ClassSchedule/Views/ClassScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC14AA01BC14AA01BC14 /* Features/ClassSchedule/Views/ClassScheduleView.swift */; };
+		AA01BC07AA01BC07AA01BC07 /* Features/GradeHistory/Models/GradeHistoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC17AA01BC17AA01BC17 /* Features/GradeHistory/Models/GradeHistoryModels.swift */; };
+		AA01BC08AA01BC08AA01BC08 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC18AA01BC18AA01BC18 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift */; };
+		AA01BC09AA01BC09AA01BC09 /* Features/GradeHistory/Views/GradeHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC19AA01BC19AA01BC19 /* Features/GradeHistory/Views/GradeHistoryView.swift */; };
 		AA01BC05AA01BC05AA01BC05 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC15AA01BC15AA01BC15 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift */; };
 		AA01BC06AA01BC06AA01BC06 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC16AA01BC16AA01BC16 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift */; };
+		BB01MD01BB01MD01BB01MD01 /* Features/Moodle/Models/MoodleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */; };
+		BB01MD02BB01MD02BB01MD02 /* Features/Moodle/Services/MoodleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF02BB01MF02BB01MF02 /* Features/Moodle/Services/MoodleService.swift */; };
+		BB01MD03BB01MD03BB01MD03 /* Features/Moodle/ViewModels/MoodleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF03BB01MF03BB01MF03 /* Features/Moodle/ViewModels/MoodleViewModel.swift */; };
+		BB01MD04BB01MD04BB01MD04 /* Features/Moodle/ViewModels/MoodleCourseDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF04BB01MF04BB01MF04 /* Features/Moodle/ViewModels/MoodleCourseDetailViewModel.swift */; };
+		BB01MD05BB01MD05BB01MD05 /* Features/Moodle/Views/MoodleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF05BB01MF05BB01MF05 /* Features/Moodle/Views/MoodleView.swift */; };
+		BB01MD06BB01MD06BB01MD06 /* Features/Moodle/Views/MoodleCourseDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF06BB01MF06BB01MF06 /* Features/Moodle/Views/MoodleCourseDetailView.swift */; };
+		BB01MD07BB01MD07BB01MD07 /* Features/Moodle/Views/MoodleForumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF07BB01MF07BB01MF07 /* Features/Moodle/Views/MoodleForumView.swift */; };
+		BB01MD08BB01MD08BB01MD08 /* Features/Moodle/Views/MoodleAssignmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF08BB01MF08BB01MF08 /* Features/Moodle/Views/MoodleAssignmentView.swift */; };
+		BB01MD09BB01MD09BB01MD09 /* Features/Moodle/Views/MoodleGradeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF09BB01MF09BB01MF09 /* Features/Moodle/Views/MoodleGradeView.swift */; };
+		BB01MD10BB01MD10BB01MD10 /* Features/Moodle/Views/MoodleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */; };
+		BB01MD11BB01MD11BB01MD11 /* Features/Moodle/Services/MoodleSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */; };
+		BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +91,7 @@
 		10A32D9C2F431F630009BB45 /* LoginViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginViewModel.swift; sourceTree = "<group>"; };
 		10A32D9E2F431F630009BB45 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		10A32DA12F431F630009BB45 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		AA02BC11AA02BC11AA02BC11 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		10A32DA52F431F630009BB45 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		10A32DA72F431F630009BB45 /* MinimalCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalCard.swift; sourceTree = "<group>"; };
 		10A32DA82F431F630009BB45 /* MinimalSecureField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalSecureField.swift; sourceTree = "<group>"; };
@@ -117,8 +134,23 @@
 		AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/ClassScheduleWebView.swift; sourceTree = "<group>"; };
 		AA01BC13AA01BC13AA01BC13 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift; sourceTree = "<group>"; };
 		AA01BC14AA01BC14AA01BC14 /* Features/ClassSchedule/Views/ClassScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleView.swift; sourceTree = "<group>"; };
+		AA01BC17AA01BC17AA01BC17 /* Features/GradeHistory/Models/GradeHistoryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GradeHistory/Models/GradeHistoryModels.swift; sourceTree = SOURCE_ROOT; };
+		AA01BC18AA01BC18AA01BC18 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift; sourceTree = SOURCE_ROOT; };
+		AA01BC19AA01BC19AA01BC19 /* Features/GradeHistory/Views/GradeHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GradeHistory/Views/GradeHistoryView.swift; sourceTree = SOURCE_ROOT; };
 		AA01BC15AA01BC15AA01BC15 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/ClassScheduleExportService.swift; sourceTree = "<group>"; };
 		AA01BC16AA01BC16AA01BC16 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleExportView.swift; sourceTree = "<group>"; };
+		BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Models/MoodleModels.swift; sourceTree = "<group>"; };
+		BB01MF02BB01MF02BB01MF02 /* Features/Moodle/Services/MoodleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Services/MoodleService.swift; sourceTree = "<group>"; };
+		BB01MF03BB01MF03BB01MF03 /* Features/Moodle/ViewModels/MoodleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/ViewModels/MoodleViewModel.swift; sourceTree = "<group>"; };
+		BB01MF04BB01MF04BB01MF04 /* Features/Moodle/ViewModels/MoodleCourseDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/ViewModels/MoodleCourseDetailViewModel.swift; sourceTree = "<group>"; };
+		BB01MF05BB01MF05BB01MF05 /* Features/Moodle/Views/MoodleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleView.swift; sourceTree = "<group>"; };
+		BB01MF06BB01MF06BB01MF06 /* Features/Moodle/Views/MoodleCourseDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleCourseDetailView.swift; sourceTree = "<group>"; };
+		BB01MF07BB01MF07BB01MF07 /* Features/Moodle/Views/MoodleForumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleForumView.swift; sourceTree = "<group>"; };
+		BB01MF08BB01MF08BB01MF08 /* Features/Moodle/Views/MoodleAssignmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleAssignmentView.swift; sourceTree = "<group>"; };
+		BB01MF09BB01MF09BB01MF09 /* Features/Moodle/Views/MoodleGradeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleGradeView.swift; sourceTree = "<group>"; };
+		BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleWebView.swift; sourceTree = "<group>"; };
+		BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Services/MoodleSessionManager.swift; sourceTree = "<group>"; };
+		BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleFileViewer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -328,6 +360,7 @@
 			isa = PBXGroup;
 			children = (
 				10A32DA12F431F630009BB45 /* HomeView.swift */,
+				AA02BC11AA02BC11AA02BC11 /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -345,8 +378,43 @@
 			children = (
 				10A32DA02F431F630009BB45 /* Authentication */,
 				10A32DA32F431F630009BB45 /* Home */,
+				AA01BC10AA01BC10AA01BC10 /* GradeHistory */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		AA01BC10AA01BC10AA01BC10 /* GradeHistory */ = {
+			isa = PBXGroup;
+			children = (
+				AA01BC20AA01BC20AA01BC20 /* Models */,
+				AA01BC21AA01BC21AA01BC21 /* ViewModels */,
+				AA01BC22AA01BC22AA01BC22 /* Views */,
+			);
+			path = GradeHistory;
+			sourceTree = "<group>";
+		};
+		AA01BC20AA01BC20AA01BC20 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AA01BC17AA01BC17AA01BC17 /* Features/GradeHistory/Models/GradeHistoryModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AA01BC21AA01BC21AA01BC21 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				AA01BC18AA01BC18AA01BC18 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		AA01BC22AA01BC22AA01BC22 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AA01BC19AA01BC19AA01BC19 /* Features/GradeHistory/Views/GradeHistoryView.swift */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 		10A32DA62F431F630009BB45 /* Resources */ = {
@@ -600,7 +668,23 @@
 				AA01BC04AA01BC04AA01BC04 /* Features/ClassSchedule/Views/ClassScheduleView.swift in Sources */,
 				AA01BC05AA01BC05AA01BC05 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift in Sources */,
 				AA01BC06AA01BC06AA01BC06 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift in Sources */,
+				AA01BC07AA01BC07AA01BC07 /* Features/GradeHistory/Models/GradeHistoryModels.swift in Sources */,
+				AA01BC08AA01BC08AA01BC08 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift in Sources */,
+				AA01BC09AA01BC09AA01BC09 /* Features/GradeHistory/Views/GradeHistoryView.swift in Sources */,
+				BB01MD01BB01MD01BB01MD01 /* Features/Moodle/Models/MoodleModels.swift in Sources */,
+				BB01MD02BB01MD02BB01MD02 /* Features/Moodle/Services/MoodleService.swift in Sources */,
+				BB01MD03BB01MD03BB01MD03 /* Features/Moodle/ViewModels/MoodleViewModel.swift in Sources */,
+				BB01MD04BB01MD04BB01MD04 /* Features/Moodle/ViewModels/MoodleCourseDetailViewModel.swift in Sources */,
+				BB01MD05BB01MD05BB01MD05 /* Features/Moodle/Views/MoodleView.swift in Sources */,
+				BB01MD06BB01MD06BB01MD06 /* Features/Moodle/Views/MoodleCourseDetailView.swift in Sources */,
+				BB01MD07BB01MD07BB01MD07 /* Features/Moodle/Views/MoodleForumView.swift in Sources */,
+				BB01MD08BB01MD08BB01MD08 /* Features/Moodle/Views/MoodleAssignmentView.swift in Sources */,
+				BB01MD09BB01MD09BB01MD09 /* Features/Moodle/Views/MoodleGradeView.swift in Sources */,
+				BB01MD10BB01MD10BB01MD10 /* Features/Moodle/Views/MoodleWebView.swift in Sources */,
+				BB01MD11BB01MD11BB01MD11 /* Features/Moodle/Services/MoodleSessionManager.swift in Sources */,
+				BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */,
 				10A32DBB2F431F630009BB45 /* HomeView.swift in Sources */,
+				AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */,
 				10A32DBD2F431F630009BB45 /* LoginView.swift in Sources */,
 				10A32DBE2F431F630009BB45 /* LoginViewModel.swift in Sources */,
 			);

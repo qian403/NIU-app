@@ -153,7 +153,7 @@ final class ClassScheduleExportService {
         let cal = Calendar.current
         // EKWeekday raw: Sun=1, Mon=2, …, Sat=7
         let targetWeekday = weekday.rawValue  // 1-indexed, Sun=1
-        var comps = cal.dateComponents([.year, .month, .day, .weekday], from: date)
+        let comps = cal.dateComponents([.year, .month, .day, .weekday], from: date)
         guard let currentWeekday = comps.weekday else { return nil }
         let diff = (targetWeekday - currentWeekday + 7) % 7
         return cal.date(byAdding: .day, value: diff, to: date)

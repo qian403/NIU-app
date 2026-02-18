@@ -20,6 +20,9 @@ struct RootView: View {
                     account: sessionService.refreshAccount,
                     password: sessionService.refreshPassword
                 ) { result in
+                    if case .success(let info) = result {
+                        appState.updateProfileFromSSO(info)
+                    }
                     SSOSessionService.shared.handleRefreshResult(result)
                 }
                 .frame(width: 1, height: 1)

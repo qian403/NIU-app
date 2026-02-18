@@ -28,9 +28,9 @@ struct CalendarEventCard: View {
                     
                     // 類型標籤
                     HStack(spacing: 6) {
-                        Image(systemName: event.type.icon)
+                        Image(systemName: event.inferredType.icon)
                             .font(.system(size: 10))
-                        Text(event.type.rawValue)
+                        Text(event.inferredType.rawValue)
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundColor(eventTypeColor)
@@ -59,6 +59,7 @@ struct CalendarEventCard: View {
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
                     .strokeBorder(eventTypeColor.opacity(0.2), lineWidth: 1)
             )
+            .padding(.horizontal, 2)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -103,7 +104,7 @@ struct CalendarEventCard: View {
     // MARK: - Helper Properties
     
     private var eventTypeColor: Color {
-        switch event.type {
+        switch event.inferredType {
         case .registration: return .blue
         case .exam: return .red
         case .holiday: return .green
@@ -219,9 +220,9 @@ struct CalendarEventDetailSheet: View {
                 .foregroundColor(Theme.Colors.primary)
             
             HStack(spacing: 8) {
-                Image(systemName: event.type.icon)
+                Image(systemName: event.inferredType.icon)
                     .font(.system(size: 14))
-                Text(event.type.rawValue)
+                Text(event.inferredType.rawValue)
                     .font(.system(size: 14, weight: .medium))
             }
             .foregroundColor(eventTypeColor)
@@ -253,7 +254,7 @@ struct CalendarEventDetailSheet: View {
     }
     
     private var eventTypeColor: Color {
-        switch event.type {
+        switch event.inferredType {
         case .registration: return .blue
         case .exam: return .red
         case .holiday: return .green

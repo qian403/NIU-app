@@ -44,29 +44,40 @@ struct AcademicCalendarView: View {
             monthSelector
                 .padding(.horizontal)
                 .padding(.vertical, Theme.Spacing.small)
+
+            searchAndFilterSection
+                .padding(.horizontal)
+                .padding(.bottom, Theme.Spacing.small)
             
             Divider()
             
             // 事件列表
-            if let calendar = viewModel.currentCalendar {
+            if viewModel.currentCalendar != nil {
                 ScrollView {
                     VStack(spacing: Theme.Spacing.medium) {
                         // 即將到來的事件（如果有）
-                        if !viewModel.upcomingEvents.isEmpty {
+                        if shouldShowUpcomingSection {
                             upcomingEventsSection
                         }
                         
                         // 按月份顯示事件
                         if let month = viewModel.selectedMonth {
-                            monthEventsSection(month: month)
+                            monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
                         } else {
                             // 顯示所有月份
-                            ForEach(calendar.monthsWithEvents, id: \.self) { month in
-                                monthEventsSection(month: month)
+                            ForEach(displayedMonths, id: \.self) { month in
+                                monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
                             }
+                        }
+
+                        if displayedMonths.isEmpty {
+                            emptyResultView
                         }
                     }
                     .padding()
+                }
+                .refreshable {
+                    viewModel.loadFromConfiguredSources()
                 }
             } else {
                 emptyStateView
@@ -78,28 +89,29 @@ struct AcademicCalendarView: View {
     
     private var monthSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.small) {
-                // "全部" 按鈕
+            HStack(spacing: 8) {
                 MonthButton(
                     title: "全部",
-                    isSelected: viewModel.selectedMonth == nil
+                    isSelected: viewModel.selectedMonth == nil,
+                    compact: true
                 ) {
-                    viewModel.selectMonth(0)
                     viewModel.selectedMonth = nil
                 }
                 
-                // 月份按鈕
                 if let calendar = viewModel.currentCalendar {
                     ForEach(calendar.monthsWithEvents, id: \.self) { month in
                         MonthButton(
                             title: monthName(month),
-                            isSelected: viewModel.selectedMonth == month
+                            isSelected: viewModel.selectedMonth == month,
+                            compact: true
                         ) {
                             viewModel.selectMonth(month)
                         }
                     }
                 }
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
         }
     }
     
@@ -129,6 +141,51 @@ struct AcademicCalendarView: View {
             .foregroundColor(Theme.Colors.primary)
         }
     }
+
+    private var searchAndFilterSection: some View {
+        VStack(spacing: Theme.Spacing.small) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(Theme.Colors.tertiaryText)
+                TextField("搜尋活動、關鍵字", text: $searchText)
+                    .font(.system(size: 14))
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(Theme.Colors.tertiaryText)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.12))
+            )
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    EventTypeChip(
+                        title: "全部",
+                        isSelected: selectedFilter == nil
+                    ) { selectedFilter = nil }
+
+                    ForEach(CalendarEventType.allCases, id: \.self) { type in
+                        EventTypeChip(
+                            title: type.rawValue,
+                            isSelected: selectedFilter == type
+                        ) {
+                            selectedFilter = (selectedFilter == type ? nil : type)
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            }
+        }
+    }
     
     private var upcomingEventsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -142,7 +199,7 @@ struct AcademicCalendarView: View {
             }
             .padding(.horizontal, Theme.Spacing.small)
             
-            ForEach(Array(viewModel.upcomingEvents.prefix(3).enumerated()), id: \.offset) { _, event in
+            ForEach(Array(filteredUpcomingEvents.prefix(3).enumerated()), id: \.offset) { _, event in
                 CalendarEventCard(event: event) {
                     presentedEvent = PresentedEvent(event: event)
                 }
@@ -150,7 +207,7 @@ struct AcademicCalendarView: View {
         }
     }
     
-    private func monthEventsSection(month: Int) -> some View {
+    private func monthEventsSection(month: Int, events: [CalendarEvent]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
             Text(monthName(month))
                 .font(.system(size: 20, weight: .bold))
@@ -158,7 +215,9 @@ struct AcademicCalendarView: View {
                 .padding(.horizontal, Theme.Spacing.small)
                 .padding(.top, Theme.Spacing.small)
             
-            if let events = viewModel.currentCalendar?.eventsByMonth[month] {
+            if events.isEmpty {
+                EmptyView()
+            } else {
                 // Use index as identity to avoid missing rows when upstream data has duplicate `event.id`.
                 ForEach(Array(events.enumerated()), id: \.offset) { _, event in
                     CalendarEventCard(event: event) {
@@ -216,6 +275,19 @@ struct AcademicCalendarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    private var emptyResultView: some View {
+        VStack(spacing: Theme.Spacing.small) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 28, weight: .light))
+                .foregroundColor(.gray)
+            Text("沒有符合目前篩選條件的事件")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.large)
+    }
     
     // MARK: - Helper Methods
     
@@ -223,6 +295,58 @@ struct AcademicCalendarView: View {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_TW")
         return formatter.monthSymbols[month - 1]
+    }
+
+    private var filteredEvents: [CalendarEvent] {
+        var events = viewModel.allEvents
+
+        if let selectedFilter {
+            events = events.filter { $0.inferredType == selectedFilter }
+        }
+
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !query.isEmpty {
+            events = events.filter {
+                $0.title.lowercased().contains(query) ||
+                ($0.description?.lowercased().contains(query) ?? false)
+            }
+        }
+
+        if let selectedMonth = viewModel.selectedMonth {
+            events = events.filter {
+                guard let start = $0.start else { return false }
+                return Calendar.current.component(.month, from: start) == selectedMonth
+            }
+        }
+
+        return events.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
+    }
+
+    private var eventsByDisplayedMonth: [Int: [CalendarEvent]] {
+        Dictionary(grouping: filteredEvents) { event in
+            guard let start = event.start else { return 0 }
+            return Calendar.current.component(.month, from: start)
+        }
+    }
+
+    private var displayedMonths: [Int] {
+        eventsByDisplayedMonth.keys.filter { $0 > 0 }.sorted()
+    }
+
+    private var filteredUpcomingEvents: [CalendarEvent] {
+        let now = Date()
+        let thirtyDaysLater = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? now
+        return filteredEvents.filter {
+            guard let start = $0.start else { return false }
+            return start >= now && start <= thirtyDaysLater
+        }
+    }
+
+    private var shouldShowUpcomingSection: Bool {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        selectedFilter == nil &&
+        viewModel.selectedMonth == nil &&
+        !filteredUpcomingEvents.isEmpty
     }
 }
 
@@ -236,21 +360,44 @@ private struct PresentedEvent: Identifiable {
 struct MonthButton: View {
     let title: String
     let isSelected: Bool
+    let compact: Bool
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                .font(.system(size: compact ? 13 : 14, weight: isSelected ? .semibold : .regular))
                 .foregroundColor(isSelected ? .white : Theme.Colors.primary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .frame(minWidth: compact ? (title == "全部" ? 56 : 44) : nil)
+                .padding(.horizontal, compact ? 0 : 16)
+                .padding(.vertical, compact ? 10 : 8)
                 .background(
                     RoundedRectangle(cornerRadius: 20)
                         .fill(isSelected ? Theme.Colors.primary : Color.gray.opacity(0.2))
                 )
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+private struct EventTypeChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? .white : Theme.Colors.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Theme.Colors.primary : Color.gray.opacity(0.18))
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

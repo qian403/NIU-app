@@ -65,8 +65,8 @@ struct EventDetailView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.black)
                         InfoRow(icon: "person.fill", title: "聯絡人", value: event.contactInfoName)
-                        InfoRow(icon: "phone.fill", title: "電話", value: event.contactInfoTel)
-                        InfoRow(icon: "envelope.fill", title: "信箱", value: event.contactInfoMail)
+                        TappableInfoRow(icon: "phone.fill", title: "電話", value: event.contactInfoTel, urlScheme: "tel:")
+                        TappableInfoRow(icon: "envelope.fill", title: "信箱", value: event.contactInfoMail, urlScheme: "mailto:")
                     }
                     
                     Divider()
@@ -170,5 +170,44 @@ struct InfoRow: View {
             
             Spacer()
         }
+    }
+}
+
+struct TappableInfoRow: View {
+    let icon: String
+    let title: String
+    let value: String
+    let urlScheme: String
+    
+    var body: some View {
+        Button(action: openLink) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(.black.opacity(0.6))
+                    .frame(width: 24)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 12))
+                        .foregroundColor(.black.opacity(0.5))
+                    Text(value)
+                        .font(.system(size: 14))
+                        .foregroundColor(.blue)
+                        .underline()
+                }
+                
+                Spacer()
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+    
+    private func openLink() {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              let url = URL(string: "\(urlScheme)\(trimmed)") else { return }
+        UIApplication.shared.open(url)
     }
 }

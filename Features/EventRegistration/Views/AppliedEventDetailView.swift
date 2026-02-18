@@ -73,8 +73,8 @@ struct AppliedEventDetailView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.black)
                         InfoRow(icon: "person.fill", title: "聯絡人", value: event.contactInfoName)
-                        InfoRow(icon: "phone.fill", title: "電話", value: event.contactInfoTel)
-                        InfoRow(icon: "envelope.fill", title: "信箱", value: event.contactInfoMail)
+                        TappableInfoRow(icon: "phone.fill", title: "電話", value: event.contactInfoTel, urlScheme: "tel:")
+                        TappableInfoRow(icon: "envelope.fill", title: "信箱", value: event.contactInfoMail, urlScheme: "mailto:")
                     }
                     
                     Divider()

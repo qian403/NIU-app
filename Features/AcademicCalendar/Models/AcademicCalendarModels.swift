@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - 行事曆事件類型
-enum CalendarEventType: String, Codable {
+enum CalendarEventType: String, Codable, CaseIterable {
     case registration = "選課"
     case exam = "考試"
     case holiday = "假期"
@@ -103,6 +103,16 @@ struct CalendarEvent: Codable, Identifiable, Hashable {
     // 是否為多日事件
     var isMultiDay: Bool {
         endDate != nil && endDate != startDate
+    }
+
+    /// Some upstream feeds mis-label midterm/final events as non-exam types.
+    /// Use title/description keywords to infer the display/filter type.
+    var inferredType: CalendarEventType {
+        let text = (title + " " + (description ?? "")).lowercased()
+        if text.contains("期中") || text.contains("期末") || text.contains("考試") || text.contains("補考") {
+            return .exam
+        }
+        return type
     }
     
     // 格式化日期顯示

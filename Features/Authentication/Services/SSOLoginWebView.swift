@@ -134,8 +134,21 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     var department = deptMatch ? deptMatch[1].trim() : '';
                     
                     // 抓取年級：X年級 或 X級
-                    var gradeMatch = text.match(/年級[：:]\\s*([^\\s<]+)/);
-                    var grade = gradeMatch ? gradeMatch[1].trim() : '';
+                    var gradeMatch = text.match(/(\\d+\\s*年級|\\d+\\s*級)/);
+                    var grade = gradeMatch ? gradeMatch[1].replace(/\\s+/g, '') : '';
+
+                    // 若沒有明確 "系/科："，嘗試從 "資訊工程學系2年級" 這種連在一起的文字拆解
+                    if (!department && grade) {
+                        var gradePos = text.indexOf(gradeMatch ? gradeMatch[1] : '');
+                        if (gradePos > 0) {
+                            var beforeGrade = text.substring(0, gradePos).trim();
+                            var pieces = beforeGrade.split(/\\s+/);
+                            var candidate = pieces.length > 0 ? pieces[pieces.length - 1] : beforeGrade;
+                            if (candidate && (candidate.indexOf('系') !== -1 || candidate.indexOf('學程') !== -1 || candidate.indexOf('所') !== -1)) {
+                                department = candidate.trim();
+                            }
+                        }
+                    }
                     
                     return JSON.stringify({
                         name: name,
