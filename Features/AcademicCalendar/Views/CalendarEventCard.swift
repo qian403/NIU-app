@@ -7,18 +7,15 @@ struct CalendarEventCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: Theme.Spacing.medium) {
-                // 左側：日期指示器
+                // 左側日期
                 dateIndicator
                 
-                // 中間：事件資訊
                 VStack(alignment: .leading, spacing: 4) {
-                    // 標題
                     Text(event.title)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Theme.Colors.primary)
                         .lineLimit(2)
                     
-                    // 描述（如果有）
                     if let description = event.description, !description.isEmpty {
                         Text(description)
                             .font(.system(size: 13, weight: .regular))
@@ -26,40 +23,31 @@ struct CalendarEventCard: View {
                             .lineLimit(1)
                     }
                     
-                    // 類型標籤
                     HStack(spacing: 6) {
-                        Image(systemName: event.inferredType.icon)
-                            .font(.system(size: 10))
+                        Circle()
+                            .fill(eventTypeColor)
+                            .frame(width: 7, height: 7)
                         Text(event.inferredType.rawValue)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(eventTypeColor)
                     }
-                    .foregroundColor(eventTypeColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(eventTypeColor.opacity(0.15))
-                    )
                 }
                 
                 Spacer()
                 
-                // 右側：箭頭
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Theme.Colors.tertiaryText)
             }
-            .padding(Theme.Spacing.medium)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .fill(Theme.Colors.background)
-                    .shadow(color: Theme.Shadow.light, radius: 8, x: 0, y: 2)
-            )
+            .padding(.horizontal, Theme.Spacing.small)
+            .padding(.vertical, 12)
+            .background(Color.white)
             .overlay(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .strokeBorder(eventTypeColor.opacity(0.2), lineWidth: 1)
+                Rectangle()
+                    .fill(Color.black.opacity(0.07))
+                    .frame(height: 1),
+                alignment: .bottom
             )
-            .padding(.horizontal, 2)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -68,37 +56,19 @@ struct CalendarEventCard: View {
     
     private var dateIndicator: some View {
         VStack(spacing: 2) {
-            // 月份
             if let date = event.start {
-                Text(monthString(from: date))
+                Text(weekdayString(from: date))
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(eventTypeColor)
-                
-                // 日期
+                    .foregroundColor(Theme.Colors.tertiaryText)
                 Text(dayString(from: date))
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundColor(Theme.Colors.primary)
-                
-                // 如果是多日事件，顯示結束日期
-                if event.isMultiDay, let endDate = event.end {
-                    VStack(spacing: 0) {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 8))
-                            .foregroundColor(.gray)
-                        
-                        Text(dayString(from: endDate))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.gray)
-                    }
-                }
+                Text(monthString(from: date))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(eventTypeColor)
             }
         }
-        .frame(width: 60)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(eventTypeColor.opacity(0.1))
-        )
+        .frame(width: 52)
     }
     
     // MARK: - Helper Properties
@@ -119,11 +89,18 @@ struct CalendarEventCard: View {
     
     private func monthString(from date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM"
+        formatter.dateFormat = "M月"
         formatter.locale = Locale(identifier: "zh_TW")
         return formatter.string(from: date)
     }
     
+    private func weekdayString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "E"
+        formatter.locale = Locale(identifier: "zh_TW")
+        return formatter.string(from: date)
+    }
+
     private func dayString(from date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "dd"
@@ -273,7 +250,7 @@ struct CalendarEventDetailSheet: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Preview Data
 
 #Preview {
     VStack(spacing: 16) {

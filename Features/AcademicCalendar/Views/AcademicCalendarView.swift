@@ -5,6 +5,7 @@ struct AcademicCalendarView: View {
     @State private var presentedEvent: PresentedEvent?
     @State private var searchText = ""
     @State private var selectedFilter: CalendarEventType?
+    @State private var scrollMinY: CGFloat = 0
     
     var body: some View {
         NavigationView {
@@ -18,13 +19,8 @@ struct AcademicCalendarView: View {
                     mainContent
                 }
             }
-            .navigationTitle("學年度行事曆")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    semesterPicker
-                }
-            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 // 優先從公開 URL 載入，失敗再 fallback（Firebase/本地）
                 viewModel.loadFromConfiguredSources()
@@ -40,41 +36,55 @@ struct AcademicCalendarView: View {
     
     private var mainContent: some View {
         VStack(spacing: 0) {
-            // 月份選擇器
-            monthSelector
+            topHeader
                 .padding(.horizontal)
-                .padding(.vertical, Theme.Spacing.small)
-
-            searchAndFilterSection
-                .padding(.horizontal)
-                .padding(.bottom, Theme.Spacing.small)
-            
-            Divider()
+                .padding(.top, Theme.Spacing.small)
+                .padding(.bottom, 6)
             
             // 事件列表
             if viewModel.currentCalendar != nil {
                 ScrollView {
-                    VStack(spacing: Theme.Spacing.medium) {
-                        // 即將到來的事件（如果有）
-                        if shouldShowUpcomingSection {
-                            upcomingEventsSection
-                        }
-                        
-                        // 按月份顯示事件
-                        if let month = viewModel.selectedMonth {
-                            monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
-                        } else {
-                            // 顯示所有月份
-                            ForEach(displayedMonths, id: \.self) { month in
-                                monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
-                            }
-                        }
+                    LazyVStack(spacing: Theme.Spacing.medium, pinnedViews: [.sectionHeaders]) {
+                        Section {
+                            // Track scroll offset for compact search style.
+                            Color.clear
+                                .frame(height: 0)
+                                .background(
+                                    GeometryReader { proxy in
+                                        Color.clear
+                                            .preference(
+                                                key: CalendarScrollOffsetPreferenceKey.self,
+                                                value: proxy.frame(in: .named("calendarScroll")).minY
+                                            )
+                                    }
+                                )
 
-                        if displayedMonths.isEmpty {
-                            emptyResultView
+                            // 即將到來的事件（如果有）
+                            if shouldShowUpcomingSection {
+                                upcomingEventsSection
+                            }
+                            
+                            // 按月份顯示事件
+                            if let month = viewModel.selectedMonth {
+                                monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
+                            } else {
+                                // 顯示所有月份
+                                ForEach(displayedMonths, id: \.self) { month in
+                                    monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
+                                }
+                            }
+
+                            if displayedMonths.isEmpty {
+                                emptyResultView
+                            }
+                        } header: {
+                            stickyControlsHeader
                         }
                     }
-                    .padding()
+                }
+                .coordinateSpace(name: "calendarScroll")
+                .onPreferenceChange(CalendarScrollOffsetPreferenceKey.self) { value in
+                    scrollMinY = value
                 }
                 .refreshable {
                     viewModel.loadFromConfiguredSources()
@@ -83,6 +93,49 @@ struct AcademicCalendarView: View {
                 emptyStateView
             }
         }
+    }
+
+    private var stickyControlsHeader: some View {
+        VStack(spacing: 0) {
+            monthSelector
+                .padding(.horizontal, Theme.Spacing.medium)
+                .padding(.vertical, 8)
+
+            searchAndFilterSection
+                .padding(.horizontal, Theme.Spacing.medium)
+                .padding(.bottom, Theme.Spacing.small)
+        }
+        .background(Theme.Colors.background)
+        .overlay(
+            Rectangle()
+                .fill(Color.black.opacity(0.06))
+                .frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
+    private var topHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headerMonthTitle)
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundColor(Theme.Colors.primary)
+                    .lineLimit(1)
+                Text(viewModel.currentSemester)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+
+            Spacer(minLength: 8)
+            semesterPicker
+        }
+    }
+
+    private var headerMonthTitle: String {
+        if let month = viewModel.selectedMonth {
+            return monthName(month)
+        }
+        return "全部行程"
     }
     
     // MARK: - Components
@@ -113,6 +166,7 @@ struct AcademicCalendarView: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 2)
         }
+        .defaultScrollAnchor(.leading)
     }
     
     private var semesterPicker: some View {
@@ -139,6 +193,12 @@ struct AcademicCalendarView: View {
                     .font(.system(size: 12))
             }
             .foregroundColor(Theme.Colors.primary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(Color.gray.opacity(0.12))
+            )
         }
     }
 
@@ -148,7 +208,7 @@ struct AcademicCalendarView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(Theme.Colors.tertiaryText)
                 TextField("搜尋活動、關鍵字", text: $searchText)
-                    .font(.system(size: 14))
+                    .font(.system(size: isSearchCompact ? 13 : 14))
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
@@ -159,7 +219,7 @@ struct AcademicCalendarView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.vertical, isSearchCompact ? 7 : 10)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.gray.opacity(0.12))
@@ -184,7 +244,12 @@ struct AcademicCalendarView: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
             }
+            .defaultScrollAnchor(.leading)
         }
+    }
+
+    private var isSearchCompact: Bool {
+        scrollMinY < -10
     }
     
     private var upcomingEventsSection: some View {
@@ -347,6 +412,13 @@ struct AcademicCalendarView: View {
         selectedFilter == nil &&
         viewModel.selectedMonth == nil &&
         !filteredUpcomingEvents.isEmpty
+    }
+}
+
+private struct CalendarScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
