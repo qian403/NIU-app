@@ -1,14 +1,38 @@
 import SwiftUI
 
+enum AppAppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "跟隨系統"
+        case .light: return "淺色"
+        case .dark: return "深色"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 enum Theme {
     
     enum Colors {
-        static let primary = Color.black
-        static let background = Color.white
-        static let secondaryText = Color.black.opacity(0.6)
-        static let tertiaryText = Color.black.opacity(0.4)
-        static let border = Color.black.opacity(0.2)
-        static let lightBorder = Color.black.opacity(0.1)
+        static let primary = Color.primary
+        static let background = Color(.systemBackground)
+        static let secondaryText = Color.secondary
+        static let tertiaryText = Color.secondary.opacity(0.8)
+        static let border = Color(.separator)
+        static let lightBorder = Color(.separator).opacity(0.7)
     }
     
     enum Spacing {
@@ -60,8 +84,8 @@ enum Theme {
     }
     
     enum Shadow {
-        static let light = Color.black.opacity(0.05)
-        static let medium = Color.black.opacity(0.1)
-        static let heavy = Color.black.opacity(0.2)
+        static let light = Color.primary.opacity(0.05)
+        static let medium = Color.primary.opacity(0.1)
+        static let heavy = Color.primary.opacity(0.2)
     }
 }

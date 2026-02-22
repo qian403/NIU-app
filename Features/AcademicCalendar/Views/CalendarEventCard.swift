@@ -41,13 +41,15 @@ struct CalendarEventCard: View {
             }
             .padding(.horizontal, Theme.Spacing.small)
             .padding(.vertical, 12)
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .overlay(
                 Rectangle()
-                    .fill(Color.black.opacity(0.07))
+                    .fill(Color.primary.opacity(0.07))
                     .frame(height: 1),
                 alignment: .bottom
             )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -115,7 +117,7 @@ struct CalendarEventDetailSheet: View {
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.large) {
                     // 日期區塊
@@ -145,7 +147,6 @@ struct CalendarEventDetailSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.light)
     }
     
     private var dateSection: some View {
@@ -225,7 +226,7 @@ struct CalendarEventDetailSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black.opacity(0.05))
+                        .fill(Color.primary.opacity(0.05))
                 )
         }
     }

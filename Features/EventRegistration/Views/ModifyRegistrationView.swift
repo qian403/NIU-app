@@ -24,7 +24,7 @@ struct ModifyRegistrationView: View {
     @State private var webViewDelegate: WebViewLoadDelegate?
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("活動資訊")) {
                     HStack {
@@ -175,7 +175,6 @@ struct ModifyRegistrationView: View {
                 loadRegistrationInfo()
             }
         }
-        .preferredColorScheme(.light)
     }
     
     private var isFormValid: Bool {
@@ -219,7 +218,6 @@ struct ModifyRegistrationView: View {
         """
         webView.evaluateJavaScript(jsTel) { res, err in
             if let tel = res as? String {
-                print("[ModifyRegistration] SignTEL: \(tel)")
                 DispatchQueue.main.async {
                     self.tel = tel == "NOT_FOUND" ? "" : tel
                 }
@@ -232,7 +230,6 @@ struct ModifyRegistrationView: View {
         """
         webView.evaluateJavaScript(jsEmail) { res, err in
             if let email = res as? String {
-                print("[ModifyRegistration] SignEmail: \(email)")
                 DispatchQueue.main.async {
                     self.mail = email == "NOT_FOUND" ? "" : email
                 }
@@ -245,7 +242,6 @@ struct ModifyRegistrationView: View {
         """
         webView.evaluateJavaScript(jsMemo) { res, err in
             if let memo = res as? String {
-                print("[ModifyRegistration] SignMemo: \(memo)")
                 DispatchQueue.main.async {
                     self.remark = memo == "NOT_FOUND" ? "" : memo
                 }
@@ -264,7 +260,6 @@ struct ModifyRegistrationView: View {
         """
         webView.evaluateJavaScript(jsFood) { res, err in
             if let food = res as? String {
-                print("[ModifyRegistration] Food (checked): \(food)")
                 DispatchQueue.main.async {
                     self.selectedFood = food
                 }
@@ -283,7 +278,6 @@ struct ModifyRegistrationView: View {
         """
         webView.evaluateJavaScript(jsProof) { res, err in
             if let proof = res as? String {
-                print("[ModifyRegistration] Proof (checked): \(proof)")
                 DispatchQueue.main.async {
                     self.selectedProof = proof
                 }
@@ -296,7 +290,6 @@ struct ModifyRegistrationView: View {
         """
         webView.evaluateJavaScript(jsToken) { res, err in
             if let token = res as? String {
-                print("[ModifyRegistration] Token: \(token.prefix(20))...")
                 DispatchQueue.main.async {
                     self.tokenValue = token == "NOT_FOUND" ? "" : token
                 }
@@ -308,7 +301,6 @@ struct ModifyRegistrationView: View {
         """
         webView.evaluateJavaScript(jsSignId) { res, err in
             if let id = res as? String {
-                print("[ModifyRegistration] SignId: \(id)")
                 DispatchQueue.main.async {
                     self.signId = id == "NOT_FOUND" ? "" : id
                 }
@@ -345,7 +337,6 @@ struct ModifyRegistrationView: View {
             if let jsonStr = res as? String,
                let data = jsonStr.data(using: .utf8),
                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-                print("[ModifyRegistration] 唯讀信息: \(dict)")
                 DispatchQueue.main.async {
                     self.role = dict["role"] ?? ""
                     self.classes = dict["classes"] ?? ""

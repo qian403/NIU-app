@@ -36,6 +36,8 @@ final class SSOSessionService: ObservableObject {
 
     /// Callers waiting for the current refresh to finish.
     private var pendingContinuations: [CheckedContinuation<Bool, Never>] = []
+    private var refreshTimeoutTask: Task<Void, Never>?
+    private let refreshTimeoutSeconds: UInt64 = 35
 
     private init() {}
 
@@ -48,6 +50,10 @@ final class SSOSessionService: ObservableObject {
     /// Disables silent refresh and fails any pending refresh requests immediately.
     func disableAutoRefresh() {
         autoRefreshEnabled = false
+        refreshTimeoutTask?.cancel()
+        refreshTimeoutTask = nil
+        showRefreshWebView = false
+        isRefreshing = false
         drainPending(success: false)
     }
 
@@ -76,6 +82,7 @@ final class SSOSessionService: ObservableObject {
         refreshPassword = creds.password
         isRefreshing = true
         showRefreshWebView = true
+        scheduleRefreshTimeout()
 
         return await withCheckedContinuation { continuation in
             pendingContinuations.append(continuation)
@@ -85,6 +92,9 @@ final class SSOSessionService: ObservableObject {
     // MARK: - Called by the invisible SSOLoginWebView in RootView
 
     func handleRefreshResult(_ result: SSOLoginResult) {
+        guard isRefreshing else { return }
+        refreshTimeoutTask?.cancel()
+        refreshTimeoutTask = nil
         showRefreshWebView = false
         isRefreshing = false
 
@@ -105,5 +115,18 @@ final class SSOSessionService: ObservableObject {
         let continuations = pendingContinuations
         pendingContinuations = []
         for c in continuations { c.resume(returning: success) }
+    }
+
+    private func scheduleRefreshTimeout() {
+        refreshTimeoutTask?.cancel()
+        refreshTimeoutTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: refreshTimeoutSeconds * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            guard self.isRefreshing else { return }
+            self.showRefreshWebView = false
+            self.isRefreshing = false
+            self.drainPending(success: false)
+        }
     }
 }

@@ -18,9 +18,9 @@ struct ClassScheduleExportView: View {
     private let exportService = ClassScheduleExportService()
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                Color.white.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
@@ -47,7 +47,7 @@ struct ClassScheduleExportView: View {
                             HStack {
                                 Text("\(weekCount) 週")
                                     .font(.system(size: 15))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.primary)
                                 Spacer()
                                 Stepper("", value: $weekCount, in: 1...30)
                                     .labelsHidden()
@@ -76,7 +76,7 @@ struct ClassScheduleExportView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("取消") { isPresented = false }
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                 }
             }
             .alert(isPresented: $showResult) {
@@ -89,7 +89,6 @@ struct ClassScheduleExportView: View {
                 )
             }
         }
-        .preferredColorScheme(.light)
     }
 
     // MARK: - Field section
@@ -107,7 +106,7 @@ struct ClassScheduleExportView: View {
                 .padding(Theme.Spacing.small)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                        .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
                 )
         }
     }
@@ -145,7 +144,7 @@ struct ClassScheduleExportView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.black.opacity(0.04))
+                .fill(Color.primary.opacity(0.04))
         )
     }
 
@@ -175,7 +174,7 @@ struct ClassScheduleExportView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color.black)
+            .background(Color.primary)
             .foregroundColor(.white)
             .cornerRadius(Theme.CornerRadius.medium)
         }

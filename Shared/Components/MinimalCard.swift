@@ -13,17 +13,17 @@ struct MinimalCard: View {
             HStack(spacing: Theme.Spacing.medium) {
                 Image(systemName: icon)
                     .font(.system(size: 24, weight: .light))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                     .frame(width: 50, height: 50)
                     .background(
                         Circle()
-                            .strokeBorder(Color.black.opacity(0.2), lineWidth: 1)
+                            .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
                     )
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                     
                     Text(subtitle)
                         .font(.system(size: 13, weight: .light))
@@ -39,8 +39,10 @@ struct MinimalCard: View {
             .padding(Theme.Spacing.medium)
             .background(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .strokeBorder(Color.black.opacity(0.1), lineWidth: 1)
+                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
             )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
     }

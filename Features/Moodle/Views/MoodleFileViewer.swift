@@ -23,10 +23,10 @@ struct MoodleFileViewer: View {
                     Spacer()
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 36, weight: .light))
-                        .foregroundColor(.black.opacity(0.3))
+                        .foregroundColor(.secondary)
                     Text(error)
                         .font(.system(size: 14))
-                        .foregroundColor(.black.opacity(0.5))
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                     Button("重試") { download() }
@@ -40,13 +40,13 @@ struct MoodleFileViewer: View {
                     ProgressView()
                     Text("下載中...")
                         .font(.system(size: 13))
-                        .foregroundColor(.black.opacity(0.4))
+                        .foregroundColor(.secondary)
                         .padding(.top, 8)
                     Spacer()
                 }
             }
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .navigationTitle(fileName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

@@ -30,6 +30,7 @@ struct MoodleSiteInfo: Codable {
     let lastname: String
     let fullname: String
     let userid: Int
+    let usercontextid: Int?
     let siteurl: String
     let userpictureurl: String?
 }

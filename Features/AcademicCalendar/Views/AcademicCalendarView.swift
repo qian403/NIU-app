@@ -8,7 +8,7 @@ struct AcademicCalendarView: View {
     @State private var scrollMinY: CGFloat = 0
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Theme.Colors.background.ignoresSafeArea()
                 if viewModel.isLoading {
@@ -29,7 +29,6 @@ struct AcademicCalendarView: View {
                 CalendarEventDetailSheet(event: item.event)
             }
         }
-        .preferredColorScheme(.light)
     }
     
     // MARK: - Main Content
@@ -108,7 +107,7 @@ struct AcademicCalendarView: View {
         .background(Theme.Colors.background)
         .overlay(
             Rectangle()
-                .fill(Color.black.opacity(0.06))
+                .fill(Color.primary.opacity(0.06))
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -319,7 +318,7 @@ struct AcademicCalendarView: View {
             }) {
                 Text("使用本地資料")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(Color(.systemBackground))
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .background(Theme.Colors.primary)
@@ -439,13 +438,13 @@ struct MonthButton: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: compact ? 13 : 14, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? .white : Theme.Colors.primary)
+                .foregroundColor(isSelected ? Color(.systemBackground) : Theme.Colors.primary)
                 .frame(minWidth: compact ? (title == "全部" ? 56 : 44) : nil)
                 .padding(.horizontal, compact ? 0 : 16)
                 .padding(.vertical, compact ? 10 : 8)
                 .background(
                     RoundedRectangle(cornerRadius: 20)
-                        .fill(isSelected ? Theme.Colors.primary : Color.gray.opacity(0.2))
+                        .fill(isSelected ? Theme.Colors.primary : Color(.secondarySystemFill))
                 )
         }
         .buttonStyle(PlainButtonStyle())
@@ -461,12 +460,12 @@ private struct EventTypeChip: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? .white : Theme.Colors.primary)
+                .foregroundColor(isSelected ? Color(.systemBackground) : Theme.Colors.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Theme.Colors.primary : Color.gray.opacity(0.18))
+                        .fill(isSelected ? Theme.Colors.primary : Color(.secondarySystemFill))
                 )
         }
         .buttonStyle(.plain)

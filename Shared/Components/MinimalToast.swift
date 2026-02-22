@@ -18,12 +18,12 @@ struct MinimalToast: View {
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 25)
-                .fill(isSuccess ? Color.white : Color.black)
+                .fill(isSuccess ? Color(.systemBackground) : Color.primary)
                 .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 25)
-                .strokeBorder(Color.black.opacity(0.1), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
         )
     }
 }

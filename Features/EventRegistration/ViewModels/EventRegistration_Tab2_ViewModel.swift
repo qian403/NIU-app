@@ -39,6 +39,16 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     // 登入狀態追蹤
     private var hasAttemptedLogin = false
     private var hasInitialized = false
+
+    private func escapeForSingleQuotedJavaScript(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+    }
     
     // JavaScript 抓取已報名活動列表
     private let jsGetData: String = """
@@ -204,7 +214,9 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 print("[EventRegistration Tab2] JSON 資料長度: \(jsonString.count)")
                 
                 do {
-                    let jsonData = jsonString.data(using: .utf8)!
+                    guard let jsonData = jsonString.data(using: .utf8) else {
+                        throw NSError(domain: "EventRegistrationTab2", code: -1, userInfo: [NSLocalizedDescriptionKey: "JSON 編碼失敗"])
+                    }
                     if let jsonArray = try JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] {
                         
                         // 如果沒有活動資料且重試次數未達上限，重試
@@ -361,6 +373,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
         }
         
         overlayText = "正在登入活動系統"
+        let escapedUsername = escapeForSingleQuotedJavaScript(credentials.username)
+        let escapedPassword = escapeForSingleQuotedJavaScript(credentials.password)
         
         // 延遲確保頁面載入完成
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -373,8 +387,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 var passwordField = document.querySelector('input[name="Password"]') || document.getElementById('Password');
                 
                 if (usernameField && passwordField) {
-                    usernameField.value = '\(credentials.username)';
-                    passwordField.value = '\(credentials.password)';
+                    usernameField.value = '\(escapedUsername)';
+                    passwordField.value = '\(escapedPassword)';
                     
                     // 找到表單並提交
                     var form = usernameField.closest('form');
@@ -463,12 +477,6 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 return JSON.stringify(info);
             })();
         """) { [weak self] result, error in
-            if let jsonStr = result as? String,
-               let data = jsonStr.data(using: .utf8),
-               let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                print("[EventRegistration Tab2] Cancel 頁面資訊: \(info)")
-            }
-            
             // 現在執行取消
             self?.performCancelSubmit(eventID: eventID)
         }
@@ -617,8 +625,6 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
         
         let bodyString = bodyParts.joined(separator: "&")
         request.httpBody = bodyString.data(using: .utf8)
-        
-        print("[EventRegistration] 修改請求正文: \(bodyString)")
         
         webView?.load(request)
         

@@ -24,12 +24,12 @@ private struct GradeItemRow: View {
                 if let module = item.itemmodule {
                     Image(systemName: iconFor(module))
                         .font(.system(size: 12))
-                        .foregroundColor(.black.opacity(0.4))
+                        .foregroundColor(.secondary)
                 }
                 
                 Text(cleanTitle)
                     .font(.system(size: 14, weight: item.isCategory ? .semibold : .regular))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
             }
             
             // Grade details in a grid
@@ -46,19 +46,19 @@ private struct GradeItemRow: View {
                 HStack(spacing: 4) {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 11))
-                        .foregroundColor(.black.opacity(0.4))
+                        .foregroundColor(.secondary)
                     Text(feedback)
                         .font(.system(size: 12))
-                        .foregroundColor(.black.opacity(0.6))
+                        .foregroundColor(.secondary)
                 }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(item.isCategory ? Color.black.opacity(0.04) : Color.white)
+        .background(item.isCategory ? Color.primary.opacity(0.04) : Color(.systemBackground))
         .overlay(
             Rectangle()
-                .fill(Color.black.opacity(0.06))
+                .fill(Color.primary.opacity(0.06))
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -94,10 +94,10 @@ private struct GradeItemRow: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.system(size: 10))
-                .foregroundColor(.black.opacity(0.35))
+                .foregroundColor(.secondary)
             Text(value)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.black.opacity(0.8))
+                .foregroundColor(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }

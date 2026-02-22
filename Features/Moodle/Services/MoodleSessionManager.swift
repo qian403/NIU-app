@@ -5,7 +5,7 @@ import WebKit
 /// Stores the SSO redirect URL for EUNI (Moodle).
 final class SSOEUNISettings {
     static let shared = SSOEUNISettings()
-    private let defaults = UserDefaults(suiteName: "SSOID")!
+    private let defaults = UserDefaults(suiteName: "SSOID") ?? .standard
 
     var euniRedirectPath: String {
         get { defaults.string(forKey: "EUNI") ?? "" }

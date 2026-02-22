@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct MoodleAssignmentView: View {
     let assignment: MoodleAssignment
@@ -7,9 +6,7 @@ struct MoodleAssignmentView: View {
     @State private var submissionStatus: MoodleSubmissionStatus?
     @State private var gradeItem: MoodleGradeItem?
     @State private var isLoading = true
-    @State private var isUploading = false
     @State private var isDeleting = false
-    @State private var showFileImporter = false
     @State private var actionMessage: String?
     @State private var isSubmittingForGrading = false
     
@@ -19,7 +16,7 @@ struct MoodleAssignmentView: View {
                 // Title
                 Text(assignment.name)
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                 
                 // Status badges
                 HStack(spacing: 8) {
@@ -53,11 +50,11 @@ struct MoodleAssignmentView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("作業說明")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.primary)
                         
                         Text(assignment.plainIntro)
                             .font(.system(size: 14))
-                            .foregroundColor(.black.opacity(0.7))
+                            .foregroundColor(.secondary)
                             .textSelection(.enabled)
                     }
                 }
@@ -71,7 +68,7 @@ struct MoodleAssignmentView: View {
                         ProgressView()
                         Text("載入繳交狀態...")
                             .font(.system(size: 13))
-                            .foregroundColor(.black.opacity(0.4))
+                            .foregroundColor(.secondary)
                         Spacer()
                     }
                     .padding(.vertical, 20)
@@ -79,7 +76,7 @@ struct MoodleAssignmentView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("繳交狀態")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.primary)
                         
                         if let submission = attempt.submission {
                             infoRow(
@@ -128,28 +125,28 @@ struct MoodleAssignmentView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("已繳交檔案")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.black)
+                                .foregroundColor(.primary)
 
                             ForEach(submissionFiles) { file in
                                 if let url = tokenizedFileURL(file.fileurl) {
                                     NavigationLink(destination: MoodleFileViewer(fileName: file.filename, fileURL: url)) {
                                         HStack {
                                             Image(systemName: "doc")
-                                                .foregroundColor(.black.opacity(0.5))
+                                                .foregroundColor(.secondary)
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(file.filename)
                                                     .font(.system(size: 13, weight: .medium))
-                                                    .foregroundColor(.black)
+                                                    .foregroundColor(.primary)
                                                 if let size = file.filesize {
                                                     Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
                                                         .font(.system(size: 11))
-                                                        .foregroundColor(.black.opacity(0.45))
+                                                        .foregroundColor(.secondary)
                                                 }
                                             }
                                             Spacer()
                                             Image(systemName: "chevron.right")
                                                 .font(.system(size: 11))
-                                                .foregroundColor(.black.opacity(0.3))
+                                                .foregroundColor(.secondary)
                                         }
                                     }
                                     .buttonStyle(PlainButtonStyle())
@@ -162,23 +159,26 @@ struct MoodleAssignmentView: View {
                 Divider()
 
                 VStack(spacing: 10) {
-                    Button {
-                        showFileImporter = true
-                    } label: {
+                    NavigationLink(destination: MoodleWebPageView(
+                        title: "網頁上傳作業",
+                        targetURL: editSubmissionURL
+                    )) {
                         HStack {
-                            Image(systemName: "square.and.arrow.up")
-                            Text(isUploading ? "上傳中..." : "上傳作業檔案")
+                            Image(systemName: "globe")
+                            Text("上傳檔案")
                         }
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(
                             RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(Color.black.opacity(0.2), lineWidth: 1)
+                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
                         )
+                        .contentShape(Rectangle())
                     }
-                    .disabled(isUploading)
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
 
                     if !submissionFiles.isEmpty {
                         Button(role: .destructive) {
@@ -196,8 +196,10 @@ struct MoodleAssignmentView: View {
                                 RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(Color.red.opacity(0.25), lineWidth: 1)
                             )
+                            .contentShape(Rectangle())
                         }
                         .disabled(isDeleting)
+                        .contentShape(Rectangle())
                     }
 
                     if !isFinalSubmitted {
@@ -216,37 +218,30 @@ struct MoodleAssignmentView: View {
                                 RoundedRectangle(cornerRadius: 10)
                                     .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
                             )
+                            .contentShape(Rectangle())
                         }
                         .disabled(isSubmittingForGrading || submissionFiles.isEmpty)
+                        .contentShape(Rectangle())
                     }
                 }
 
                 if let actionMessage {
                     Text(actionMessage)
                         .font(.system(size: 12))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.secondary)
                 }
+
+                Text("作業檔案上傳暫時改為網頁模式，完成後返回此頁可重新整理狀態。")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
             }
             .padding(Theme.Spacing.medium)
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .navigationTitle("作業詳情")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await loadSubmission()
-        }
-        .fileImporter(
-            isPresented: $showFileImporter,
-            allowedContentTypes: [.data],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let localURL = urls.first else { return }
-                Task { await uploadSubmissionFile(localURL) }
-            case .failure(let error):
-                actionMessage = "選擇檔案失敗：\(error.localizedDescription)"
-            }
         }
     }
     
@@ -264,17 +259,17 @@ struct MoodleAssignmentView: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 14))
-                .foregroundColor(.black.opacity(0.4))
+                .foregroundColor(.secondary)
                 .frame(width: 20)
             
             Text(title)
                 .font(.system(size: 13))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(.secondary)
                 .frame(width: 70, alignment: .leading)
             
             Text(value)
                 .font(.system(size: 13))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
         }
     }
     
@@ -305,6 +300,10 @@ struct MoodleAssignmentView: View {
         submissionStatus?.lastattempt?.submission?.status == "submitted"
     }
 
+    private var editSubmissionURL: String {
+        "https://euni.niu.edu.tw/mod/assign/view.php?id=\(assignment.cmid)&action=editsubmission"
+    }
+
     private func tokenizedFileURL(_ rawURL: String?) -> URL? {
         guard let rawURL else { return nil }
         return MoodleService.shared.fileURL(for: rawURL)
@@ -321,25 +320,6 @@ struct MoodleAssignmentView: View {
             print("[Moodle] Load submission error: \(error)")
         }
         isLoading = false
-    }
-
-    private func uploadSubmissionFile(_ localURL: URL) async {
-        isUploading = true
-        actionMessage = nil
-        defer { isUploading = false }
-        let hasAccess = localURL.startAccessingSecurityScopedResource()
-        defer {
-            if hasAccess { localURL.stopAccessingSecurityScopedResource() }
-        }
-        do {
-            let draftItemId = try await MoodleService.shared.fetchUnusedDraftItemId()
-            _ = try await MoodleService.shared.uploadAssignmentFile(localFileURL: localURL, draftItemId: draftItemId)
-            try await MoodleService.shared.saveAssignmentSubmission(assignId: assignment.id, draftItemId: draftItemId)
-            actionMessage = "上傳成功"
-            await loadSubmission()
-        } catch {
-            actionMessage = "上傳失敗：\(error.localizedDescription)"
-        }
     }
 
     private func clearSubmissionFiles() async {

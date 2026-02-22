@@ -23,7 +23,7 @@ struct MoodleView: View {
                 }
             }
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .navigationTitle("M 園區")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -59,6 +59,8 @@ struct MoodleView: View {
                         NavigationLink(destination: MoodleCourseDetailView(course: course)) {
                             CourseCard(course: course)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
@@ -93,12 +95,12 @@ struct MoodleView: View {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 12, weight: .semibold))
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .background(
                             Capsule()
-                                .strokeBorder(Color.black.opacity(0.2), lineWidth: 1)
+                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
                         )
                     }
                 }
@@ -108,10 +110,10 @@ struct MoodleView: View {
                 HStack {
                     Text(semester)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundColor(Color(.systemBackground))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.black))
+                        .background(Capsule().fill(Color.primary))
                     Spacer()
                 }
                 .padding(.horizontal, Theme.Spacing.medium)
@@ -120,7 +122,7 @@ struct MoodleView: View {
                 HStack {
                     Text("學期載入中")
                         .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.black.opacity(0.45))
+                        .foregroundColor(.secondary)
                     Spacer()
                 }
                 .padding(.horizontal, Theme.Spacing.medium)
@@ -137,11 +139,11 @@ struct MoodleView: View {
             ProgressView()
             Text("載入課程中...")
                 .font(.system(size: 14))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(.secondary)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white)
+        .background(Color(.systemBackground))
     }
     
     private func errorView(_ message: String) -> some View {
@@ -149,20 +151,20 @@ struct MoodleView: View {
             Spacer()
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 40, weight: .light))
-                .foregroundColor(.black.opacity(0.3))
+                .foregroundColor(.secondary)
             Text(message)
                 .font(.system(size: 14))
-                .foregroundColor(.black.opacity(0.6))
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             Button("重試") {
                 Task { await loadWithCredentials() }
             }
             .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
+            .foregroundColor(Color(.systemBackground))
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
-            .background(Color.black)
+            .background(Color.primary)
             .cornerRadius(20)
             Spacer()
         }
@@ -211,7 +213,7 @@ private struct CourseCard: View {
             // Course name
             Text(course.cleanName)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
                 .lineLimit(2)
             
             // Teacher & credits
@@ -223,7 +225,7 @@ private struct CourseCard: View {
                         Text(teacher)
                             .font(.system(size: 12))
                     }
-                    .foregroundColor(.black.opacity(0.5))
+                    .foregroundColor(.secondary)
                 }
                 
                 if let credits = course.credits {
@@ -233,7 +235,7 @@ private struct CourseCard: View {
                         Text("\(credits) 學分")
                             .font(.system(size: 12))
                     }
-                    .foregroundColor(.black.opacity(0.5))
+                    .foregroundColor(.secondary)
                 }
             }
             
@@ -243,20 +245,20 @@ private struct CourseCard: View {
                     HStack {
                         Text("完成進度")
                             .font(.system(size: 11))
-                            .foregroundColor(.black.opacity(0.4))
+                            .foregroundColor(.secondary)
                         Spacer()
                         Text("\(Int(progress))%")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.black.opacity(0.6))
+                            .foregroundColor(.primary)
                     }
                     
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.black.opacity(0.08))
+                                .fill(Color.primary.opacity(0.08))
                                 .frame(height: 4)
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.black.opacity(0.6))
+                                .fill(Color.primary.opacity(0.6))
                                 .frame(width: geo.size.width * CGFloat(progress / 100.0), height: 4)
                         }
                     }
@@ -267,19 +269,24 @@ private struct CourseCard: View {
             // Course ID
             Text(course.idnumber)
                 .font(.system(size: 11, weight: .light))
-                .foregroundColor(.black.opacity(0.3))
+                .foregroundColor(.secondary)
         }
         .padding(Theme.Spacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .strokeBorder(Color.black.opacity(0.1), lineWidth: 1)
+                .fill(Color.primary.opacity(0.001))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                )
         )
+        .contentShape(Rectangle())
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         MoodleView()
             .environmentObject(AppState())
     }

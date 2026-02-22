@@ -1,6 +1,6 @@
 import Foundation
+import WebKit
 
-@MainActor
 final class MoodleService {
     static let shared = MoodleService()
     
@@ -8,6 +8,7 @@ final class MoodleService {
     private var token: String?
     private var privateToken: String?
     private var userId: Int?
+    private var userContextId: Int?
     
     private init() {}
     
@@ -43,12 +44,14 @@ final class MoodleService {
         // Get user ID from site info
         let siteInfo = try await fetchSiteInfo()
         self.userId = siteInfo.userid
+        self.userContextId = siteInfo.usercontextid
     }
     
     func logout() {
         token = nil
         privateToken = nil
         userId = nil
+        userContextId = nil
     }
     
     // MARK: - API Calls
@@ -160,14 +163,14 @@ final class MoodleService {
     }
 
     func fetchUnusedDraftItemId() async throws -> Int {
-        if let value: Int = try? await callAPI(function: "core_files_get_unused_draft_itemid") {
+        if let value: Int = try? await callAPI(function: "core_files_get_unused_draft_itemid", logDecodeError: false) {
             return value
         }
-        if let value: String = try? await callAPI(function: "core_files_get_unused_draft_itemid"),
+        if let value: String = try? await callAPI(function: "core_files_get_unused_draft_itemid", logDecodeError: false),
            let intVal = Int(value) {
             return intVal
         }
-        if let value: MoodleDraftItemResponse = try? await callAPI(function: "core_files_get_unused_draft_itemid") {
+        if let value: MoodleDraftItemResponse = try? await callAPI(function: "core_files_get_unused_draft_itemid", logDecodeError: false) {
             return value.itemid
         }
         let raw = try await callAPIRaw(function: "core_files_get_unused_draft_itemid")
@@ -180,65 +183,155 @@ final class MoodleService {
         throw MoodleError.decodeFailed("無法解析 draft item id")
     }
 
-    func uploadAssignmentFile(localFileURL: URL, draftItemId: Int) async throws -> MoodleUploadedFile {
+    func uploadAssignmentFile(
+        localFileURL: URL,
+        draftItemId: Int,
+        assignmentCMID: Int? = nil,
+        assignmentCourseID: Int? = nil
+    ) async throws -> MoodleUploadedFile {
         guard let token else { throw MoodleError.notAuthenticated }
-        guard let uploadURL = URL(string: "\(baseURL)/webservice/upload.php") else {
+        var components = URLComponents(string: "\(baseURL)/webservice/upload.php")
+        components?.queryItems = [
+            URLQueryItem(name: "token", value: token)
+        ]
+        guard let uploadURL = components?.url else {
             throw MoodleError.invalidURL
         }
 
-        var request = URLRequest(url: uploadURL)
-        request.httpMethod = "POST"
-        let boundary = "Boundary-\(UUID().uuidString)"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        let filename = localFileURL.lastPathComponent
+        let originalFilename = localFileURL.lastPathComponent
+        let filename = multipartSafeFilename(from: originalFilename, pathExtension: localFileURL.pathExtension)
         let mimeType = mimeTypeForFileExtension(localFileURL.pathExtension)
         let fileData = try Data(contentsOf: localFileURL)
+        guard !fileData.isEmpty else {
+            throw MoodleError.apiError("選取的檔案內容為空，請重新選擇檔案")
+        }
 
-        var body = Data()
-        func appendField(_ name: String, _ value: String) {
+        func performUpload(fileFieldName: String) async throws -> MoodleUploadedFile? {
+            var request = URLRequest(url: uploadURL)
+            request.httpMethod = "POST"
+            let boundary = "Boundary-\(UUID().uuidString)"
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            var body = Data()
+            func appendField(_ name: String, _ value: String) {
+                body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+                body.append("\(value)\r\n".data(using: .utf8)!)
+            }
+
+            appendField("token", token)
+            appendField("itemid", "\(draftItemId)")
+            appendField("component", "user")
+            appendField("filepath", "/")
+            appendField("filearea", "draft")
+            appendField("author", "NIU APP")
+            appendField("license", "allrightsreserved")
+            appendField("repo_upload_file", "1")
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(value)\r\n".data(using: .utf8)!)
-        }
+            body.append("Content-Disposition: form-data; name=\"\(fileFieldName)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+            body.append(fileData)
+            body.append("\r\n".data(using: .utf8)!)
+            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+            request.httpBody = body
 
-        appendField("token", token)
-        appendField("itemid", "\(draftItemId)")
-        appendField("filepath", "/")
-        appendField("filearea", "draft")
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file_1\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        body.append(fileData)
-        body.append("\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
+            #if DEBUG
+            print("[MoodleUpload] field=\(fileFieldName) filename=\(filename) bytes=\(fileData.count) draft=\(draftItemId)")
+            #endif
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw MoodleError.serverError
-        }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                throw MoodleError.serverError
+            }
 
-        if let json = try? JSONSerialization.jsonObject(with: data) {
-            if let arr = json as? [[String: Any]], let first = arr.first {
-                if let itemid = intValue(first["itemid"]) {
+            if let json = try? JSONSerialization.jsonObject(with: data) {
+                if let arr = json as? [Any], arr.isEmpty {
+                    return nil
+                }
+                if let arr = json as? [[String: Any]], let first = arr.first,
+                   let itemid = intValue(first["itemid"]) {
                     return MoodleUploadedFile(itemid: itemid, filename: first["filename"] as? String)
                 }
-            }
-            if let dict = json as? [String: Any] {
-                if let exception = dict["exception"] as? String {
-                    let message = dict["message"] as? String ?? exception
-                    throw MoodleError.apiError(message)
+                if let dict = json as? [String: Any] {
+                    if let exception = dict["exception"] as? String {
+                        let message = dict["message"] as? String ?? exception
+                        throw MoodleError.apiError(message)
+                    }
+                    if let errorCode = dict["errorcode"] as? String,
+                       let errorMessage = dict["error"] as? String {
+                        throw MoodleError.apiError("\(errorMessage) (\(errorCode))")
+                    }
+                    if let errorMessage = dict["error"] as? String {
+                        throw MoodleError.apiError(errorMessage)
+                    }
+                    if let itemid = intValue(dict["itemid"]) {
+                        return MoodleUploadedFile(itemid: itemid, filename: dict["filename"] as? String)
+                    }
                 }
-                if let itemid = intValue(dict["itemid"]) {
-                    return MoodleUploadedFile(itemid: itemid, filename: dict["filename"] as? String)
-                }
             }
+
+            if let text = String(data: data, encoding: .utf8), !text.isEmpty {
+                throw MoodleError.apiError("上傳失敗：\(text)")
+            }
+            return nil
         }
-        if let text = String(data: data, encoding: .utf8) {
-            throw MoodleError.apiError("上傳失敗：\(text)")
+
+        var failureReasons: [String] = []
+
+        do {
+            if let uploaded = try await performUpload(fileFieldName: "file_1") {
+                return uploaded
+            }
+            failureReasons.append("upload.php(file_1): empty response")
+        } catch {
+            failureReasons.append("upload.php(file_1): \(error.localizedDescription)")
         }
-        throw MoodleError.decodeFailed("無法解析上傳回應")
+
+        do {
+            if let uploaded = try await performUpload(fileFieldName: "file") {
+                return uploaded
+            }
+            failureReasons.append("upload.php(file): empty response")
+        } catch {
+            failureReasons.append("upload.php(file): \(error.localizedDescription)")
+        }
+
+        do {
+            let uploaded = try await uploadAssignmentFileViaCoreFiles(
+                filename: filename,
+                fileData: fileData,
+                draftItemId: draftItemId
+            )
+            return uploaded
+        } catch {
+            failureReasons.append("core_files_upload: \(error.localizedDescription)")
+        }
+
+        if let cmid = assignmentCMID {
+            do {
+                let uploaded = try await uploadAssignmentFileViaRepositoryCrawler(
+                    filename: filename,
+                    fileData: fileData,
+                    draftItemId: draftItemId,
+                    assignmentCMID: cmid,
+                    assignmentCourseID: assignmentCourseID
+                )
+                return uploaded
+            } catch {
+                failureReasons.append("repository_ajax: \(error.localizedDescription)")
+            }
+        } else {
+            failureReasons.append("repository_ajax: 缺少 assignment CMID")
+        }
+
+        #if DEBUG
+        print("[MoodleUpload] All fallbacks failed: \(failureReasons.joined(separator: " | "))")
+        #endif
+        throw MoodleError.apiError(
+            "伺服器未接收檔案內容（upload.php/core_files_upload/repository_ajax 皆失敗）\n" +
+            failureReasons.joined(separator: "\n")
+        )
     }
 
     func saveAssignmentSubmission(assignId: Int, draftItemId: Int) async throws {
@@ -282,10 +375,7 @@ final class MoodleService {
             return url
         }
         
-        let response: MoodleAutologinResponse = try await callAPI(
-            function: "tool_mobile_get_autologin_key",
-            params: ["privatetoken": privateKey]
-        )
+        let response: MoodleAutologinResponse = try await callAutologinKey(privateToken: privateKey)
         
         let key = response.key
         let autologinURLStr = "\(baseURL)/admin/tool/mobile/autologin.php?userid=\(userId ?? 0)&key=\(key)&urltogo=\(targetURL.urlEncoded)"
@@ -297,7 +387,8 @@ final class MoodleService {
     
     private func callAPI<T: Decodable>(
         function: String,
-        params: [String: String] = [:]
+        params: [String: String] = [:],
+        logDecodeError: Bool = true
     ) async throws -> T {
         guard let token = token else { throw MoodleError.notAuthenticated }
         
@@ -314,7 +405,10 @@ final class MoodleService {
         
         guard let url = components.url else { throw MoodleError.invalidURL }
         
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMoodleMobileHeaders(to: &request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
@@ -331,7 +425,45 @@ final class MoodleService {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            print("[Moodle] Decode error for \(function): \(error)")
+            if logDecodeError {
+                print("[Moodle] Decode error for \(function): \(error)")
+            }
+            throw MoodleError.decodeFailed(error.localizedDescription)
+        }
+    }
+
+    private func callAutologinKey(privateToken: String) async throws -> MoodleAutologinResponse {
+        guard let token else { throw MoodleError.notAuthenticated }
+
+        var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
+        components.queryItems = [
+            URLQueryItem(name: "wstoken", value: token),
+            URLQueryItem(name: "wsfunction", value: "tool_mobile_get_autologin_key"),
+            URLQueryItem(name: "moodlewsrestformat", value: "json")
+        ]
+        guard let url = components.url else { throw MoodleError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        applyMoodleMobileHeaders(to: &request)
+        request.httpBody = "privatetoken=\(privateToken.urlEncoded)".data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw MoodleError.serverError
+        }
+
+        if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let exception = errorDict["exception"] as? String {
+            let message = errorDict["message"] as? String ?? exception
+            throw MoodleError.apiError(message)
+        }
+
+        do {
+            return try JSONDecoder().decode(MoodleAutologinResponse.self, from: data)
+        } catch {
+            print("[Moodle] Decode error for tool_mobile_get_autologin_key(POST): \(error)")
             throw MoodleError.decodeFailed(error.localizedDescription)
         }
     }
@@ -354,7 +486,47 @@ final class MoodleService {
         components.queryItems = queryItems
 
         guard let url = components.url else { throw MoodleError.invalidURL }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMoodleMobileHeaders(to: &request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw MoodleError.serverError
+        }
+
+        let jsonObj = try? JSONSerialization.jsonObject(with: data)
+        if let errorDict = jsonObj as? [String: Any],
+           let exception = errorDict["exception"] as? String {
+            let message = errorDict["message"] as? String ?? exception
+            throw MoodleError.apiError(message)
+        }
+        return jsonObj
+    }
+
+    private func callAPIRawPOST(
+        function: String,
+        params: [String: String] = [:]
+    ) async throws -> Any? {
+        guard let token = token else { throw MoodleError.notAuthenticated }
+
+        var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
+        components.queryItems = [
+            URLQueryItem(name: "wstoken", value: token),
+            URLQueryItem(name: "wsfunction", value: function),
+            URLQueryItem(name: "moodlewsrestformat", value: "json")
+        ]
+        guard let url = components.url else { throw MoodleError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        applyMoodleMobileHeaders(to: &request)
+        let form = params
+            .map { "\($0.key.urlEncoded)=\($0.value.urlEncoded)" }
+            .joined(separator: "&")
+        request.httpBody = form.data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw MoodleError.serverError
         }
@@ -384,10 +556,506 @@ final class MoodleService {
         }
     }
 
+    private func multipartSafeFilename(from original: String, pathExtension ext: String) -> String {
+        let base = URL(fileURLWithPath: original).deletingPathExtension().lastPathComponent
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+        let filteredBase = base
+            .unicodeScalars
+            .filter { $0.isASCII && allowed.contains($0) }
+            .map(String.init)
+            .joined()
+        let safeBase = filteredBase.isEmpty ? "upload_\(Int(Date().timeIntervalSince1970))" : filteredBase
+        let cleanExt = ext.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanExt.isEmpty {
+            return safeBase
+        }
+        return "\(safeBase).\(cleanExt)"
+    }
+
     private func intValue(_ value: Any?) -> Int? {
         if let intVal = value as? Int { return intVal }
         if let strVal = value as? String { return Int(strVal) }
         if let numVal = value as? NSNumber { return numVal.intValue }
+        return nil
+    }
+
+    private func applyMoodleMobileHeaders(to request: inout URLRequest) {
+        // Some NIU Moodle endpoints only allow requests that look like official mobile app traffic.
+        request.setValue(
+            "MoodleMobile/4.5.0 (iPhone; iOS 17.0; Scale/3.00)",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+    }
+
+    private func ensureUserContextId() async throws -> Int {
+        if let userContextId { return userContextId }
+
+        if let siteInfo = try? await fetchSiteInfo(), let context = siteInfo.usercontextid {
+            userContextId = context
+            return context
+        }
+
+        // Fallback: resolve from user files page via existing SSO/EUNI session (avoid autologin rate limit).
+        await establishEUNISessionViaSSO()
+        guard let target = URL(string: "\(baseURL)/user/files.php") else {
+            throw MoodleError.invalidURL
+        }
+        var request = URLRequest(url: target)
+        request.httpMethod = "GET"
+        applyMoodleMobileHeaders(to: &request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw MoodleError.serverError
+        }
+        let html = String(data: data, encoding: .utf8) ?? ""
+        if let contextText = extractFirstMatch(in: html, patterns: [
+            "name=\"ctx_id\"\\s+value=\"(\\d+)\"",
+            "contextid=(\\d+)",
+            "\"contextid\"\\s*:\\s*(\\d+)"
+        ]), let context = Int(contextText) {
+            userContextId = context
+            return context
+        }
+
+        throw MoodleError.apiError("無法取得使用者 context id")
+    }
+
+    private func resolveModuleContextId(cmid: Int, courseId: Int?) async -> Int? {
+        if let raw = try? await callAPIRaw(
+            function: "core_course_get_course_module",
+            params: ["cmid": "\(cmid)"]
+        ) as? [String: Any],
+        let cm = raw["cm"] as? [String: Any] {
+            if let contextId = intValue(cm["contextid"]) {
+                return contextId
+            }
+            if let context = cm["context"] as? [String: Any],
+               let contextId = intValue(context["id"]) {
+                return contextId
+            }
+        }
+
+        guard let courseId else { return nil }
+        guard let rawSections = try? await callAPIRaw(
+            function: "core_course_get_contents",
+            params: ["courseid": "\(courseId)"]
+        ) as? [[String: Any]] else {
+            return nil
+        }
+        for section in rawSections {
+            guard let modules = section["modules"] as? [[String: Any]] else { continue }
+            for module in modules {
+                guard intValue(module["id"]) == cmid else { continue }
+                if let contextId = intValue(module["contextid"]) {
+                    return contextId
+                }
+            }
+        }
+        return nil
+    }
+
+    private func extractNumericMatches(in text: String, patterns: [String]) -> [Int] {
+        var result: [Int] = []
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            let matches = regex.matches(in: text, options: [], range: range)
+            for match in matches where match.numberOfRanges > 1 {
+                guard let r = Range(match.range(at: 1), in: text) else { continue }
+                if let val = Int(String(text[r])) {
+                    result.append(val)
+                }
+            }
+        }
+        return result
+    }
+
+    private func extractHiddenInputValue(in html: String, name: String) -> String? {
+        extractFirstMatch(in: html, patterns: [
+            "<input[^>]*name=\"\(NSRegularExpression.escapedPattern(for: name))\"[^>]*value=\"([^\"]*)\"",
+            "<input[^>]*value=\"([^\"]*)\"[^>]*name=\"\(NSRegularExpression.escapedPattern(for: name))\""
+        ])
+    }
+
+    private func establishEUNISessionViaSSO() async {
+        guard let euniURL = SSOEUNISettings.shared.euniFullURL,
+              let url = URL(string: euniURL) else { return }
+        await syncWebKitCookiesToSharedStorage()
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        applyMoodleMobileHeaders(to: &req)
+        req.timeoutInterval = 20
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
+    private func syncWebKitCookiesToSharedStorage() async {
+        let cookieStore = WKWebsiteDataStore.default().httpCookieStore
+        let cookies: [HTTPCookie] = await withCheckedContinuation { continuation in
+            cookieStore.getAllCookies { continuation.resume(returning: $0) }
+        }
+        guard !cookies.isEmpty else { return }
+        let storage = HTTPCookieStorage.shared
+        for cookie in cookies {
+            storage.setCookie(cookie)
+        }
+    }
+
+    private func uploadAssignmentFileViaCoreFiles(
+        filename: String,
+        fileData: Data,
+        draftItemId: Int
+    ) async throws -> MoodleUploadedFile {
+        let contextId = try await ensureUserContextId()
+
+        let raw = try await callAPIRawPOST(
+            function: "core_files_upload",
+            params: [
+                "contextid": "\(contextId)",
+                "component": "user",
+                "filearea": "draft",
+                "itemid": "\(draftItemId)",
+                "filepath": "/",
+                "filename": filename,
+                "filecontent": fileData.base64EncodedString()
+            ]
+        )
+
+        if let dict = raw as? [String: Any] {
+            if let exception = dict["exception"] as? String {
+                let message = dict["message"] as? String ?? exception
+                throw MoodleError.apiError(message)
+            }
+            if let itemid = intValue(dict["itemid"]) {
+                return MoodleUploadedFile(itemid: itemid, filename: dict["filename"] as? String ?? filename)
+            }
+            if intValue(dict["contextid"]) != nil {
+                return MoodleUploadedFile(itemid: draftItemId, filename: dict["filename"] as? String ?? filename)
+            }
+        }
+
+        if let arr = raw as? [[String: Any]], let first = arr.first {
+            if let itemid = intValue(first["itemid"]) {
+                return MoodleUploadedFile(itemid: itemid, filename: first["filename"] as? String ?? filename)
+            }
+        }
+
+        throw MoodleError.decodeFailed("core_files_upload 回傳格式無法解析")
+    }
+
+    private func uploadAssignmentFileViaRepositoryCrawler(
+        filename: String,
+        fileData: Data,
+        draftItemId: Int,
+        assignmentCMID: Int,
+        assignmentCourseID: Int?
+    ) async throws -> MoodleUploadedFile {
+        let editURL = "https://euni.niu.edu.tw/mod/assign/view.php?id=\(assignmentCMID)&action=editsubmission"
+        // Prefer existing SSO/EUNI web session first to avoid autologin-key rate limits.
+        await establishEUNISessionViaSSO()
+        let direct = URL(string: editURL) ?? URL(string: "https://euni.niu.edu.tw")!
+        var target = direct
+        var usedAutologin = false
+        #if DEBUG
+        print("[MoodleCrawlerUpload] load editsubmission: \(target.absoluteString)")
+        #endif
+
+        func loadHTML(_ url: URL) async throws -> (html: String, finalURL: URL?) {
+            await syncWebKitCookiesToSharedStorage()
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            applyMoodleMobileHeaders(to: &request)
+            let (htmlData, htmlResp) = try await URLSession.shared.data(for: request)
+            guard let http = htmlResp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                throw MoodleError.serverError
+            }
+            return (String(data: htmlData, encoding: .utf8) ?? "", http.url)
+        }
+
+        func looksLikeLoginPage(html: String, finalURL: URL?) -> Bool {
+            let url = finalURL?.absoluteString.lowercased() ?? ""
+            if url.contains("/login/index.php") || url.contains("/sso/default.aspx") {
+                return true
+            }
+            let lower = html.lowercased()
+            if lower.contains("name=\"username\"") && lower.contains("name=\"password\"") {
+                return true
+            }
+            if lower.contains("id=\"login\"") && lower.contains("login/index.php") {
+                return true
+            }
+            return false
+        }
+
+        var page = try await loadHTML(target)
+        var html = page.html
+        var finalURL = page.finalURL
+        var didSilentRefresh = false
+
+        if looksLikeLoginPage(html: html, finalURL: finalURL) {
+            #if DEBUG
+            print("[MoodleCrawlerUpload] got login page, request silent refresh then retry editsubmission")
+            #endif
+            let refreshed = await SSOSessionService.shared.requestRefresh()
+            if refreshed {
+                didSilentRefresh = true
+                await establishEUNISessionViaSSO()
+                page = try await loadHTML(direct)
+                html = page.html
+                finalURL = page.finalURL
+            }
+        }
+
+        let sesskey = extractFirstMatch(in: html, patterns: [
+            "name=\"sesskey\"\\s+value=\"([^\"]+)\"",
+            "\"sesskey\"\\s*:\\s*\"([^\"]+)\""
+        ])
+
+        var resolvedSesskey = sesskey
+        if resolvedSesskey == nil || resolvedSesskey?.isEmpty == true {
+            // Last fallback: autologin URL (can be rate-limited).
+            if let autoURL = try? await autologinURL(for: editURL) {
+                usedAutologin = true
+                target = autoURL
+                if let reloaded = try? await loadHTML(autoURL) {
+                    html = reloaded.html
+                    finalURL = reloaded.finalURL
+                }
+                resolvedSesskey = extractFirstMatch(in: html, patterns: [
+                    "name=\"sesskey\"\\s+value=\"([^\"]+)\"",
+                    "\"sesskey\"\\s*:\\s*\"([^\"]+)\""
+                ])
+            }
+        }
+
+        guard let sesskey = resolvedSesskey, !sesskey.isEmpty else {
+            #if DEBUG
+            print("[MoodleCrawlerUpload] failed to parse sesskey, html prefix: \(html.prefix(180))")
+            #endif
+            throw MoodleError.apiError("無法從作業頁取得 sesskey")
+        }
+
+        let clientID = extractFirstMatch(in: html, patterns: [
+            "name=\"client_id\"\\s+value=\"([^\"]+)\"",
+            "\"client_id\"\\s*:\\s*\"([^\"]+)\""
+        ]) ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
+
+        let htmlContextCandidates = extractNumericMatches(in: html, patterns: [
+            "name=\"ctx_id\"\\s+value=\"(\\d+)\"",
+            "name=\"contextid\"\\s+value=\"(\\d+)\"",
+            "data-contextid=\"(\\d+)\"",
+            "\"ctx_id\"\\s*:\\s*(\\d+)",
+            "\"contextid\"\\s*:\\s*(\\d+)",
+            "\"context\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*(\\d+)"
+        ])
+        let bestHTMLContext = htmlContextCandidates
+            .filter { $0 > 1 }
+            .max()
+
+        let moduleContextId = await resolveModuleContextId(cmid: assignmentCMID, courseId: assignmentCourseID)
+        let fallbackUserContextId = try? await ensureUserContextId()
+        let finalContextId = moduleContextId
+            ?? bestHTMLContext
+            ?? fallbackUserContextId
+            ?? 0
+        let ctxID = "\(finalContextId)"
+
+        let maxBytes = extractFirstMatch(in: html, patterns: [
+            "name=\"maxbytes\"\\s+value=\"([^\"]+)\"",
+            "\"maxbytes\"\\s*:\\s*(\\d+)"
+        ]) ?? "0"
+
+        let areaMaxBytes = extractFirstMatch(in: html, patterns: [
+            "name=\"areamaxbytes\"\\s+value=\"([^\"]+)\"",
+            "\"areamaxbytes\"\\s*:\\s*(\\d+)"
+        ]) ?? "104857600"
+
+        let uploadRepoCandidates = extractNumericMatches(in: html, patterns: [
+            "\"id\"\\s*:\\s*(\\d+)\\s*,\\s*\"type\"\\s*:\\s*\"upload\"",
+            "\"type\"\\s*:\\s*\"upload\"\\s*,\\s*\"id\"\\s*:\\s*(\\d+)",
+            "name=\"repo_id\"\\s+value=\"(\\d+)\""
+        ])
+        let pageDraftItemID = extractFirstMatch(in: html, patterns: [
+            "name=\"files_filemanager\"\\s+value=\"(\\d+)\"",
+            "name=\"[^\"]*_filemanager\"\\s+value=\"(\\d+)\"",
+            "\"itemid\"\\s*:\\s*(\\d+)"
+        ])
+        let effectiveDraftItemID = pageDraftItemID ?? "\(draftItemId)"
+
+        let hiddenEnv = extractHiddenInputValue(in: html, name: "env") ?? "filemanager"
+        let hiddenPage = extractHiddenInputValue(in: html, name: "page") ?? ""
+        let hiddenP = extractHiddenInputValue(in: html, name: "p") ?? ""
+        let hiddenSubdirs = extractHiddenInputValue(in: html, name: "subdirs") ?? "0"
+        let hiddenAcceptedTypes = extractHiddenInputValue(in: html, name: "accepted_types")
+
+        func resolveUploadRepoIDFromList(
+            itemID: String,
+            contextID: String,
+            clientID: String
+        ) async -> Int? {
+            var listComponents = URLComponents(string: "\(baseURL)/repository/repository_ajax.php")!
+            listComponents.queryItems = [URLQueryItem(name: "action", value: "list")]
+            guard let listURL = listComponents.url else { return nil }
+
+            var req = URLRequest(url: listURL)
+            req.httpMethod = "POST"
+            req.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+            applyMoodleMobileHeaders(to: &req)
+            req.setValue(editURL, forHTTPHeaderField: "Referer")
+            await syncWebKitCookiesToSharedStorage()
+
+            var form: [(String, String)] = [
+                ("sesskey", sesskey),
+                ("client_id", clientID),
+                ("itemid", itemID),
+                ("ctx_id", contextID),
+                ("maxbytes", maxBytes),
+                ("areamaxbytes", areaMaxBytes),
+                ("env", hiddenEnv),
+                ("p", hiddenP),
+                ("page", hiddenPage),
+                ("subdirs", hiddenSubdirs),
+                ("savepath", "/")
+            ]
+            if let hiddenAcceptedTypes, !hiddenAcceptedTypes.isEmpty {
+                form.append(("accepted_types[]", hiddenAcceptedTypes))
+            }
+            req.httpBody = form
+                .map { "\($0.0.urlEncoded)=\($0.1.urlEncoded)" }
+                .joined(separator: "&")
+                .data(using: .utf8)
+
+            guard let (data, response) = try? await URLSession.shared.data(for: req),
+                  let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode),
+                  let json = try? JSONSerialization.jsonObject(with: data) else {
+                return nil
+            }
+
+            func findUploadID(in array: [[String: Any]]) -> Int? {
+                for item in array {
+                    let type = (item["type"] as? String)?.lowercased()
+                    if type == "upload", let id = intValue(item["id"]), id > 0 {
+                        return id
+                    }
+                }
+                return nil
+            }
+
+            if let dict = json as? [String: Any] {
+                if let list = dict["list"] as? [[String: Any]], let id = findUploadID(in: list) { return id }
+                if let repositories = dict["repositories"] as? [[String: Any]], let id = findUploadID(in: repositories) { return id }
+                if let error = dict["error"] as? String, !error.isEmpty {
+                    #if DEBUG
+                    print("[MoodleCrawlerUpload] repository list error: \(error)")
+                    #endif
+                }
+            } else if let arr = json as? [[String: Any]], let id = findUploadID(in: arr) {
+                return id
+            }
+            return nil
+        }
+
+        let repoIDIntFromHTML = uploadRepoCandidates.first(where: { $0 > 1 })
+        let repoIDFromList = await resolveUploadRepoIDFromList(
+            itemID: effectiveDraftItemID,
+            contextID: ctxID,
+            clientID: clientID
+        )
+        let repoID = String(repoIDFromList ?? repoIDIntFromHTML ?? uploadRepoCandidates.first ?? 1)
+
+        var ajax = URLComponents(string: "\(baseURL)/repository/repository_ajax.php")!
+        ajax.queryItems = [URLQueryItem(name: "action", value: "upload")]
+        guard let ajaxURL = ajax.url else { throw MoodleError.invalidURL }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var uploadReq = URLRequest(url: ajaxURL)
+        uploadReq.httpMethod = "POST"
+        uploadReq.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        applyMoodleMobileHeaders(to: &uploadReq)
+        uploadReq.setValue(editURL, forHTTPHeaderField: "Referer")
+        await syncWebKitCookiesToSharedStorage()
+
+        var body = Data()
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+
+        appendField("title", filename)
+        appendField("author", "NIU APP")
+        appendField("license", "allrightsreserved")
+        appendField("itemid", effectiveDraftItemID)
+        appendField("repo_id", repoID)
+        appendField("p", hiddenP)
+        appendField("page", hiddenPage)
+        appendField("env", hiddenEnv)
+        appendField("sesskey", sesskey)
+        appendField("client_id", clientID)
+        appendField("maxbytes", maxBytes)
+        appendField("areamaxbytes", areaMaxBytes)
+        appendField("ctx_id", ctxID)
+        appendField("savepath", "/")
+        appendField("subdirs", hiddenSubdirs)
+        if let hiddenAcceptedTypes, !hiddenAcceptedTypes.isEmpty {
+            appendField("accepted_types[]", hiddenAcceptedTypes)
+        }
+        appendField("repo_upload_file", "1")
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"repo_upload_file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeTypeForFileExtension(URL(fileURLWithPath: filename).pathExtension))\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        uploadReq.httpBody = body
+
+        #if DEBUG
+        print("[MoodleCrawlerUpload] cmid=\(assignmentCMID) draft=\(effectiveDraftItemID) repo=\(repoID) repoFromList=\(repoIDFromList.map(String.init) ?? "nil") repoCandidates=\(uploadRepoCandidates.prefix(6)) ctx=\(ctxID) bytes=\(fileData.count) autologin=\(usedAutologin) silentRefresh=\(didSilentRefresh) finalURL=\(finalURL?.absoluteString ?? "nil") env=\(hiddenEnv) p=\(hiddenP) page=\(hiddenPage) htmlCtxCandidates=\(htmlContextCandidates.prefix(6)) moduleCtx=\(moduleContextId.map(String.init) ?? "nil")")
+        #endif
+
+        let (data, response) = try await URLSession.shared.data(for: uploadReq)
+        guard let uploadHTTP = response as? HTTPURLResponse, (200...299).contains(uploadHTTP.statusCode) else {
+            throw MoodleError.serverError
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) {
+            if let dict = json as? [String: Any] {
+                if let error = dict["error"] as? String, !error.isEmpty {
+                    throw MoodleError.apiError(error)
+                }
+                if let exception = dict["exception"] as? String {
+                    let message = dict["message"] as? String ?? exception
+                    throw MoodleError.apiError(message)
+                }
+                if dict["url"] != nil || dict["id"] != nil || dict["filepath"] != nil {
+                    return MoodleUploadedFile(itemid: Int(effectiveDraftItemID) ?? draftItemId, filename: filename)
+                }
+            }
+            if let arr = json as? [[String: Any]], !arr.isEmpty {
+                return MoodleUploadedFile(itemid: Int(effectiveDraftItemID) ?? draftItemId, filename: filename)
+            }
+        }
+
+        if let text = String(data: data, encoding: .utf8), !text.isEmpty {
+            throw MoodleError.apiError("repository_ajax 上傳失敗：\(text)")
+        }
+        throw MoodleError.decodeFailed("repository_ajax 回傳格式無法解析")
+    }
+
+    private func extractFirstMatch(in text: String, patterns: [String]) -> String? {
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+                let range = NSRange(text.startIndex..<text.endIndex, in: text)
+                if let match = regex.firstMatch(in: text, options: [], range: range),
+                   match.numberOfRanges > 1,
+                   let r = Range(match.range(at: 1), in: text) {
+                    let value = String(text[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !value.isEmpty { return value }
+                }
+            }
+        }
         return nil
     }
 }

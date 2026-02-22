@@ -10,7 +10,7 @@ struct MinimalSecureField: View {
         HStack(spacing: Theme.Spacing.small) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .light))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
                 .frame(width: 24)
             
             Group {
@@ -21,7 +21,7 @@ struct MinimalSecureField: View {
                 }
             }
             .font(.system(size: 16, weight: .regular))
-            .foregroundColor(.black)
+            .foregroundColor(.primary)
             .autocapitalization(.none)
             .disableAutocorrection(true)
             
@@ -37,7 +37,7 @@ struct MinimalSecureField: View {
         .padding(.vertical, Theme.Spacing.medium)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .strokeBorder(Color.black.opacity(0.2), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
         )
     }
 }

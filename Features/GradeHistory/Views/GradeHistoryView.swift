@@ -5,9 +5,9 @@ struct GradeHistoryView: View {
     @StateObject private var vm = GradeHistoryViewModel()
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                Color.white.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
 
                 switch vm.loadState {
                 case .idle, .loading:
@@ -38,12 +38,11 @@ struct GradeHistoryView: View {
                     Button(action: vm.refresh) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 16, weight: .light))
-                            .foregroundColor(.black)
+                            .foregroundColor(.primary)
                     }
                 }
             }
         }
-        .preferredColorScheme(.light)
         .overlay {
             if vm.showWebView {
                 GradeHistoryWebView(mode: vm.selectedMode, onResult: vm.handleWebResult)
@@ -107,12 +106,12 @@ struct GradeHistoryView: View {
                             .foregroundColor(.black.opacity(0.5))
                     }
                     Capsule()
-                        .fill(Color.black.opacity(0.08))
+                        .fill(Color.primary.opacity(0.08))
                         .frame(height: 6)
                         .overlay(alignment: .leading) {
                             GeometryReader { proxy in
                                 Capsule()
-                                    .fill(Color.black)
+                                    .fill(Color.primary)
                                     .frame(width: max(0, min(1, summary.cumulativeGPA / 4.3)) * proxy.size.width)
                             }
                         }
@@ -134,11 +133,11 @@ struct GradeHistoryView: View {
         .padding(Theme.Spacing.large)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .fill(Color.black.opacity(0.03))
+                .fill(Color.primary.opacity(0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Color.black.opacity(0.07), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
     }
 
@@ -150,7 +149,7 @@ struct GradeHistoryView: View {
             Spacer()
             Text(value)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
         }
     }
 
@@ -178,7 +177,7 @@ struct GradeHistoryView: View {
             if let title = vm.termSnapshot?.semesterTitle, !title.isEmpty {
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
             }
 
             HStack(spacing: 12) {
@@ -192,11 +191,11 @@ struct GradeHistoryView: View {
         .padding(Theme.Spacing.large)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .fill(Color.black.opacity(0.03))
+                .fill(Color.primary.opacity(0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Color.black.opacity(0.07), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
     }
 
@@ -220,7 +219,7 @@ struct GradeHistoryView: View {
                         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
                             Text("\(section.year) 學年度")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.black)
+                                .foregroundColor(.primary)
                                 .padding(.bottom, 2)
 
                             ForEach(section.semesters) { sem in
@@ -296,9 +295,9 @@ struct GradeHistoryView: View {
             .padding(.vertical, 10)
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                    .stroke(Color.black.opacity(0.2), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.2), lineWidth: 1)
             )
-            .foregroundColor(.black)
+            .foregroundColor(.primary)
         }
         .padding(.horizontal, Theme.Spacing.large)
     }
@@ -319,7 +318,7 @@ private struct GradeTrendView: View {
                 ForEach(points) { point in
                     VStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.black.opacity(0.8))
+                            .fill(Color.primary.opacity(0.8))
                             .frame(width: 18, height: CGFloat(max(0.1, point.gpa / 4.3)) * 70)
                         Text(point.label)
                             .font(.system(size: 11, weight: .light))
@@ -346,7 +345,7 @@ private struct GradeSemesterCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(semester.termTitle)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                     if let rank = semester.classRank, !rank.isEmpty {
                         Text("班級排名：\(rank)")
                             .font(.system(size: 12, weight: .regular))
@@ -397,7 +396,7 @@ private struct GradeSemesterCard: View {
         .padding(Theme.Spacing.medium)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
     }
 }
@@ -413,14 +412,14 @@ private struct StatPill: View {
                 .foregroundColor(.black.opacity(0.55))
             Text(value)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                .fill(Color.black.opacity(0.03))
+                .fill(Color.primary.opacity(0.03))
         )
     }
 }
@@ -433,7 +432,7 @@ private struct GradeCourseRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(course.name)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                     .lineLimit(2)
                 HStack(spacing: 8) {
                     Text(course.code)
@@ -464,7 +463,7 @@ private struct GradeCourseRow: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                .stroke(course.passed ? Color.black.opacity(0.12) : Color.red.opacity(0.35), lineWidth: course.passed ? 1 : 1.2)
+                .stroke(course.passed ? Color.primary.opacity(0.12) : Color.red.opacity(0.35), lineWidth: course.passed ? 1 : 1.2)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
                         .fill(course.passed ? Color.clear : Color.red.opacity(0.05))
@@ -481,7 +480,7 @@ private struct TermScoreRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(course.name)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                     .lineLimit(2)
                 Badge(text: course.type.isEmpty ? "未分類" : course.type)
             }
@@ -497,7 +496,7 @@ private struct TermScoreRow: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
         )
     }
 
@@ -512,12 +511,12 @@ private struct Badge: View {
     var body: some View {
         Text(text)
             .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(.black)
+            .foregroundColor(.primary)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.black.opacity(0.2), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.2), lineWidth: 1)
             )
     }
 }

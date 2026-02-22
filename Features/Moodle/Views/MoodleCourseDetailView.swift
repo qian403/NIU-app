@@ -27,7 +27,7 @@ struct MoodleCourseDetailView: View {
                 tabContent
             }
         }
-        .background(Color.white.ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea())
         .navigationTitle(course.cleanName)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -51,10 +51,10 @@ struct MoodleCourseDetailView: View {
                     VStack(spacing: 6) {
                         Text(tab.rawValue)
                             .font(.system(size: 14, weight: viewModel.selectedTab == tab ? .medium : .regular))
-                            .foregroundColor(viewModel.selectedTab == tab ? .black : .black.opacity(0.4))
+                            .foregroundColor(viewModel.selectedTab == tab ? .primary : .secondary)
                         
                         Rectangle()
-                            .fill(viewModel.selectedTab == tab ? Color.black : Color.clear)
+                            .fill(viewModel.selectedTab == tab ? Color.primary : Color.clear)
                             .frame(height: 2)
                     }
                 }
@@ -96,6 +96,8 @@ struct MoodleCourseDetailView: View {
                             NavigationLink(destination: MoodleForumView(discussion: discussion)) {
                                 DiscussionRow(discussion: discussion)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
@@ -115,8 +117,13 @@ struct MoodleCourseDetailView: View {
                     LazyVStack(spacing: 1) {
                         ForEach(viewModel.assignments) { assignment in
                             NavigationLink(destination: MoodleAssignmentView(assignment: assignment)) {
-                                AssignmentRow(assignment: assignment)
+                                AssignmentRow(
+                                    assignment: assignment,
+                                    isSubmitted: viewModel.assignmentSubmittedStatus[assignment.id] ?? false
+                                )
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
@@ -171,7 +178,7 @@ struct MoodleCourseDetailView: View {
                     .padding(.horizontal, Theme.Spacing.medium)
                     .padding(.vertical, Theme.Spacing.medium)
                 }
-                .background(Color.white)
+                .background(Color(.systemBackground))
             }
         }
     }
@@ -183,10 +190,10 @@ struct MoodleCourseDetailView: View {
             Spacer()
             Image(systemName: "tray")
                 .font(.system(size: 36, weight: .light))
-                .foregroundColor(.black.opacity(0.2))
+                .foregroundColor(.secondary)
             Text(text)
                 .font(.system(size: 14))
-                .foregroundColor(.black.opacity(0.4))
+                .foregroundColor(.secondary)
                 .padding(.top, 8)
             Spacer()
         }
@@ -198,7 +205,7 @@ struct MoodleCourseDetailView: View {
             Spacer()
             Text(message)
                 .font(.system(size: 14))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             Button("重試") {
@@ -218,11 +225,11 @@ private struct AttendanceSectionCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(section.moduleName)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
             if !section.sectionName.isEmpty {
                 Text(section.sectionName)
                     .font(.system(size: 12))
-                    .foregroundColor(.black.opacity(0.35))
+                    .foregroundColor(.secondary)
             }
 
             HStack(spacing: 12) {
@@ -234,13 +241,13 @@ private struct AttendanceSectionCard: View {
             if section.records.isEmpty {
                 Text("目前沒有可顯示的出缺席紀錄")
                     .font(.system(size: 12))
-                    .foregroundColor(.black.opacity(0.45))
+                    .foregroundColor(.secondary)
             } else {
                 ForEach(section.records.prefix(5)) { record in
                     HStack {
                         Text(record.date.formatted(date: .abbreviated, time: .omitted))
                             .font(.system(size: 13))
-                            .foregroundColor(.black.opacity(0.6))
+                            .foregroundColor(.secondary)
                         Spacer()
                         Text(record.statusLabel)
                             .font(.system(size: 12, weight: .medium))
@@ -256,8 +263,8 @@ private struct AttendanceSectionCard: View {
         .padding(Theme.Spacing.medium)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
-                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.systemBackground)))
         )
     }
 
@@ -265,10 +272,10 @@ private struct AttendanceSectionCard: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 11))
-                .foregroundColor(.black.opacity(0.45))
+                .foregroundColor(.secondary)
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -284,31 +291,33 @@ private struct DiscussionRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(discussion.subject)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
                 .lineLimit(2)
             
             Text(discussion.plainMessage)
                 .font(.system(size: 13))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(.secondary)
                 .lineLimit(2)
             
             HStack {
                 Text(discussion.userfullname)
                     .font(.system(size: 12))
-                    .foregroundColor(.black.opacity(0.4))
+                    .foregroundColor(.secondary)
                 
                 Spacer()
                 
                 Text(discussion.timeModifiedDate, style: .relative)
                     .font(.system(size: 12))
-                    .foregroundColor(.black.opacity(0.3))
+                    .foregroundColor(.secondary)
             }
         }
         .padding(Theme.Spacing.medium)
-        .background(Color.white)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+        .background(Color(.systemBackground))
         .overlay(
             Rectangle()
-                .fill(Color.black.opacity(0.05))
+                .fill(Color.primary.opacity(0.05))
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -319,18 +328,27 @@ private struct DiscussionRow: View {
 
 private struct AssignmentRow: View {
     let assignment: MoodleAssignment
+    let isSubmitted: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(assignment.name)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                     .lineLimit(2)
                 
                 Spacer()
                 
-                if assignment.isOverdue {
+                if isSubmitted {
+                    Text("已繳交")
+                        .font(.system(size: 11))
+                        .foregroundColor(.green.opacity(0.9))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.green.opacity(0.12))
+                        .cornerRadius(4)
+                } else if assignment.isOverdue {
                     Text("已截止")
                         .font(.system(size: 11))
                         .foregroundColor(.red.opacity(0.8))
@@ -344,7 +362,7 @@ private struct AssignmentRow: View {
             if !assignment.plainIntro.isEmpty {
                 Text(assignment.plainIntro)
                     .font(.system(size: 13))
-                    .foregroundColor(.black.opacity(0.5))
+                    .foregroundColor(.secondary)
                     .lineLimit(2)
             }
             
@@ -355,14 +373,16 @@ private struct AssignmentRow: View {
                     Text("截止：\(due.formatted(date: .abbreviated, time: .shortened))")
                         .font(.system(size: 12))
                 }
-                .foregroundColor(assignment.isOverdue ? .red.opacity(0.6) : .black.opacity(0.4))
+                .foregroundColor(assignment.isOverdue ? .red.opacity(0.6) : .secondary)
             }
         }
         .padding(Theme.Spacing.medium)
-        .background(Color.white)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
+        .background(Color(.systemBackground))
         .overlay(
             Rectangle()
-                .fill(Color.black.opacity(0.05))
+                .fill(Color.primary.opacity(0.05))
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -380,11 +400,11 @@ private struct SectionView: View {
             // Section header
             Text(section.name)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(.secondary)
                 .padding(.horizontal, Theme.Spacing.medium)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.black.opacity(0.03))
+                .background(Color.primary.opacity(0.03))
             
             // Modules
             ForEach(section.modules.filter { $0.modname != "label" }) { module in
@@ -410,33 +430,45 @@ private struct ModuleRow: View {
                 ) {
                     moduleContent
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .buttonStyle(PlainButtonStyle())
             } else if module.modname == "assign" {
                 NavigationLink(destination: MoodleModuleAssignmentView(courseId: courseId, module: module)) {
                     moduleContent
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .buttonStyle(PlainButtonStyle())
             } else if module.modname == "forum" {
                 NavigationLink(destination: MoodleModuleForumView(module: module)) {
                     moduleContent
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .buttonStyle(PlainButtonStyle())
             } else if module.modname == "page", let urlStr = module.url {
                 NavigationLink(destination: MoodlePageContentView(courseId: courseId, module: module, fallbackURL: urlStr)) {
                     moduleContent
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .buttonStyle(PlainButtonStyle())
             } else if let file = preferredFileContent, let fileURL = tokenFileURL(for: file) {
                 // Resource/file: view in-app with QuickLook
                 NavigationLink(destination: MoodleFileViewer(fileName: file.filename ?? module.name, fileURL: fileURL)) {
                     moduleContent
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .buttonStyle(PlainButtonStyle())
             } else if let urlStr = module.url {
                 // Other module types: open in WebView
                 NavigationLink(destination: MoodleWebPageView(title: module.name, targetURL: urlStr)) {
                     moduleContent
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .buttonStyle(PlainButtonStyle())
             } else {
                 moduleContent
@@ -444,7 +476,7 @@ private struct ModuleRow: View {
         }
         .overlay(
             Rectangle()
-                .fill(Color.black.opacity(0.05))
+                .fill(Color.primary.opacity(0.05))
                 .frame(height: 1),
             alignment: .bottom
         )
@@ -494,29 +526,32 @@ private struct ModuleRow: View {
         HStack(spacing: 12) {
             Image(systemName: module.iconName)
                 .font(.system(size: 16))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(.secondary)
                 .frame(width: 24)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(module.name)
                     .font(.system(size: 14))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 
                 Text(module.modname)
                     .font(.system(size: 11))
-                    .foregroundColor(.black.opacity(0.3))
+                    .foregroundColor(.secondary)
             }
             
             Spacer()
             
             Image(systemName: "chevron.right")
                 .font(.system(size: 12))
-                .foregroundColor(.black.opacity(0.3))
+                .foregroundColor(.secondary)
         }
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.medium)
         .padding(.vertical, 10)
+        .background(Color.primary.opacity(0.001))
+        .contentShape(Rectangle())
     }
 }
 
@@ -543,7 +578,7 @@ private struct MoodleModuleAssignmentView: View {
                     Spacer()
                     Text(errorMessage ?? "找不到此作業資料")
                         .font(.system(size: 14))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                     Spacer()
@@ -593,7 +628,7 @@ private struct MoodleModuleForumView: View {
                     Spacer()
                     Text(errorMessage)
                         .font(.system(size: 14))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                     Spacer()
@@ -603,7 +638,7 @@ private struct MoodleModuleForumView: View {
                     Spacer()
                     Text("目前沒有公告內容")
                         .font(.system(size: 14))
-                        .foregroundColor(.black.opacity(0.45))
+                        .foregroundColor(.secondary)
                     Spacer()
                 }
             } else {
@@ -613,15 +648,17 @@ private struct MoodleModuleForumView: View {
                             NavigationLink(destination: MoodleForumView(discussion: discussion)) {
                                 DiscussionRow(discussion: discussion)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
                 }
-                .background(Color.white)
+                .background(Color(.systemBackground))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .navigationTitle(module.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadDiscussions() }
@@ -660,7 +697,7 @@ private struct MoodlePageContentView: View {
                         if let text = extractedText, !text.isEmpty {
                             Text(text)
                                 .font(.system(size: 16))
-                                .foregroundColor(.black.opacity(0.85))
+                                .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                         }
@@ -677,16 +714,16 @@ private struct MoodlePageContentView: View {
                                         .cornerRadius(10)
                                 case .failure:
                                     RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.black.opacity(0.04))
+                                        .fill(Color.primary.opacity(0.04))
                                         .frame(height: 180)
                                         .overlay(
                                             Text("圖片載入失敗")
                                                 .font(.system(size: 13))
-                                                .foregroundColor(.black.opacity(0.45))
+                                                .foregroundColor(.secondary)
                                         )
                                 default:
                                     RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.black.opacity(0.04))
+                                        .fill(Color.primary.opacity(0.04))
                                         .frame(height: 180)
                                         .overlay(ProgressView())
                                 }
@@ -695,13 +732,13 @@ private struct MoodlePageContentView: View {
                     }
                     .padding(Theme.Spacing.medium)
                 }
-                .background(Color.white)
+                .background(Color(.systemBackground))
             } else if let error = errorMessage {
                 VStack(spacing: 10) {
                     Spacer()
                     Text(error)
                         .font(.system(size: 14))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                     Spacer()
@@ -713,7 +750,7 @@ private struct MoodlePageContentView: View {
                     ProgressView()
                     Text("正在載入...")
                         .font(.system(size: 13))
-                        .foregroundColor(.black.opacity(0.45))
+                        .foregroundColor(.secondary)
                         .padding(.top, 8)
                     Spacer()
                 }
@@ -721,7 +758,7 @@ private struct MoodlePageContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white.ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea())
         .navigationTitle(module.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadPageContent() }
@@ -836,7 +873,7 @@ private struct MoodleAttendanceModuleDetailView: View {
                     Spacer()
                     Text(errorMessage)
                         .font(.system(size: 14))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                     Spacer()
@@ -854,7 +891,7 @@ private struct MoodleAttendanceModuleDetailView: View {
                             HStack {
                                 Text(record.date.formatted(date: .abbreviated, time: .omitted))
                                     .font(.system(size: 13))
-                                    .foregroundColor(.black.opacity(0.6))
+                                    .foregroundColor(.secondary)
                                 Spacer()
                                 Text(record.statusLabel)
                                     .font(.system(size: 12, weight: .medium))
@@ -869,11 +906,11 @@ private struct MoodleAttendanceModuleDetailView: View {
                     }
                     .padding(Theme.Spacing.medium)
                 }
-                .background(Color.white)
+                .background(Color(.systemBackground))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .navigationTitle(module.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadAttendance() }
@@ -883,10 +920,10 @@ private struct MoodleAttendanceModuleDetailView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 11))
-                .foregroundColor(.black.opacity(0.45))
+                .foregroundColor(.secondary)
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
