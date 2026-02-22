@@ -38,6 +38,8 @@ final class SSOSessionService: ObservableObject {
     private var pendingContinuations: [CheckedContinuation<Bool, Never>] = []
     private var refreshTimeoutTask: Task<Void, Never>?
     private let refreshTimeoutSeconds: UInt64 = 35
+    private let maxRefreshAttempts = 3
+    private let retryBackoffNanoseconds: UInt64 = 1_500_000_000
 
     private init() {}
 
@@ -63,8 +65,29 @@ final class SSOSessionService: ObservableObject {
     /// SSOLoginWebView in RootView (which shares the default cookie store).
     ///
     /// Returns `true` if the session was successfully refreshed.
-    /// Multiple concurrent callers are coalesced: only one SSO login is performed.
+    /// Multiple concurrent callers are coalesced per attempt: only one SSO login
+    /// is performed at a time. If an attempt fails, the service retries in
+    /// background automatically a few times before returning `false`.
     func requestRefresh() async -> Bool {
+        guard autoRefreshEnabled else { return false }
+        guard LoginRepository.shared.getSavedCredentials() != nil else { return false }
+
+        var attempt = 1
+        while attempt <= maxRefreshAttempts {
+            let refreshed = await requestSingleRefresh()
+            if refreshed {
+                return true
+            }
+
+            attempt += 1
+            guard attempt <= maxRefreshAttempts else { break }
+            try? await Task.sleep(nanoseconds: retryBackoffNanoseconds)
+        }
+
+        return false
+    }
+
+    private func requestSingleRefresh() async -> Bool {
         guard autoRefreshEnabled else { return false }
 
         guard let creds = LoginRepository.shared.getSavedCredentials() else {

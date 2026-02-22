@@ -9,6 +9,7 @@ struct ClassScheduleExportView: View {
     @State private var semesterStart: Date = defaultSemesterStart()
     @State private var weekCount: Int = 18
     @State private var calendarName: String = "課表"
+    @State private var createSeparateCalendar: Bool = true
 
     @State private var isExporting = false
     @State private var resultMessage: String?
@@ -55,11 +56,26 @@ struct ClassScheduleExportView: View {
                         }
 
                         // Calendar name
-                        fieldSection(title: "行事曆名稱") {
-                            TextField("課表", text: $calendarName)
-                                .font(.system(size: 15))
-                                .textFieldStyle(.plain)
-                                .autocorrectionDisabled()
+                        fieldSection(title: "行事曆") {
+                            VStack(spacing: 10) {
+                                Toggle(isOn: $createSeparateCalendar) {
+                                    Text("建立獨立行事曆")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(.primary)
+                                }
+
+                                if createSeparateCalendar {
+                                    TextField("課表", text: $calendarName)
+                                        .font(.system(size: 15))
+                                        .textFieldStyle(.plain)
+                                        .autocorrectionDisabled()
+                                } else {
+                                    Text("將匯出到目前的預設行事曆")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
                         }
 
                         // Preview info
@@ -178,7 +194,10 @@ struct ClassScheduleExportView: View {
             .foregroundColor(.white)
             .cornerRadius(Theme.CornerRadius.medium)
         }
-        .disabled(isExporting || calendarName.trimmingCharacters(in: .whitespaces).isEmpty)
+        .disabled(
+            isExporting ||
+            (createSeparateCalendar && calendarName.trimmingCharacters(in: .whitespaces).isEmpty)
+        )
     }
 
     // MARK: - Export action
@@ -190,7 +209,8 @@ struct ClassScheduleExportView: View {
             schedule: schedule,
             semesterStart: semesterStart,
             weekCount: weekCount,
-            calendarName: name
+            calendarName: name,
+            createSeparateCalendar: createSeparateCalendar
         )
         isExporting = false
 
