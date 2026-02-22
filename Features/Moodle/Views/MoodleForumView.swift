@@ -13,18 +13,18 @@ struct MoodleForumView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(discussion.subject)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                     
                     HStack {
                         Text(discussion.userfullname)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.black.opacity(0.6))
+                            .foregroundColor(.secondary)
                         
                         Spacer()
                         
                         Text(discussion.createdDate.formatted(date: .abbreviated, time: .shortened))
                             .font(.system(size: 12))
-                            .foregroundColor(.black.opacity(0.4))
+                            .foregroundColor(.secondary)
                     }
                 }
                 .padding(Theme.Spacing.medium)
@@ -34,7 +34,7 @@ struct MoodleForumView: View {
                 // Always show the main discussion content first.
                 Text(discussion.plainMessage.isEmpty ? "（無內文）" : discussion.plainMessage)
                     .font(.system(size: 15))
-                    .foregroundColor(.black.opacity(0.8))
+                    .foregroundColor(.secondary)
                     .textSelection(.enabled)
                     .padding(Theme.Spacing.medium)
                 
@@ -55,7 +55,7 @@ struct MoodleForumView: View {
                 }
             }
         }
-        .background(Color.white.ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea())
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationTitle("公告內容")
         .navigationBarTitleDisplayMode(.inline)
@@ -87,18 +87,18 @@ private struct PostView: View {
             HStack {
                 Text(post.author?.fullname ?? "未知")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.black.opacity(0.7))
+                    .foregroundColor(.secondary)
                 
                 Spacer()
                 
                 Text(post.createdDate.formatted(date: .abbreviated, time: .shortened))
                     .font(.system(size: 12))
-                    .foregroundColor(.black.opacity(0.3))
+                    .foregroundColor(.secondary)
             }
             
             Text(post.plainMessage)
                 .font(.system(size: 14))
-                .foregroundColor(.black.opacity(0.8))
+                .foregroundColor(.secondary)
                 .textSelection(.enabled)
         }
         .padding(Theme.Spacing.medium)

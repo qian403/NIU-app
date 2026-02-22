@@ -38,6 +38,7 @@ final class MoodleCourseDetailViewModel: ObservableObject {
     
     // Assignments
     @Published var assignments: [MoodleAssignment] = []
+    @Published var assignmentSubmittedStatus: [Int: Bool] = [:]
     
     // Resources
     @Published var sections: [MoodleCourseSection] = []
@@ -122,6 +123,29 @@ final class MoodleCourseDetailViewModel: ObservableObject {
                 if a2.duedate == 0 { return true }
                 return a1.duedate > a2.duedate
             }
+        assignmentSubmittedStatus = await fetchSubmittedStatusMap(for: assignments)
+    }
+
+    private func fetchSubmittedStatusMap(for assignments: [MoodleAssignment]) async -> [Int: Bool] {
+        await withTaskGroup(of: (Int, Bool).self) { group in
+            for assignment in assignments {
+                group.addTask { [service] in
+                    do {
+                        let status = try await service.fetchSubmissionStatus(assignId: assignment.id)
+                        let submitted = status.lastattempt?.submission?.status == "submitted"
+                        return (assignment.id, submitted)
+                    } catch {
+                        return (assignment.id, false)
+                    }
+                }
+            }
+
+            var result: [Int: Bool] = [:]
+            for await (assignmentId, isSubmitted) in group {
+                result[assignmentId] = isSubmitted
+            }
+            return result
+        }
     }
     
     private func loadResources() async throws {

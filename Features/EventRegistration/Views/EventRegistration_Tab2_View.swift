@@ -6,7 +6,7 @@ struct EventRegistration_Tab2_View: View {
     
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // 搜尋框
@@ -61,7 +61,7 @@ struct EventRegistration_Tab2_View: View {
             
             // 載入遮罩
             if viewModel.isOverlayVisible {
-                Color.black.opacity(0.3)
+                Color.primary.opacity(0.3)
                     .ignoresSafeArea()
                 
                 VStack(spacing: 16) {
@@ -76,7 +76,7 @@ struct EventRegistration_Tab2_View: View {
                 .padding(32)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black.opacity(0.7))
+                        .fill(Color.primary.opacity(0.7))
                 )
             }
         }

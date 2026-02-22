@@ -45,8 +45,11 @@ struct ZuvioLoginWebView: ZuvioViewRepresentable {
         webView.navigationDelegate = context.coordinator
         
         // 先訪問登入頁面，等頁面載入後再提交
-        let loginPageURL = URL(string: "https://irs.zuvio.com.tw/irs/login/zh-TW")!
-        webView.load(URLRequest(url: loginPageURL))
+        if let loginPageURL = URL(string: "https://irs.zuvio.com.tw/irs/login/zh-TW") {
+            webView.load(URLRequest(url: loginPageURL))
+        } else {
+            context.coordinator.onResult(false)
+        }
         
         return webView
     }

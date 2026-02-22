@@ -4,6 +4,7 @@ struct LoginView: View {
     @StateObject private var viewModel = LoginViewModel()
     @EnvironmentObject private var appState: AppState
     @FocusState private var focusedField: Field?
+    @State private var showPrivacySheet = false
     
     enum Field: Hashable {
         case username, password
@@ -12,7 +13,7 @@ struct LoginView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.white.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 
                 VStack(spacing: 0) {
                     Spacer()
@@ -87,31 +88,41 @@ struct LoginView: View {
         .alert(item: $viewModel.activeAlert) { alert in
             makeAlert(for: alert)
         }
+        .sheet(isPresented: $showPrivacySheet) {
+            NavigationStack {
+                PrivacyPolicyView()
+            }
+        }
     }
     
     // MARK: - UI Components
     private var logoSection: some View {
         VStack(spacing: Theme.Spacing.medium) {
             Circle()
-                .strokeBorder(Color.black, lineWidth: 2)
+                .strokeBorder(Color.primary, lineWidth: 2)
                 .frame(width: 80, height: 80)
                 .overlay(
                     Text("NIU")
                         .font(.system(size: 20, weight: .bold, design: .monospaced))
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                 )
             
             Text("NIU APP")
                 .font(.system(size: 32, weight: .thin))
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
         }
     }
     
     private var inputSection: some View {
         VStack(spacing: Theme.Spacing.medium) {
+            Text("帳號密碼與校務系統相同")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(.black.opacity(0.5))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             MinimalTextField(
                 text: $viewModel.username,
-                placeholder: "Student ID",
+                placeholder: "bXXXXXXX",
                 icon: "person"
             )
             .focused($focusedField, equals: .username)
@@ -148,7 +159,7 @@ struct LoginView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background(Color.black)
+            .background(Color.primary)
             .cornerRadius(26)
         }
         .disabled(viewModel.isLoading || !viewModel.isFormValid)
@@ -156,9 +167,19 @@ struct LoginView: View {
     }
     
     private var footerText: some View {
-        Text("NIU SSO · Secure Login")
-            .font(.system(size: 12, weight: .light))
-            .foregroundColor(.gray)
+        VStack(spacing: 8) {
+            Text("本程式為非官方第三方工具，與宜蘭大學官方無關")
+                .font(.system(size: 12, weight: .light))
+                .foregroundColor(.gray)
+
+            Button {
+                showPrivacySheet = true
+            } label: {
+                Text("隱私權聲明")
+                    .font(.system(size: 12, weight: .light))
+                    .foregroundColor(.gray)
+            }
+        }
     }
     
     // MARK: - Alert Builder
@@ -201,8 +222,8 @@ struct LoginView: View {
             )
             
         case .ssoAccountLocked(let lockTime):
-            let message = lockTime != nil 
-                ? "您的帳號已被鎖定\n鎖定時間：\(lockTime!)" 
+            let message = lockTime != nil
+                ? "您的帳號已被鎖定\n鎖定時間：\(lockTime ?? "")"
                 : "您的帳號已被鎖定\n請聯繫系統管理員"
             return Alert(
                 title: Text("帳號鎖定"),
@@ -244,4 +265,74 @@ struct LoginView: View {
 #Preview {
     LoginView()
         .environmentObject(AppState())
+}
+
+private struct PrivacyPolicyView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+                Group {
+                    Text("隱私權聲明 (Privacy Policy)")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.primary)
+
+                    Text("感謝您下載並使用本應用程式（以下簡稱「本 App」）。本 App 致力於保護您的個人隱私，並確保您在使用校務相關功能時的資訊安全。在使用本 App 前，請詳閱以下聲明：")
+
+                    Text("一、重要聲明：非官方性質")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("本 App 為個人開發之第三方校務系統輔助工具，與「國立宜蘭大學 (NIU)」官方並無任何隸屬、合作或授權關係。本 App 僅作為存取校務系統之第三方介面（套皮工具），旨在優化使用者之操作體驗。")
+
+                    Text("二、帳號登入與個人資料處理")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("登入資訊：當您登入校務帳號時，您的帳號與密碼將直接傳送至學校官方伺服器進行身分驗證。為了提供自動登入與工作階段續期功能，本 App 會將帳號與密碼加密儲存在 iOS Keychain（僅於您的裝置本機）。本 App 不會將您的帳號與密碼上傳到開發者伺服器。")
+                    Text("校務資料存取：本 App 獲取之課表、成績、缺曠課等個人資訊，僅限於提供您在行動裝置上查看與管理之用。")
+
+                    Text("三、資料儲存與保護機制")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("本地存儲 (Local Storage)：為提升使用流暢度，您的基本校務資訊（如課表、姓名等）會儲存在您的行動裝置本地端；登入帳密則儲存在 iOS Keychain。")
+                    Text("Session 與 Cookie：系統會暫存必要的 Session 資訊以維持登入狀態。您隨時可以透過 App 內的「登出」功能，立即清除本機端儲存的所有登入資訊與暫存檔案。")
+
+                    Text("四、數據收集與技術分析")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("為了持續優化 App 品質，我們會收集部分匿名且無法辨識個人身分的統計數據，包括：")
+                    Text("使用統計：例如每日活躍人數 (DAU)、各功能點擊頻率。")
+                    Text("錯誤回報：App 閃退或載入失敗時的去識別化系統錯誤紀錄。")
+                    Text("上述數據僅用於技術改善與效能優化，不包含任何姓名、學號或敏感個資。")
+
+                    Text("五、第三方連結與免責聲明")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("外部連結：本 App 部分功能可能導向學校官方網頁。對於外部網站的隱私權政策，本 App 不負任何法律責任。")
+                    Text("資料準確性：所有校務資訊均同步自學校伺服器，若資料有誤，請以學校官方行政系統為準。")
+                    Text("安全風險：請確保您的行動裝置環境安全。若因裝置遭惡意程式入侵或遺失而導致資料流失，開發者概不負責。")
+
+                    Text("六、隱私權聲明之修改")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("開發者保留隨時修改本聲明之權利。修改後的條款將直接更新於本 App 內，不另行個別通知，建議您定期查看。")
+
+                    Text("七、聯繫方式")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("若您對本隱私權聲明或資料處理方式有任何疑問、建議或發現潛在漏洞，歡迎透過以下方式聯繫開發者：")
+                    Text("開發者聯絡信箱：hi@chien.dev")
+                    Text("GitHub 專案頁面：https://github.com/qian403/NIU-app")
+                }
+            }
+            .font(.system(size: 15))
+            .foregroundColor(.black.opacity(0.75))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.large)
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .navigationTitle("隱私權聲明")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("關閉") {
+                    dismiss()
+                }
+                .foregroundColor(.primary)
+            }
+        }
+    }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @StateObject private var appState = AppState()
     @ObservedObject private var sessionService = SSOSessionService.shared
+    @AppStorage("app.appearance.mode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
 
     var body: some View {
         ZStack {
@@ -20,9 +21,9 @@ struct RootView: View {
                     account: sessionService.refreshAccount,
                     password: sessionService.refreshPassword
                 ) { result in
-                    if case .success(let info) = result {
-                        appState.updateProfileFromSSO(info)
-                    }
+                    // Silent refresh should only restore session cookies.
+                    // Updating app-level profile here can rebuild root navigation
+                    // and unexpectedly pop the current feature page.
                     SSOSessionService.shared.handleRefreshResult(result)
                 }
                 .frame(width: 1, height: 1)
@@ -31,6 +32,11 @@ struct RootView: View {
             }
         }
         .environmentObject(appState)
+        .preferredColorScheme(currentAppearanceMode.colorScheme)
+    }
+
+    private var currentAppearanceMode: AppAppearanceMode {
+        AppAppearanceMode(rawValue: appearanceModeRaw) ?? .system
     }
 }
 

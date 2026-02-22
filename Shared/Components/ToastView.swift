@@ -11,7 +11,7 @@ struct ToastView: View {
             .padding(.vertical, 12)
             .background(
                 Capsule()
-                    .fill(Color.black.opacity(0.8))
+                    .fill(Color.primary.opacity(0.8))
             )
             .padding(.top, 50)
     }

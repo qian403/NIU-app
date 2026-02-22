@@ -6,14 +6,14 @@ struct EventDetailView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     // 活動標題
                     VStack(alignment: .leading, spacing: 8) {
                         Text(event.name)
                             .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.primary)
                         
                         HStack {
                             Text(event.event_state)
@@ -47,10 +47,10 @@ struct EventDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("活動說明")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.black)
+                                .foregroundColor(.primary)
                             Text(event.eventDetail.replacingOccurrences(of: "<br>", with: "\n").replacingOccurrences(of: "<br/>", with: "\n"))
                                 .font(.system(size: 14))
-                                .foregroundColor(.black.opacity(0.7))
+                                .foregroundColor(.primary.opacity(0.85))
                                 .lineLimit(nil)
                                 .multilineTextAlignment(.leading)
                                 .textSelection(.enabled)
@@ -63,7 +63,7 @@ struct EventDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("聯絡資訊")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.primary)
                         InfoRow(icon: "person.fill", title: "聯絡人", value: event.contactInfoName)
                         TappableInfoRow(icon: "phone.fill", title: "電話", value: event.contactInfoTel, urlScheme: "tel:")
                         TappableInfoRow(icon: "envelope.fill", title: "信箱", value: event.contactInfoMail, urlScheme: "mailto:")
@@ -84,10 +84,10 @@ struct EventDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("備註")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.black)
+                                .foregroundColor(.primary)
                             Text(event.Remark.replacingOccurrences(of: "<br>", with: "\n").replacingOccurrences(of: "<br/>", with: "\n"))
                                 .font(.system(size: 14))
-                                .foregroundColor(.black.opacity(0.7))
+                                .foregroundColor(.primary.opacity(0.85))
                                 .lineLimit(nil)
                                 .multilineTextAlignment(.leading)
                                 .textSelection(.enabled)
@@ -96,7 +96,7 @@ struct EventDetailView: View {
                 }
                 .padding()
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .navigationTitle("活動詳情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -104,7 +104,7 @@ struct EventDetailView: View {
                     Button("關閉") {
                         dismiss()
                     }
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -122,11 +122,10 @@ struct EventDetailView: View {
                             .cornerRadius(12)
                     }
                     .padding()
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                 }
             }
         }
-        .preferredColorScheme(.light)
     }
     
     private var canRegister: Bool {
@@ -156,16 +155,16 @@ struct InfoRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16))
-                .foregroundColor(.black.opacity(0.6))
+                .foregroundColor(.secondary)
                 .frame(width: 24)
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 12))
-                    .foregroundColor(.black.opacity(0.5))
+                    .foregroundColor(.secondary)
                 Text(value)
                     .font(.system(size: 14))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
             }
             
             Spacer()
@@ -184,13 +183,13 @@ struct TappableInfoRow: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 16))
-                    .foregroundColor(.black.opacity(0.6))
+                    .foregroundColor(.secondary)
                     .frame(width: 24)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(size: 12))
-                        .foregroundColor(.black.opacity(0.5))
+                        .foregroundColor(.secondary)
                     Text(value)
                         .font(.system(size: 14))
                         .foregroundColor(.blue)

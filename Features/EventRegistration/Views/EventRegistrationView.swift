@@ -7,7 +7,7 @@ struct EventRegistrationView: View {
     
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Tab 切換
@@ -31,7 +31,6 @@ struct EventRegistrationView: View {
         }
         .navigationTitle("活動報名")
         .navigationBarTitleDisplayMode(.inline)
-        .preferredColorScheme(.light)
         .onAppear {
             // 頁面一開啟就嘗試預先登入，避免後續操作遇到 Session 過期
             tab1ViewModel.prewarmLoginIfNeeded()

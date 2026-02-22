@@ -448,6 +448,8 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
                     print("[SSO] Hidden fields parse failed")
                     self.isProcessingCaptcha = false
+                    self.getSSOViewState = false
+                    self.parent.onResult(.systemError)
                     return
                 }
 

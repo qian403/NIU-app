@@ -32,7 +32,7 @@ struct MoodleWebPageView: View {
                         ProgressView()
                         Text("正在載入...")
                             .font(.system(size: 13))
-                            .foregroundColor(.black.opacity(0.4))
+                            .foregroundColor(.secondary)
                             .padding(.top, 8)
                         Spacer()
                     }
@@ -42,19 +42,19 @@ struct MoodleWebPageView: View {
                     VStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 24, weight: .light))
-                            .foregroundColor(.black.opacity(0.45))
+                            .foregroundColor(.secondary)
                         Text(message)
                             .font(.system(size: 13))
-                            .foregroundColor(.black.opacity(0.55))
+                            .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                 }
             }
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .modifier(MoodleWebNavigationChrome(
             enabled: showsNavigationChrome,
             title: title,
@@ -87,7 +87,7 @@ private struct MoodleWebNavigationChrome: ViewModifier {
                         }) {
                             Image(systemName: "safari")
                                 .font(.system(size: 16))
-                                .foregroundColor(.black)
+                                .foregroundColor(.primary)
                         }
                     }
                 }
@@ -115,6 +115,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private var retriedAfterLoginRedirect = false
     private var isAutologinSupported = true
     private var hasTriedSilentRefresh = false
+    private var assignmentResolveAttempts = 0
+    private let maxAssignmentResolveAttempts = 2
 
     private enum Phase {
         case idle
@@ -139,11 +141,17 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         hasStarted = true
         self.originalTargetURL = targetURL
         self.errorMessage = nil
+        self.assignmentResolveAttempts = 0
 
         Task {
             let resolved = await resolveTargetURL(from: targetURL)
             targetURLReady(resolved)
         }
+    }
+
+    private var isAssignmentUploadTarget: Bool {
+        let target = (originalTargetURL ?? targetURL ?? "").lowercased()
+        return target.contains("/mod/assign/view.php") && target.contains("action=editsubmission")
     }
     
     private func targetURLReady(_ resolvedTarget: URL) {
@@ -152,7 +160,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         
         // Sync cookies from HTTPCookieStorage to WKWebView (like reference project)
         syncCookies {
-            if let euniURL = SSOEUNISettings.shared.euniFullURL,
+            if !self.isAssignmentUploadTarget,
+               let euniURL = SSOEUNISettings.shared.euniFullURL,
                let url = URL(string: euniURL) {
                 // Step 1: Load SSO EUNI redirect to establish Moodle session
                 print("[MoodleWeb] SSO redirect: \(euniURL.prefix(80))")
@@ -162,6 +171,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 // No cached EUNI link: resolve from SSO portal page first.
                 print("[MoodleWeb] No cached EUNI link, resolving from Std002.aspx")
                 self.phase = .resolvingEuni
+                if self.isAssignmentUploadTarget {
+                    self.assignmentResolveAttempts += 1
+                }
                 if let std002 = URL(string: "https://ccsys.niu.edu.tw/SSO/Std002.aspx") {
                     self.webView.load(URLRequest(url: std002))
                 } else {
@@ -173,6 +185,11 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
     
     private func resolveTargetURL(from rawTarget: String) async -> URL {
+        if rawTarget.contains("/mod/assign/view.php"),
+           rawTarget.contains("action=editsubmission") {
+            // Assignment upload page is more stable with pure SSO cookie flow.
+            return URL(string: rawTarget) ?? URL(string: "about:blank")!
+        }
         guard rawTarget.contains("euni.niu.edu.tw"), isAutologinSupported else {
             return URL(string: rawTarget) ?? URL(string: "about:blank")!
         }
@@ -280,8 +297,13 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             }
 
             guard !resolved.isEmpty, SSOEUNISettings.isLikelyValidEUNIPath(resolved) else {
-                print("[MoodleWeb] Std002 has no EUNI link after retries, loading target directly")
-                self.fallbackToTargetAfterSSOFailure()
+                if self.isAssignmentUploadTarget {
+                    print("[MoodleWeb] Std002 has no EUNI link after retries, try silent refresh once")
+                    self.attemptSilentRefreshAndRetry("resolvingEuni/no-euni")
+                } else {
+                    print("[MoodleWeb] Std002 has no EUNI link after retries, loading target directly")
+                    self.fallbackToTargetAfterSSOFailure()
+                }
                 return
             }
 
@@ -335,7 +357,28 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private func failAsNeedsRelogin() {
         phase = .done
         isPageReady = false
-        errorMessage = "M 園區登入已失效，請先重新登入後再試。"
+        errorMessage = "M 園區登入已失效，請回設定頁重新登入後再試。"
+    }
+
+    private func resolveEuniInSameWebViewForUpload(reason: String) {
+        guard isAssignmentUploadTarget else {
+            fallbackToTargetAfterSSOFailure()
+            return
+        }
+        assignmentResolveAttempts += 1
+        guard assignmentResolveAttempts <= maxAssignmentResolveAttempts else {
+            print("[MoodleWeb] \(reason), exceeded resolve attempts")
+            failAsNeedsRelogin()
+            return
+        }
+        print("[MoodleWeb] \(reason), resolve EUNI in same webview (\(assignmentResolveAttempts)/\(maxAssignmentResolveAttempts))")
+        SSOEUNISettings.shared.clear()
+        phase = .resolvingEuni
+        if let std002 = URL(string: "https://ccsys.niu.edu.tw/SSO/Std002.aspx") {
+            webView.load(URLRequest(url: std002))
+        } else {
+            failAsNeedsRelogin()
+        }
     }
 
     private func attemptSilentRefreshAndRetry(_ reason: String) {
@@ -367,6 +410,10 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     private func fallbackToTargetAfterSSOFailure() {
+        if isAssignmentUploadTarget {
+            failAsNeedsRelogin()
+            return
+        }
         phase = .done
         isPageReady = false
         loadCurrentTarget()
@@ -397,8 +444,12 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         switch phase {
         case .resolvingEuni:
             if url.contains("Default.aspx") {
-                // SSO not valid now; target may still be publicly reachable.
-                fallbackToTargetAfterSSOFailure()
+                if isAssignmentUploadTarget {
+                    attemptSilentRefreshAndRetry("resolvingEuni/default")
+                } else {
+                    // SSO not valid now; target may still be publicly reachable.
+                    fallbackToTargetAfterSSOFailure()
+                }
             } else if url.contains("Std002.aspx") {
                 extractEUNIRedirectPath(from: wv)
             }
@@ -411,9 +462,13 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 return
             }
             if isSSODefaultPage(url) {
-                // JumpTo token/session expired; silently refresh SSO then retry.
-                print("[MoodleWeb] SSO redirect landed on Default.aspx, trigger silent refresh")
-                attemptSilentRefreshAndRetry("ssoRedirect/default")
+                if isAssignmentUploadTarget {
+                    resolveEuniInSameWebViewForUpload(reason: "SSO redirect landed on Default.aspx")
+                } else {
+                    // JumpTo token/session expired; silently refresh SSO then retry.
+                    print("[MoodleWeb] SSO redirect landed on Default.aspx, trigger silent refresh")
+                    attemptSilentRefreshAndRetry("ssoRedirect/default")
+                }
                 return
             }
             if url.contains("euni.niu.edu.tw") && !isLoginPage(url) {
@@ -430,13 +485,21 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
         case .loadingTarget:
             if isLoginPage(url) {
-                attemptSilentRefreshAndRetry("loadingTarget/login")
+                if isAssignmentUploadTarget {
+                    resolveEuniInSameWebViewForUpload(reason: "Upload target hit login page")
+                } else {
+                    attemptSilentRefreshAndRetry("loadingTarget/login")
+                }
             } else {
                 finishLoading()
             }
 
         case .done:
             if isLoginPage(url) {
+                if isAssignmentUploadTarget {
+                    failAsNeedsRelogin()
+                    return
+                }
                 if isAutologinSupported {
                     print("[MoodleWeb] Landed on login page, retry with autologin")
                     retryUsingAutologin()
@@ -455,14 +518,22 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     func webView(_ wv: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         print("[MoodleWeb] didFail: \(error.localizedDescription)")
         if phase == .ssoRedirect || phase == .resolvingEuni {
-            fallbackToTargetAfterSSOFailure()
+            if isAssignmentUploadTarget {
+                failAsNeedsRelogin()
+            } else {
+                fallbackToTargetAfterSSOFailure()
+            }
         }
     }
 
     func webView(_ wv: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         print("[MoodleWeb] provisional fail: \(error.localizedDescription)")
         if phase == .ssoRedirect || phase == .resolvingEuni {
-            fallbackToTargetAfterSSOFailure()
+            if isAssignmentUploadTarget {
+                failAsNeedsRelogin()
+            } else {
+                fallbackToTargetAfterSSOFailure()
+            }
         }
     }
 }
