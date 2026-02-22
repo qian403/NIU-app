@@ -46,16 +46,29 @@ final class ClassScheduleExportService {
     ///   - semesterStart:  The first day of the semester (the week that contains the first class).
     ///   - weekCount:      How many weeks the semester spans (typically 18).
     ///   - calendarName:   The EKCalendar display name to create or reuse.
+    ///   - createSeparateCalendar: Whether to create/reuse a dedicated calendar.
     func export(
         schedule: ClassSchedule,
         semesterStart: Date,
         weekCount: Int,
-        calendarName: String
+        calendarName: String,
+        createSeparateCalendar: Bool
     ) async -> ExportResult {
         guard await requestAccess() else { return .permissionDenied }
 
         do {
-            let calendar = try getOrCreateCalendar(name: calendarName)
+            let calendar: EKCalendar
+            if createSeparateCalendar {
+                calendar = try getOrCreateCalendar(name: calendarName)
+            } else if let defaultCalendar = eventStore.defaultCalendarForNewEvents {
+                calendar = defaultCalendar
+            } else {
+                throw NSError(
+                    domain: EKErrorDomain,
+                    code: 17,
+                    userInfo: [NSLocalizedDescriptionKey: "找不到可用的預設行事曆，請先在系統行事曆中設定預設行事曆。"]
+                )
+            }
             let semesterEnd = endDate(from: semesterStart, weekCount: weekCount)
             var created = 0
 
