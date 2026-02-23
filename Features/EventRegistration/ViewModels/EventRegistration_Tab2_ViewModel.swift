@@ -37,7 +37,9 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     private var navigationDelegate: NavigationDelegate?
     
     // 登入狀態追蹤
-    private var hasAttemptedLogin = false
+    private var loginAttemptCount = 0
+    private let maxLoginAttempts = 2
+    private let loginRequesterID = UUID().uuidString
     private var hasInitialized = false
 
     private func escapeForSingleQuotedJavaScript(_ value: String) -> String {
@@ -148,7 +150,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     func startLogin() {
         isOverlayVisible = true
         overlayText = "載入中"
-        hasAttemptedLogin = false
+        loginAttemptCount = 0
         
         // 直接訪問已報名列表頁面，如果未登入會自動重定向到登入頁
         if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act/ApplyMe") {
@@ -160,7 +162,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     func loadEventList() {
         isOverlayVisible = true
         overlayText = "載入中"
-        hasAttemptedLogin = false  // 重置登入狀態，允許重新登入
+        loginAttemptCount = 0  // 重置登入狀態，允許重新登入
         
         if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act/ApplyMe") {
             let request = URLRequest(url: url)
@@ -309,7 +311,11 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
             checkLoginError()
         } else if url.contains("/MvcTeam/Act/ApplyMe") {
             // 已報名列表頁面載入完成（可能是已登入直接顯示，或登入後跳轉）
-            hasAttemptedLogin = false  // 重置登入狀態
+            if loginAttemptCount > 0 {
+                // 只有在曾經執行登入時才通知，避免無意義喚醒
+                EventRegistrationWebViewManager.shared.notifyLoginCompleted()
+            }
+            loginAttemptCount = 0  // 重置登入狀態
             refresh()
         }
     }
@@ -330,9 +336,9 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 }
             }
             
-            // 檢查是否已經嘗試過登入，避免無限循環
-            if self.hasAttemptedLogin {
-                print("[EventRegistration Tab2] 已嘗試登入但失敗，停止重試")
+            // 檢查是否已達登入重試上限，避免無限循環
+            if self.loginAttemptCount >= self.maxLoginAttempts {
+                print("[EventRegistration Tab2] 已達登入重試上限，停止重試")
                 Task { @MainActor in
                     self.isOverlayVisible = false
                     self.toastMessage = "登入失敗，請檢查帳號密碼"
@@ -342,10 +348,10 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
             }
             
             // 沒有錯誤，請求登入
-            EventRegistrationWebViewManager.shared.requestLogin { [weak self] in
+            EventRegistrationWebViewManager.shared.requestLogin(requesterID: self.loginRequesterID) { [weak self] in
                 Task { @MainActor in
                     guard let self = self else { return }
-                    self.hasAttemptedLogin = true
+                    self.loginAttemptCount += 1
                     self.performEventSystemLogin()
                 }
             } waitCompletion: { [weak self] in
@@ -353,7 +359,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 Task { @MainActor in
                     guard let self = self else { return }
                     print("[EventRegistration Tab2] 其他 tab 已完成登入，重新加載頁面")
-                    self.hasAttemptedLogin = false
+                    self.loginAttemptCount = 0
                     if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act/ApplyMe") {
                         let request = URLRequest(url: url)
                         self.webView?.load(request)
@@ -405,10 +411,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 Task { @MainActor in
                     if let resultString = result as? String {
                         print("[EventRegistration Tab2] 登入提交結果: \(resultString)")
-                        if resultString == "submitted" {
-                            // 通知其他 tab 登入已完成
-                            EventRegistrationWebViewManager.shared.notifyLoginCompleted()
-                        } else if resultString == "failed" {
+                        if resultString == "failed" {
                             self.isOverlayVisible = false
                             self.toastMessage = "登入頁面載入失敗"
                             self.showToast = true

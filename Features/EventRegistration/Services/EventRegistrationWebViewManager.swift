@@ -9,6 +9,7 @@ final class EventRegistrationWebViewManager {
     
     // 登入狀態管理
     private var isLoggingIn = false
+    private var activeLoginRequesterID: String?
     private var loginCompletionHandlers: [() -> Void] = []
     
     private init() {
@@ -18,10 +19,22 @@ final class EventRegistrationWebViewManager {
     
     /// 請求登入，如果已經有其他 Tab 在登入，則等待其完成
     /// - Parameters:
+    ///   - requesterID: 請求來源（通常是各 tab 的唯一 ID）
     ///   - loginAction: 執行登入的閉包（只有第一個請求會執行）
     ///   - waitCompletion: 等待其他 tab 登入完成後執行的閉包（第二個及之後的請求會執行）
-    func requestLogin(loginAction: @escaping () -> Void, waitCompletion: @escaping () -> Void) {
+    func requestLogin(
+        requesterID: String,
+        loginAction: @escaping () -> Void,
+        waitCompletion: @escaping () -> Void
+    ) {
         if isLoggingIn {
+            // 同一個 tab 在登入流程中再次回到登入頁，允許直接重試，避免把自己鎖死在等待佇列
+            if activeLoginRequesterID == requesterID {
+                print("[EventRegistration] 同一個 tab 重新嘗試登入")
+                loginAction()
+                return
+            }
+
             // 已經有其他 Tab 在登入，等待完成後執行 waitCompletion
             print("[EventRegistration] 已有其他 tab 在登入，等待完成")
             loginCompletionHandlers.append(waitCompletion)
@@ -29,6 +42,7 @@ final class EventRegistrationWebViewManager {
             // 開始登入
             print("[EventRegistration] 開始執行登入")
             isLoggingIn = true
+            activeLoginRequesterID = requesterID
             loginAction()
         }
     }
@@ -37,11 +51,12 @@ final class EventRegistrationWebViewManager {
     func notifyLoginCompleted() {
         print("[EventRegistration] 登入完成，通知其他等待的 tab")
         isLoggingIn = false
+        activeLoginRequesterID = nil
         let handlers = loginCompletionHandlers
         loginCompletionHandlers.removeAll()
         
-        // 延遲 1 秒後通知其他等待的 Tab，確保 Cookie 已同步
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        // 稍微延遲讓 Cookie 寫入完成，避免不必要的等待
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             print("[EventRegistration] 執行 \(handlers.count) 個等待的 completion handler")
             handlers.forEach { $0() }
         }
@@ -50,6 +65,7 @@ final class EventRegistrationWebViewManager {
     /// 重置登入狀態（用於用戶手動刷新）
     func resetLoginState() {
         isLoggingIn = false
+        activeLoginRequesterID = nil
         loginCompletionHandlers.removeAll()
     }
     

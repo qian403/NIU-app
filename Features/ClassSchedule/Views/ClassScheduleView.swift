@@ -6,6 +6,7 @@ struct ClassScheduleView: View {
     @StateObject private var attendanceStore = ClassAttendanceStore()
     @State private var showExportSheet = false
     @State private var selectedSession: ScheduleSession?
+    @State private var pagerSelection: Int = 1
 
     var body: some View {
         ZStack {
@@ -156,41 +157,16 @@ struct ClassScheduleView: View {
             dayTabBar
 
             Divider()
-
-            // Schedule column index for the currently selected display day
-            let colIndex = vm.scheduleColumnIndex(for: vm.selectedDayIndex)
-
-            if colIndex == nil {
-                // Selected weekday exists in the tab but not in the fetched schedule → no classes
-                noCourseView
-            } else {
-                // Periods list
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(schedule.periods) { period in
-                                PeriodRowView(
-                                    period: period,
-                                    scheduleColumnIndex: colIndex!,
-                                    dayName: schedule.dayHeaders[colIndex!]
-                                ) { session in
-                                    selectedSession = session
-                                }
-                                .id(period.id)
-                            }
-                        }
-                        .padding(.vertical, Theme.Spacing.small)
-                    }
-                    .onAppear {
-                        if let current = schedule.periods.first(where: { $0.isCurrentPeriod }),
-                           colIndex != nil {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                withAnimation { proxy.scrollTo(current.id, anchor: .center) }
-                            }
-                        }
-                    }
-                }
-            }
+            dayPager(schedule: schedule)
+        }
+        .onAppear {
+            syncPagerSelection(with: vm.selectedDayIndex, animated: false)
+        }
+        .onChange(of: vm.selectedDayIndex) { _, newValue in
+            syncPagerSelection(with: newValue, animated: true)
+        }
+        .onChange(of: vm.displayDayHeaders.count) { _, _ in
+            syncPagerSelection(with: vm.selectedDayIndex, animated: false)
         }
     }
 
@@ -280,6 +256,97 @@ struct ClassScheduleView: View {
                     )
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func dayPager(schedule: ClassSchedule) -> some View {
+        let count = vm.displayDayHeaders.count
+
+        return TabView(selection: $pagerSelection) {
+            // Leading ghost page: last day (for wrap-around to previous day)
+            dayPage(schedule: schedule, displayIndex: max(count - 1, 0))
+                .tag(0)
+
+            ForEach(0..<count, id: \.self) { index in
+                dayPage(schedule: schedule, displayIndex: index)
+                    .tag(index + 1)
+            }
+
+            // Trailing ghost page: first day (for Sunday -> Monday wrap-around)
+            dayPage(schedule: schedule, displayIndex: 0)
+                .tag(count + 1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .onChange(of: pagerSelection) { _, newValue in
+            guard count > 0 else { return }
+
+            if newValue == 0 {
+                vm.selectedDayIndex = count - 1
+                withTransaction(Transaction(animation: nil)) {
+                    pagerSelection = count
+                }
+            } else if newValue == count + 1 {
+                vm.selectedDayIndex = 0
+                withTransaction(Transaction(animation: nil)) {
+                    pagerSelection = 1
+                }
+            } else {
+                vm.selectedDayIndex = newValue - 1
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dayPage(schedule: ClassSchedule, displayIndex: Int) -> some View {
+        if let colIndex = vm.scheduleColumnIndex(for: displayIndex) {
+            periodListView(schedule: schedule, scheduleColumnIndex: colIndex)
+        } else {
+            noCourseView
+        }
+    }
+
+    private func periodListView(
+        schedule: ClassSchedule,
+        scheduleColumnIndex: Int
+    ) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(schedule.periods) { period in
+                        PeriodRowView(
+                            period: period,
+                            scheduleColumnIndex: scheduleColumnIndex,
+                            dayName: schedule.dayHeaders[scheduleColumnIndex]
+                        ) { session in
+                            selectedSession = session
+                        }
+                        .id(period.id)
+                    }
+                }
+                .padding(.vertical, Theme.Spacing.small)
+            }
+            .onAppear {
+                if let current = schedule.periods.first(where: { $0.isCurrentPeriod }) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation { proxy.scrollTo(current.id, anchor: .center) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func syncPagerSelection(with dayIndex: Int, animated: Bool) {
+        let target = dayIndex + 1
+        guard pagerSelection != target else { return }
+
+        if animated {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                pagerSelection = target
+            }
+        } else {
+            withTransaction(Transaction(animation: nil)) {
+                pagerSelection = target
             }
         }
     }
