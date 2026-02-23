@@ -182,7 +182,7 @@ struct SettingsView: View {
                 settingsActionRow(
                     icon: "exclamationmark.bubble",
                     title: "回報問題",
-                    subtitle: "寄信到 hi@chien.dev（含設備資訊）",
+                    subtitle: "寄信到 hi@chien.dev 回報任何使用上的問題或建議",
                     trailingText: nil
                 )
             }
