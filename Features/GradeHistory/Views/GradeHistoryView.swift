@@ -307,6 +307,8 @@ struct GradeHistoryView: View {
 
 private struct GradeTrendView: View {
     let points: [GradeHistorySummary.SemesterTrendPoint]
+    private let maxGPA: Double = 4.3
+    private let chartHeight: CGFloat = 120
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -314,17 +316,65 @@ private struct GradeTrendView: View {
                 .font(.system(size: 13, weight: .regular))
                 .foregroundColor(.black.opacity(0.55))
 
-            HStack(alignment: .bottom, spacing: 10) {
-                ForEach(points) { point in
-                    VStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.primary.opacity(0.8))
-                            .frame(width: 18, height: CGFloat(max(0.1, point.gpa / 4.3)) * 70)
-                        Text(point.label)
-                            .font(.system(size: 11, weight: .light))
-                            .foregroundColor(.black.opacity(0.55))
+            GeometryReader { proxy in
+                let width = max(proxy.size.width, 1)
+                let height = max(proxy.size.height, 1)
+                let stepX = points.count > 1 ? width / CGFloat(points.count - 1) : 0
+                let chartPoints = points.enumerated().map { index, point in
+                    let x = CGFloat(index) * stepX
+                    let clamped = max(0, min(maxGPA, point.gpa))
+                    let y = height - CGFloat(clamped / maxGPA) * height
+                    return CGPoint(x: x, y: y)
+                }
+
+                ZStack(alignment: .topLeading) {
+                    Path { path in
+                        let levels: [CGFloat] = [0, 0.5, 1]
+                        for level in levels {
+                            let y = (1 - level) * height
+                            path.move(to: CGPoint(x: 0, y: y))
+                            path.addLine(to: CGPoint(x: width, y: y))
+                        }
                     }
-                    .frame(maxWidth: .infinity)
+                    .stroke(Color.black.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+                    Path { path in
+                        guard let first = chartPoints.first else { return }
+                        path.move(to: first)
+                        for point in chartPoints.dropFirst() {
+                            path.addLine(to: point)
+                        }
+                    }
+                    .stroke(Color.primary.opacity(0.9), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                    ForEach(Array(chartPoints.enumerated()), id: \.offset) { index, point in
+                        Circle()
+                            .fill(Color(.systemBackground))
+                            .frame(width: 10, height: 10)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.primary, lineWidth: 2)
+                            )
+                            .position(point)
+
+                        Text(String(format: "%.2f", points[index].gpa))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.black.opacity(0.55))
+                            .position(x: point.x, y: max(10, point.y - 12))
+                    }
+                }
+            }
+            .frame(height: chartHeight)
+
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(points.indices, id: \.self) { index in
+                    Text(points[index].label)
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundColor(.black.opacity(0.55))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
                 }
             }
             .frame(maxWidth: .infinity)
