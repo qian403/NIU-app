@@ -197,7 +197,7 @@ struct HomeView: View {
 	            .buttonStyle(PlainButtonStyle())
 
 	            // 學年度行事曆
-	            NavigationLink(destination: AcademicCalendarView()) {
+	            NavigationLink(destination: AcademicCalendarPDFView()) {
 	                HStack(spacing: Theme.Spacing.medium) {
                     Image(systemName: "calendar")
                         .font(.system(size: 24, weight: .light))

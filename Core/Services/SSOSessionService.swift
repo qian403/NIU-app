@@ -38,8 +38,18 @@ final class SSOSessionService: ObservableObject {
     private var pendingContinuations: [CheckedContinuation<Bool, Never>] = []
     private var refreshTimeoutTask: Task<Void, Never>?
     private let refreshTimeoutSeconds: UInt64 = 35
-    private let maxRefreshAttempts = 3
-    private let retryBackoffNanoseconds: UInt64 = 1_500_000_000
+    private let maxRefreshAttempts = 1
+    private let retryBackoffNanoseconds: UInt64 = 2_000_000_000
+
+    /// Avoid repeatedly hammering SSO when session is unstable.
+    private var lastRefreshAttemptAt: Date?
+    private var lastRefreshSuccessAt: Date?
+    private var lastRefreshFailureAt: Date?
+    private var consecutiveFailures = 0
+    private let minAttemptGapSeconds: TimeInterval = 8
+    private let successReuseSeconds: TimeInterval = 90
+    private let failureCooldownBaseSeconds: TimeInterval = 45
+    private let failureCooldownMaxSeconds: TimeInterval = 300
 
     private init() {}
 
@@ -56,6 +66,10 @@ final class SSOSessionService: ObservableObject {
         refreshTimeoutTask = nil
         showRefreshWebView = false
         isRefreshing = false
+        consecutiveFailures = 0
+        lastRefreshAttemptAt = nil
+        lastRefreshFailureAt = nil
+        lastRefreshSuccessAt = nil
         drainPending(success: false)
     }
 
@@ -71,6 +85,38 @@ final class SSOSessionService: ObservableObject {
     func requestRefresh() async -> Bool {
         guard autoRefreshEnabled else { return false }
         guard LoginRepository.shared.getSavedCredentials() != nil else { return false }
+
+        let now = Date()
+
+        // If we just refreshed successfully, allow caller to proceed without a new captcha run.
+        if let lastSuccess = lastRefreshSuccessAt,
+           now.timeIntervalSince(lastSuccess) < successReuseSeconds {
+            return true
+        }
+
+        // If refresh is currently running, join existing task queue.
+        if isRefreshing {
+            return await withCheckedContinuation { continuation in
+                pendingContinuations.append(continuation)
+            }
+        }
+
+        // Rate limit refresh trigger frequency.
+        if let lastAttempt = lastRefreshAttemptAt,
+           now.timeIntervalSince(lastAttempt) < minAttemptGapSeconds {
+            return false
+        }
+
+        // On repeated failures, apply exponential cooldown to reduce 429 risk.
+        if let lastFailure = lastRefreshFailureAt {
+            let cooldown = min(
+                failureCooldownBaseSeconds * pow(2.0, Double(max(consecutiveFailures - 1, 0))),
+                failureCooldownMaxSeconds
+            )
+            if now.timeIntervalSince(lastFailure) < cooldown {
+                return false
+            }
+        }
 
         var attempt = 1
         while attempt <= maxRefreshAttempts {
@@ -101,6 +147,7 @@ final class SSOSessionService: ObservableObject {
             }
         }
 
+        lastRefreshAttemptAt = Date()
         refreshAccount = creds.username
         refreshPassword = creds.password
         isRefreshing = true
@@ -129,6 +176,15 @@ final class SSOSessionService: ObservableObject {
             success = false
         }
 
+        if success {
+            lastRefreshSuccessAt = Date()
+            lastRefreshFailureAt = nil
+            consecutiveFailures = 0
+        } else {
+            lastRefreshFailureAt = Date()
+            consecutiveFailures += 1
+        }
+
         drainPending(success: success)
     }
 
@@ -149,6 +205,8 @@ final class SSOSessionService: ObservableObject {
             guard self.isRefreshing else { return }
             self.showRefreshWebView = false
             self.isRefreshing = false
+            self.lastRefreshFailureAt = Date()
+            self.consecutiveFailures += 1
             self.drainPending(success: false)
         }
     }

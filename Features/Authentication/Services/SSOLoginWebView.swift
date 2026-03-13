@@ -121,27 +121,85 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 print("[SSO] 登入成功 → 抓取學生資訊...")
                 let GetStudentInfoJS = """
                 (function() {
-                    var span = document.getElementById('Label1');
-                    if (!span) return JSON.stringify({name: '', department: '', grade: ''});
-                    var text = span.innerText || span.textContent;
+                    function collectText(doc) {
+                        var collected = [];
+                        if (!doc) return collected;
+                        var span = doc.getElementById('Label1');
+                        var textSource = span ? (span.innerText || span.textContent) : '';
+                        if (textSource) collected.push(textSource);
+                        if (doc.body) {
+                            var bodyText = doc.body.innerText || doc.body.textContent || '';
+                            if (bodyText) collected.push(bodyText);
+                        }
+                        return collected;
+                    }
+                
+                    var texts = collectText(document);
+                    if (window.frames && window.frames.length) {
+                        for (var i = 0; i < window.frames.length; i++) {
+                            try {
+                                texts = texts.concat(collectText(window.frames[i].document));
+                            } catch (e) {}
+                        }
+                    }
+                
+                    if (!texts.length) return JSON.stringify({name: '', department: '', grade: ''});
+                    var text = texts.join(' ');
+                    var normalized = text.replace(/\\s+/g, ' ').trim();
+                    if (!normalized) return JSON.stringify({name: '', department: '', grade: ''});
+                    
+                    var name = '';
+                    var department = '';
+                    var grade = '';
+                    
+                    var infoLineMatch = normalized.match(/系所年級[：:]?\\s*([^\\s<]+)\\s*學號[：:]?\\s*[^\\s<]+\\s*姓名[：:]?\\s*([^\\s<]+)/);
+                    if (infoLineMatch) {
+                        department = infoLineMatch[1].trim();
+                        name = infoLineMatch[2].trim();
+                    }
                     
                     // 抓取姓名：XXX
-                    var nameMatch = text.match(/姓名[：:]\\s*([^\\s<]+)/);
-                    var name = nameMatch ? nameMatch[1].trim() : '';
+                    if (!name) {
+                        var nameMatch = normalized.match(/姓名[：:]\\s*([^\\s<]+)/);
+                        name = nameMatch ? nameMatch[1].trim() : '';
+                    }
                     
-                    // 抓取系所：XXX 或 科系：XXX
-                    var deptMatch = text.match(/[系科][所]?[：:]\\s*([^\\s<]+)/);
-                    var department = deptMatch ? deptMatch[1].trim() : '';
+                    // 抓取系所：XXX 或 科系：XXX / 系所年級
+                    if (!department) {
+                        var deptMatch = normalized.match(/(系所年級|系所|科系|學系|學程|研究所|系級|班級)[：:]?\\s*([^\\s<]+)/);
+                        department = deptMatch ? deptMatch[2].trim() : '';
+                    }
                     
-                    // 抓取年級：X年級 或 X級
-                    var gradeMatch = text.match(/(\\d+\\s*年級|\\d+\\s*級)/);
-                    var grade = gradeMatch ? gradeMatch[1].replace(/\\s+/g, '') : '';
-
+                    // 抓取年級：X年級 或 X級 / 年級：X
+                    var gradeLabelMatch = normalized.match(/年級[：:]?\\s*([0-9]+|[一二三四五六七八九十]+)/);
+                    if (gradeLabelMatch) {
+                        grade = gradeLabelMatch[1].trim();
+                        if (grade && grade.indexOf('年級') === -1 && grade.indexOf('級') === -1) {
+                            grade = grade + '年級';
+                        }
+                    }
+                
+                    if (!grade) {
+                        var gradeMatch = normalized.match(/([0-9]+|[一二三四五六七八九十]+)\\s*(年級|級)/);
+                        grade = gradeMatch ? gradeMatch[0].replace(/\\s+/g, '') : '';
+                    }
+                
+                    if (department && !grade) {
+                        var inlineGrade = department.match(/([0-9]+|[一二三四五六七八九十]+)\\s*(年級|級)/);
+                        if (inlineGrade) {
+                            grade = inlineGrade[0].replace(/\\s+/g, '');
+                        }
+                    }
+                
+                    if (department && grade) {
+                        department = department.replace(grade, '').trim();
+                    }
+                
                     // 若沒有明確 "系/科："，嘗試從 "資訊工程學系2年級" 這種連在一起的文字拆解
                     if (!department && grade) {
-                        var gradePos = text.indexOf(gradeMatch ? gradeMatch[1] : '');
+                        var gradePos = normalized.indexOf(grade);
                         if (gradePos > 0) {
-                            var beforeGrade = text.substring(0, gradePos).trim();
+                            var beforeGrade = normalized.substring(0, gradePos).trim();
                             var pieces = beforeGrade.split(/\\s+/);
                             var candidate = pieces.length > 0 ? pieces[pieces.length - 1] : beforeGrade;
                             if (candidate && (candidate.indexOf('系') !== -1 || candidate.indexOf('學程') !== -1 || candidate.indexOf('所') !== -1)) {
@@ -157,23 +215,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     });
                 })();
                 """
-                webView.evaluateJavaScript(GetStudentInfoJS) { result, error in
-                    if let jsonStr = result as? String,
-                       let data = jsonStr.data(using: .utf8),
-                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-                       let name = obj["name"], !name.isEmpty {
-                        let department = obj["department"] ?? ""
-                        let grade = obj["grade"] ?? ""
-                        let info = StudentInfo(name: name, department: department, grade: grade)
-                        print("[SSO] 取得學生資訊: \(name) / \(department) / \(grade)")
-                        self.parent.onResult(.success(info: info))
-                    } else {
-                        print("[SSO] 未取得完整資訊，使用學號作為姓名")
-                        let fallbackInfo = StudentInfo(name: self.parent.account, department: "", grade: "")
-                        self.parent.onResult(.success(info: fallbackInfo))
-                    }
-                    return
-                }
+                fetchStudentInfo(in: webView, javascript: GetStudentInfoJS, attempt: 0)
                 return
             }
 
@@ -249,6 +291,50 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         private func eval(_ webView: WKWebView, _ js: String, _ note: String, completion: @escaping (Any?) -> Void) {
             webView.evaluateJavaScript(js) { result, error in
                 completion(error == nil ? result : nil)
+            }
+        }
+
+        private func fetchStudentInfo(in webView: WKWebView, javascript: String, attempt: Int) {
+            let maxAttempts = 2
+            webView.evaluateJavaScript(javascript) { [weak self] result, error in
+                guard let self else { return }
+                if let jsonStr = result as? String,
+                   let data = jsonStr.data(using: .utf8),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+                   let name = obj["name"], !name.isEmpty {
+                    let department = obj["department"] ?? ""
+                    let grade = obj["grade"] ?? ""
+                    let info = StudentInfo(name: name, department: department, grade: grade)
+                    print("[SSO] 取得學生資訊: \(name) / \(department) / \(grade)")
+                    if !department.isEmpty || !grade.isEmpty {
+                        Task { @MainActor in
+                            self.appState.updateProfileFromSSO(info)
+                        }
+                        self.parent.onResult(.success(info: info))
+                        return
+                    }
+
+                    if attempt < maxAttempts {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            self.fetchStudentInfo(in: webView, javascript: javascript, attempt: attempt + 1)
+                        }
+                        return
+                    }
+
+                    self.parent.onResult(.success(info: info))
+                    return
+                }
+
+                if attempt < maxAttempts {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        self.fetchStudentInfo(in: webView, javascript: javascript, attempt: attempt + 1)
+                    }
+                    return
+                }
+
+                print("[SSO] 未取得完整資訊，使用學號作為姓名")
+                let fallbackInfo = StudentInfo(name: self.parent.account, department: "", grade: "")
+                self.parent.onResult(.success(info: fallbackInfo))
             }
         }
 
