@@ -10,6 +10,7 @@
 		0582D0EB51C8CB4ADCE9A96C /* Features/EventRegistration/Views/AppliedEventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */; };
 		0E182344FA814B44AC09A91F /* academic_calendar.json in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */; };
 		0E182345FA814B44AC09A920 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */; };
+		0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */; };
 		10A32DB12F431F630009BB45 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 10A32DA52F431F630009BB45 /* Assets.xcassets */; };
 		10A32DB22F431F630009BB45 /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DAC2F431F630009BB45 /* View+Extensions.swift */; };
 		10A32DB32F431F630009BB45 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32D962F431F630009BB45 /* RootView.swift */; };
@@ -108,6 +109,7 @@
 		164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Models/EventRegistrationModels.swift; sourceTree = "<group>"; };
 		1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = academic_calendar.json; sourceTree = "<group>"; };
 		1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
+		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/ModifyRegistrationView.swift; sourceTree = "<group>"; };
 		33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift; sourceTree = "<group>"; };
 		3608802AF764CF5B0574526E /* ZuvioLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZuvioLoginWebView.swift; sourceTree = "<group>"; };
@@ -468,6 +470,7 @@
 			children = (
 				8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */,
 				9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */,
+				0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */,
 				4FA77F7A401878E68B8284D4 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift */,
 				33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */,
 				D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */,
@@ -658,6 +661,7 @@
 			files = (
 				79E5A654058A1E7F384DB426 /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift in Sources */,
 				C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */,
+				0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */,
 				2A6F9D26FB8E49BDC6BC0719 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift in Sources */,
 				3D5EA0A44D60577AA027C3F3 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift in Sources */,
 				54315A98B0455F60883B0DF5 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift in Sources */,

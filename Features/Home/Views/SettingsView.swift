@@ -127,7 +127,8 @@ struct SettingsView: View {
                     icon: "arrow.clockwise",
                     title: "重新抓取個人資訊",
                     subtitle: "更新系所、年級與登入狀態",
-                    trailingText: isRefreshingProfile ? "更新中..." : nil
+                    trailingText: isRefreshingProfile ? "更新中..." : nil,
+                    isLoading: isRefreshingProfile
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -261,7 +262,8 @@ struct SettingsView: View {
         icon: String,
         title: String,
         subtitle: String,
-        trailingText: String?
+        trailingText: String?,
+        isLoading: Bool = false
     ) -> some View {
         HStack(spacing: Theme.Spacing.medium) {
             Image(systemName: icon)
@@ -271,6 +273,13 @@ struct SettingsView: View {
                 .background(
                     Circle()
                         .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
+                )
+                .rotationEffect(isLoading ? .degrees(360) : .degrees(0))
+                .animation(
+                    isLoading
+                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                        : .default,
+                    value: isLoading
                 )
 
             VStack(alignment: .leading, spacing: 3) {
@@ -288,6 +297,9 @@ struct SettingsView: View {
                 Text(trailingText)
                     .font(.system(size: 12))
                     .foregroundColor(.primary.opacity(0.45))
+            } else if isLoading {
+                ProgressView()
+                    .scaleEffect(0.85)
             } else {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .light))
@@ -321,8 +333,8 @@ struct SettingsView: View {
             return "-"
         }
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
+        formatter.locale = Locale(identifier: "zh_TW")
+        formatter.dateFormat = "yyyy年MM月dd日 HH:mm"
         return formatter.string(from: date)
     }
 
@@ -350,6 +362,7 @@ struct SettingsView: View {
     private func refreshProfile() async {
         isRefreshingProfile = true
         await appState.refreshProfileIfNeeded(force: true)
+        UserDefaults.standard.set(Date(), forKey: "app.user.loginTime")
         isRefreshingProfile = false
     }
 

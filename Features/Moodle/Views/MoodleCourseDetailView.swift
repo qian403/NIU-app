@@ -166,7 +166,12 @@ struct MoodleCourseDetailView: View {
     
     private var attendanceTab: some View {
         Group {
-            if viewModel.attendanceSections.isEmpty {
+            if viewModel.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage = viewModel.errorMessage, viewModel.attendanceSections.isEmpty {
+                errorView(errorMessage)
+            } else if viewModel.attendanceSections.isEmpty {
                 emptyView("目前沒有出缺席資料")
             } else {
                 ScrollView {
@@ -220,6 +225,8 @@ struct MoodleCourseDetailView: View {
 
 private struct AttendanceSectionCard: View {
     let section: MoodleCourseDetailViewModel.AttendanceSection
+    @State private var expandedMonths: Set<String> = []
+    @State private var showDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -238,24 +245,97 @@ private struct AttendanceSectionCard: View {
                 attendanceMetric("未到", "\(section.absentCount)")
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text("出席率 \(attendanceRateText)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    Text("\(section.presentCount)/\(section.total)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+
+                ProgressView(value: attendanceProgressValue)
+                    .tint(.green)
+                    .progressViewStyle(.linear)
+                    .frame(height: 6)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
+            }
+
+            HStack(spacing: 8) {
+                infoChip("出席率 \(attendanceRateText)")
+                if let latestRecordText {
+                    infoChip("最近點名 \(latestRecordText)")
+                }
+            }
+
             if section.records.isEmpty {
                 Text("目前沒有可顯示的出缺席紀錄")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
             } else {
-                ForEach(section.records.prefix(5)) { record in
-                    HStack {
-                        Text(record.date.formatted(date: .abbreviated, time: .omitted))
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(record.statusLabel)
+                attendanceTimeline
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showDetails.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showDetails ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(showDetails ? "收合明細" : "展開明細 \(section.records.count) 筆")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(record.isPresent ? .green : .red)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background((record.isPresent ? Color.green : Color.red).opacity(0.12))
-                            .cornerRadius(8)
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.primary.opacity(0.06))
+                    .cornerRadius(8)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                if !showDetails {
+                    Text("可先看上方時間軸，需要時再展開明細")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+
+                if showDetails {
+                    ForEach(groupedByMonth, id: \.key) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button {
+                                toggleMonth(group.key)
+                            } label: {
+                                HStack {
+                                    Text(group.title)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.primary)
+
+                                    Text("\(group.records.count) 筆")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+
+                                    Spacer()
+
+                                    Image(systemName: expandedMonths.contains(group.key) ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            if expandedMonths.contains(group.key) {
+                                ForEach(group.records) { record in
+                                    attendanceRecordRow(record)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
                     }
                 }
             }
@@ -266,6 +346,53 @@ private struct AttendanceSectionCard: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
                 .background(RoundedRectangle(cornerRadius: 14).fill(Color(.systemBackground)))
         )
+        .onAppear {
+            guard expandedMonths.isEmpty, let first = groupedByMonth.first else { return }
+            expandedMonths.insert(first.key)
+        }
+    }
+
+    private var attendanceRateText: String {
+        guard section.total > 0 else { return "0%" }
+        let rate = (Double(section.presentCount) / Double(section.total)) * 100
+        return String(format: "%.0f%%", rate)
+    }
+
+    private var attendanceProgressValue: Double {
+        guard section.total > 0 else { return 0 }
+        return Double(section.presentCount) / Double(section.total)
+    }
+
+    private var latestRecordText: String? {
+        section.records.first?.date.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    private var groupedByMonth: [(key: String, title: String, records: [MoodleCourseDetailViewModel.AttendanceRecord])] {
+        let calendar = Calendar(identifier: .gregorian)
+        let grouped = Dictionary(grouping: section.records) { record in
+            let comps = calendar.dateComponents([.year, .month], from: record.date)
+            let year = comps.year ?? 0
+            let month = comps.month ?? 0
+            return String(format: "%04d-%02d", year, month)
+        }
+
+        return grouped
+            .sorted { $0.key > $1.key }
+            .map { key, records in
+                let parts = key.split(separator: "-")
+                let year = parts.first.flatMap { Int($0) } ?? 0
+                let month = parts.dropFirst().first.flatMap { Int($0) } ?? 0
+                let title = "\(year)年\(month)月"
+                return (key: key, title: title, records: records.sorted { $0.date > $1.date })
+            }
+    }
+
+    private func toggleMonth(_ key: String) {
+        if expandedMonths.contains(key) {
+            expandedMonths.remove(key)
+        } else {
+            expandedMonths.insert(key)
+        }
     }
 
     private func attendanceMetric(_ title: String, _ value: String) -> some View {
@@ -276,6 +403,186 @@ private struct AttendanceSectionCard: View {
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func infoChip(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.06))
+            .cornerRadius(8)
+    }
+
+    private var attendanceTimeline: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text("學期出席時間軸")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 104), spacing: 8, alignment: .top)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(timelineEntries) { entry in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(colorForTimeline(entry))
+                                .frame(width: 10, height: 10)
+
+                            Text(entry.statusText)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(entry.isPresent ? .green : .red)
+                        }
+
+                        Text(entry.fullLabel)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if !entry.timeText.isEmpty {
+                            Text(entry.timeText)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.primary.opacity(0.04))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("\(entry.fullLabel) \(entry.timeText) \(entry.statusText)")
+                }
+            }
+
+            HStack(spacing: 12) {
+                heatmapLegend(color: .green.opacity(0.85), text: "有到")
+                heatmapLegend(color: .red.opacity(0.75), text: "未到")
+
+                Spacer()
+            }
+        }
+    }
+
+    private func heatmapLegend(color: Color, text: String) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color)
+                .frame(width: 12, height: 12)
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(Capsule())
+    }
+
+    private var timelineEntries: [AttendanceTimelineEntry] {
+        return section.records
+            .sorted { $0.date < $1.date }
+            .map { record in
+                AttendanceTimelineEntry(
+                    id: record.id,
+                    fullLabel: record.date.formatted(date: .abbreviated, time: .omitted),
+                    timeText: record.timeText,
+                    isPresent: record.isPresent,
+                    statusText: record.statusLabel
+                )
+            }
+    }
+
+    private func colorForTimeline(_ entry: AttendanceTimelineEntry) -> Color {
+        entry.isPresent ? .green.opacity(0.85) : .red.opacity(0.75)
+    }
+
+    private struct AttendanceTimelineEntry: Identifiable {
+        let id: Int
+        let fullLabel: String
+        let timeText: String
+        let isPresent: Bool
+        let statusText: String
+    }
+
+    private func attendanceRecordRow(_ record: MoodleCourseDetailViewModel.AttendanceRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.date.formatted(date: .abbreviated, time: .omitted))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                    Text(record.timeText)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Text(record.statusLabel)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(record.isPresent ? .green : .red)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background((record.isPresent ? Color.green : Color.red).opacity(0.12))
+                    .cornerRadius(8)
+            }
+
+            if let description = record.description, !description.isEmpty {
+                attendanceDetailLine(title: "描述", value: description)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                if let scoreText = record.scoreText, !scoreText.isEmpty {
+                    attendanceDetailLine(title: "分數", value: scoreText)
+                }
+
+                if let remarks = record.remarks, !remarks.isEmpty {
+                    attendanceDetailLine(title: "備註", value: remarks)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    private func attendanceDetailLine(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundColor(.primary.opacity(0.8))
+                .multilineTextAlignment(.leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -773,9 +1080,9 @@ private struct MoodlePageContentView: View {
         do {
             let pages = try await MoodleService.shared.fetchPages(courseId: courseId)
             let matched =
-                pages.first(where: { $0.id == module.instance }) ??
-                pages.first(where: { $0.coursemodule == module.id }) ??
-                pages.first(where: { $0.name == module.name })
+                pages.first(where: { page in page.id == module.instance }) ??
+                pages.first(where: { page in page.coursemodule == module.id }) ??
+                pages.first(where: { page in page.name == module.name })
 
             let html = (matched?.content ?? matched?.intro ?? "")
             let parsed = parseHTMLContent(html)
@@ -851,6 +1158,7 @@ private struct MoodleAttendanceModuleDetailView: View {
     @State private var total: Int = 0
     @State private var presentCount: Int = 0
     @State private var absentCount: Int = 0
+    @State private var expandedMonths: Set<String> = []
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -887,21 +1195,56 @@ private struct MoodleAttendanceModuleDetailView: View {
                             metric("未到", "\(absentCount)")
                         }
 
-                        ForEach(records) { record in
-                            HStack {
-                                Text(record.date.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.system(size: 13))
+                        HStack(spacing: 8) {
+                            Text("出席率 \(attendanceRateText)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.primary.opacity(0.06))
+                                .cornerRadius(8)
+
+                            if let latestRecordText {
+                                Text("最近點名 \(latestRecordText)")
+                                    .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(.secondary)
-                                Spacer()
-                                Text(record.statusLabel)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(record.isPresent ? .green : .red)
-                                    .padding(.horizontal, 10)
+                                    .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background((record.isPresent ? Color.green : Color.red).opacity(0.12))
+                                    .background(Color.primary.opacity(0.06))
                                     .cornerRadius(8)
                             }
-                            Divider()
+                        }
+
+                        ForEach(groupedByMonth, id: \.key) { group in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Button {
+                                    toggleMonth(group.key)
+                                } label: {
+                                    HStack {
+                                        Text(group.title)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(.primary)
+
+                                        Text("\(group.records.count) 筆")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+
+                                        Spacer()
+
+                                        Image(systemName: expandedMonths.contains(group.key) ? "chevron.up" : "chevron.down")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .buttonStyle(PlainButtonStyle())
+
+                                if expandedMonths.contains(group.key) {
+                                    ForEach(group.records) { record in
+                                        attendanceRecordRow(record)
+                                        Divider()
+                                    }
+                                }
+                            }
                         }
                     }
                     .padding(Theme.Spacing.medium)
@@ -914,6 +1257,48 @@ private struct MoodleAttendanceModuleDetailView: View {
         .navigationTitle(module.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadAttendance() }
+        .onAppear {
+            guard expandedMonths.isEmpty, let first = groupedByMonth.first else { return }
+            expandedMonths.insert(first.key)
+        }
+    }
+
+    private var attendanceRateText: String {
+        guard total > 0 else { return "0%" }
+        let rate = (Double(presentCount) / Double(total)) * 100
+        return String(format: "%.0f%%", rate)
+    }
+
+    private var latestRecordText: String? {
+        records.first?.date.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    private var groupedByMonth: [(key: String, title: String, records: [MoodleCourseDetailViewModel.AttendanceRecord])] {
+        let calendar = Calendar(identifier: .gregorian)
+        let grouped = Dictionary(grouping: records) { record in
+            let comps = calendar.dateComponents([.year, .month], from: record.date)
+            let year = comps.year ?? 0
+            let month = comps.month ?? 0
+            return String(format: "%04d-%02d", year, month)
+        }
+
+        return grouped
+            .sorted { $0.key > $1.key }
+            .map { key, value in
+                let parts = key.split(separator: "-")
+                let year = parts.first.flatMap { Int($0) } ?? 0
+                let month = parts.dropFirst().first.flatMap { Int($0) } ?? 0
+                let title = "\(year)年\(month)月"
+                return (key: key, title: title, records: value.sorted { $0.date > $1.date })
+            }
+    }
+
+    private func toggleMonth(_ key: String) {
+        if expandedMonths.contains(key) {
+            expandedMonths.remove(key)
+        } else {
+            expandedMonths.insert(key)
+        }
     }
 
     private func metric(_ title: String, _ value: String) -> some View {
@@ -929,38 +1314,42 @@ private struct MoodleAttendanceModuleDetailView: View {
     }
 
     private func loadAttendance() async {
-        let attendanceId: Int?
-        if let presetAttendanceId {
-            attendanceId = presetAttendanceId
+        let attendanceId: Int? = if let presetAttendanceId {
+            presetAttendanceId
         } else if let instanceId = module.instance {
-            attendanceId = instanceId
+            instanceId
         } else {
-            attendanceId = try? await resolveAttendanceIdFromCourseModule()
+            try? await resolveAttendanceIdFromCourseModule()
         }
-        guard let attendanceId else {
+
+        guard attendanceId != nil || courseModuleId != nil else {
             errorMessage = "無法識別出缺席資料"
             isLoading = false
             return
         }
+
         do {
-            let resp = try await MoodleService.shared.fetchAttendanceUserSessions(attendanceId: attendanceId)
-            let statusMap = Dictionary(uniqueKeysWithValues: resp.statuses.map { ($0.id, $0) })
-            let mapped = resp.sessions
-                .sorted(by: { $0.sessdate > $1.sessdate })
-                .map { session -> MoodleCourseDetailViewModel.AttendanceRecord in
-                    let status = session.statusid.flatMap { statusMap[$0] }
-                    let label = (status?.acronym?.isEmpty == false ? status?.acronym : status?.description) ?? "未簽到"
-                    let present = (status?.grade ?? 0) > 0
-                    return MoodleCourseDetailViewModel.AttendanceRecord(
-                        id: session.id,
-                        date: Date(timeIntervalSince1970: TimeInterval(session.sessdate)),
-                        statusLabel: label,
-                        isPresent: present
-                    )
-                }
+            let htmlResult = try await MoodleService.shared.fetchAttendanceFromHTML(
+                attendanceId: attendanceId,
+                courseModuleId: courseModuleId
+            )
+
+            let mapped = htmlResult.records.map { record in
+                MoodleCourseDetailViewModel.AttendanceRecord(
+                    id: record.id,
+                    date: record.date,
+                    timeText: record.timeText,
+                    description: record.description,
+                    statusLabel: record.statusLabel,
+                    scoreText: record.scoreText,
+                    remarks: record.remarks,
+                    isPresent: record.isPresent
+                )
+            }
+
             records = mapped
-            total = mapped.count
-            presentCount = mapped.filter(\.isPresent).count
+            total = htmlResult.total
+            presentCount = mapped.filter { $0.isPresent }.count
             absentCount = max(total - presentCount, 0)
         } catch {
             errorMessage = "出缺席資料載入失敗：\(error.localizedDescription)"
@@ -971,5 +1360,58 @@ private struct MoodleAttendanceModuleDetailView: View {
     private func resolveAttendanceIdFromCourseModule() async throws -> Int? {
         guard let cmid = courseModuleId else { return nil }
         return try await MoodleService.shared.resolveAttendanceInstanceId(courseModuleId: cmid)
+    }
+
+    private func attendanceDetailLine(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundColor(.primary.opacity(0.8))
+                .multilineTextAlignment(.leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func attendanceRecordRow(_ record: MoodleCourseDetailViewModel.AttendanceRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.date.formatted(date: .abbreviated, time: .omitted))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                    Text(record.timeText)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Text(record.statusLabel)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(record.isPresent ? .green : .red)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background((record.isPresent ? Color.green : Color.red).opacity(0.12))
+                    .cornerRadius(8)
+            }
+
+            if let description = record.description, !description.isEmpty {
+                attendanceDetailLine(title: "描述", value: description)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                if let scoreText = record.scoreText, !scoreText.isEmpty {
+                    attendanceDetailLine(title: "分數", value: scoreText)
+                }
+
+                if let remarks = record.remarks, !remarks.isEmpty {
+                    attendanceDetailLine(title: "備註", value: remarks)
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 }

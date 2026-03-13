@@ -16,7 +16,11 @@ final class MoodleCourseDetailViewModel: ObservableObject {
     struct AttendanceRecord: Identifiable {
         let id: Int
         let date: Date
+        let timeText: String
+        let description: String?
         let statusLabel: String
+        let scoreText: String?
+        let remarks: String?
         let isPresent: Bool
     }
     
@@ -161,51 +165,45 @@ final class MoodleCourseDetailViewModel: ObservableObject {
         var items: [AttendanceSection] = []
         for section in allSections {
             for module in section.modules where module.modname == "attendance" {
-                guard let attendanceId = module.instance else { continue }
                 do {
-                    let resp = try await service.fetchAttendanceUserSessions(attendanceId: attendanceId)
-                    let statusMap = Dictionary(uniqueKeysWithValues: resp.statuses.map { ($0.id, $0) })
-                    let records = resp.sessions
-                        .sorted(by: { $0.sessdate > $1.sessdate })
-                        .map { session -> AttendanceRecord in
-                            let status = session.statusid.flatMap { statusMap[$0] }
-                            let label = (status?.acronym?.isEmpty == false ? status?.acronym : status?.description) ?? "未簽到"
-                            let present = (status?.grade ?? 0) > 0
-                            return AttendanceRecord(
-                                id: session.id,
-                                date: Date(timeIntervalSince1970: TimeInterval(session.sessdate)),
-                                statusLabel: label,
-                                isPresent: present
-                            )
-                        }
-                    let presentCount = records.filter(\.isPresent).count
-                    let absentCount = max(records.count - presentCount, 0)
+                    let htmlResult = try await service.fetchAttendanceFromHTML(
+                        attendanceId: module.instance,
+                        courseModuleId: module.id
+                    )
+                    let records = htmlResult.records.map { record in
+                        AttendanceRecord(
+                            id: record.id,
+                            date: record.date,
+                            timeText: record.timeText,
+                            description: record.description,
+                            statusLabel: record.statusLabel,
+                            scoreText: record.scoreText,
+                            remarks: record.remarks,
+                            isPresent: record.isPresent
+                        )
+                    }
+                    let presentCount = records.filter { $0.isPresent }.count
+                    let absentCount = max(htmlResult.total - presentCount, 0)
                     items.append(
                         AttendanceSection(
                             id: module.id,
                             sectionName: section.name,
                             moduleName: module.name,
                             records: records,
-                            total: records.count,
+                            total: htmlResult.total,
                             presentCount: presentCount,
                             absentCount: absentCount
                         )
                     )
                 } catch {
-                    // Keep UI resilient even when a course has incomplete attendance permission/data.
-                    items.append(
-                        AttendanceSection(
-                            id: module.id,
-                            sectionName: section.name,
-                            moduleName: module.name,
-                            records: [],
-                            total: 0,
-                            presentCount: 0,
-                            absentCount: 0
-                        )
-                    )
+                    // Keep UI resilient but avoid masking auth/parser failures as "0 records".
+                    print("[Moodle][Attendance] load failed for module=\(module.id): \(error)")
                 }
             }
+        }
+
+        if items.isEmpty {
+            throw MoodleError.apiError("出缺席資料載入失敗（尚未取得有效資料）")
         }
         attendanceSections = items
     }

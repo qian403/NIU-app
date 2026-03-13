@@ -224,6 +224,7 @@ struct MoodleAttendanceSession: Codable, Identifiable {
     let sessdate: Int
     let description: String?
     let statusid: Int?
+    let remarks: String?
 }
 
 struct MoodleAttendanceStatus: Codable {
@@ -231,6 +232,25 @@ struct MoodleAttendanceStatus: Codable {
     let acronym: String?
     let description: String?
     let grade: Double?
+}
+
+struct MoodleAttendanceHTMLResult {
+    let records: [MoodleAttendanceHTMLRecord]
+    let total: Int
+    let presentCount: Int
+    let absentCount: Int
+    let percentageText: String?
+}
+
+struct MoodleAttendanceHTMLRecord: Identifiable {
+    let id: Int
+    let date: Date
+    let timeText: String
+    let description: String?
+    let statusLabel: String
+    let scoreText: String?
+    let remarks: String?
+    let isPresent: Bool
 }
 
 // MARK: - Forum

@@ -138,6 +138,161 @@ final class MoodleService {
         )
     }
 
+    func fetchAttendanceFromHTML(attendanceId: Int? = nil, courseModuleId: Int? = nil) async throws -> MoodleAttendanceHTMLResult {
+        guard attendanceId != nil || courseModuleId != nil else {
+            throw MoodleError.invalidURL
+        }
+
+        guard let targetURL = buildAttendanceViewURL(attendanceId: attendanceId, courseModuleId: courseModuleId) else {
+            throw MoodleError.invalidURL
+        }
+
+        await syncWebKitCookiesToSharedStorage()
+        await establishEUNISessionViaSSO()
+
+        // Prefer Moodle mobile autologin first for attendance pages.
+        // This is the most reliable way to ensure we land on a real Moodle page
+        // instead of an expired web session that redirects to login.
+        if let autoURL = try? await autologinURL(for: targetURL.absoluteString),
+           let autoPage = try? await loadEUNIHTMLPage(url: autoURL, allowSilentRefresh: false),
+           !looksLikeLoginPage(html: autoPage.html, finalURL: autoPage.finalURL) {
+            return try await resolveBestAttendanceResult(from: autoPage, fallbackURL: targetURL)
+        }
+
+        // Fast path fallback: if current shared cookies are still valid, direct load is enough.
+        if let directPage = try? await loadEUNIHTMLPage(url: targetURL, allowSilentRefresh: false),
+           !looksLikeLoginPage(html: directPage.html, finalURL: directPage.finalURL) {
+            return try await resolveBestAttendanceResult(from: directPage, fallbackURL: targetURL)
+        }
+
+        // Retry autologin once more after establishing web session, in case token/cookies just synced.
+        if let autoURL = try? await autologinURL(for: targetURL.absoluteString),
+           let autoPage = try? await loadEUNIHTMLPage(url: autoURL, allowSilentRefresh: true),
+           !looksLikeLoginPage(html: autoPage.html, finalURL: autoPage.finalURL) {
+            return try await resolveBestAttendanceResult(from: autoPage, fallbackURL: targetURL)
+        }
+
+        // Last fallback: allow silent refresh when session has definitely expired.
+        let page = try await loadEUNIHTMLPage(url: targetURL, allowSilentRefresh: true)
+        return try await resolveBestAttendanceResult(from: page, fallbackURL: targetURL)
+    }
+
+    private func resolveBestAttendanceResult(
+        from firstPage: (html: String, finalURL: URL?),
+        fallbackURL: URL
+    ) async throws -> MoodleAttendanceHTMLResult {
+        var bestResult = parseAttendanceHTML(firstPage.html)
+        let baseURL = firstPage.finalURL ?? fallbackURL
+        let candidateURLs = attendanceAllSessionsCandidates(from: firstPage.html, baseURL: baseURL)
+
+        // Keep extra probing bounded for performance, but cover known full-data variants.
+        for url in candidateURLs.prefix(4) {
+            guard let altPage = try? await loadEUNIHTMLPage(url: url, allowSilentRefresh: false),
+                  !looksLikeLoginPage(html: altPage.html, finalURL: altPage.finalURL) else {
+                continue
+            }
+
+            let altResult = parseAttendanceHTML(altPage.html)
+            if isAttendanceResult(altResult, betterThan: bestResult) {
+                bestResult = altResult
+            }
+        }
+
+        return bestResult
+    }
+
+    private func isAttendanceResult(_ lhs: MoodleAttendanceHTMLResult, betterThan rhs: MoodleAttendanceHTMLResult) -> Bool {
+        if lhs.records.count != rhs.records.count {
+            return lhs.records.count > rhs.records.count
+        }
+        if lhs.total != rhs.total {
+            return lhs.total > rhs.total
+        }
+        let lhsEarliest = lhs.records.map(\.date).min() ?? .distantFuture
+        let rhsEarliest = rhs.records.map(\.date).min() ?? .distantFuture
+        return lhsEarliest < rhsEarliest
+    }
+
+    private func attendanceAllSessionsCandidates(from html: String, baseURL: URL) -> [URL] {
+        var urls: [URL] = []
+
+        // 1) Extract explicit links whose label suggests "all sessions".
+        let anchorRegex = try? NSRegularExpression(
+            pattern: "<a[^>]*href=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</a>",
+            options: [.caseInsensitive]
+        )
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let matches = anchorRegex?.matches(in: html, options: [], range: range) ?? []
+        let keywordRegex = try? NSRegularExpression(
+            pattern: "過去全部|全部|所有課程|所有|all\\s*courses?|all",
+            options: [.caseInsensitive]
+        )
+
+        for match in matches where match.numberOfRanges >= 3 {
+            guard let hrefRange = Range(match.range(at: 1), in: html),
+                  let textRange = Range(match.range(at: 2), in: html) else {
+                continue
+            }
+            let href = String(html[hrefRange]).htmlDecoded
+            let text = sanitizeAttendanceText(String(html[textRange])) ?? ""
+            let textNSRange = NSRange(text.startIndex..<text.endIndex, in: text)
+            let hasKeyword = keywordRegex?.firstMatch(in: text, options: [], range: textNSRange) != nil
+            guard hasKeyword, href.contains("/mod/attendance/view.php") else { continue }
+            if let resolved = URL(string: href, relativeTo: baseURL)?.absoluteURL {
+                urls.append(resolved)
+            }
+        }
+
+        // 2) Heuristic fallback: try known filter parameters on current URL.
+        if let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) {
+            var queryItems = components.queryItems ?? []
+            let existingNames = Set(queryItems.map { $0.name.lowercased() })
+
+            func appendingQueryItems(_ appended: [URLQueryItem]) {
+                var c = components
+                var merged = queryItems
+                let existing = Set(merged.map { $0.name.lowercased() })
+                for item in appended where !existing.contains(item.name.lowercased()) {
+                    merged.append(item)
+                }
+                c.queryItems = merged
+                if let u = c.url { urls.append(u) }
+            }
+
+            // Prefer same-course attendance views; do not prioritize mode=2 because it can
+            // switch into cross-course summaries instead of the course attendance table.
+            appendingQueryItems([URLQueryItem(name: "view", value: "4")])
+            appendingQueryItems([URLQueryItem(name: "view", value: "5")])
+            appendingQueryItems([URLQueryItem(name: "sesscourses", value: "all")])
+            appendingQueryItems([
+                URLQueryItem(name: "sesscourses", value: "all"),
+                URLQueryItem(name: "view", value: "4")
+            ])
+            appendingQueryItems([
+                URLQueryItem(name: "sesscourses", value: "all"),
+                URLQueryItem(name: "view", value: "5")
+            ])
+
+            if !existingNames.contains("view") {
+                appendingQueryItems([URLQueryItem(name: "view", value: "all")])
+            }
+            if !existingNames.contains("perpage") {
+                appendingQueryItems([URLQueryItem(name: "perpage", value: "500")])
+            }
+            if !existingNames.contains("status") {
+                appendingQueryItems([URLQueryItem(name: "status", value: "all")])
+            }
+            if !existingNames.contains("showall") {
+                appendingQueryItems([URLQueryItem(name: "showall", value: "1")])
+            }
+
+            queryItems.removeAll(keepingCapacity: true)
+        }
+
+        var seen = Set<String>()
+        return urls.filter { seen.insert($0.absoluteString).inserted }
+    }
+
     /// Resolve attendance instance id from a course module id (cmid).
     /// Useful when module list points to `/mod/attendance/view.php?id=CMID` via URL modules.
     func resolveAttendanceInstanceId(courseModuleId: Int) async throws -> Int? {
@@ -700,6 +855,288 @@ final class MoodleService {
         for cookie in cookies {
             storage.setCookie(cookie)
         }
+    }
+
+    private func buildAttendanceViewURL(attendanceId: Int?, courseModuleId: Int?) -> URL? {
+        if let cmid = courseModuleId {
+            return URL(string: "\(baseURL)/mod/attendance/view.php?id=\(cmid)")
+        }
+        if let attendanceId {
+            return URL(string: "\(baseURL)/mod/attendance/view.php?id=\(attendanceId)")
+        }
+        return nil
+    }
+
+    private func loadEUNIHTMLPage(url: URL, allowSilentRefresh: Bool) async throws -> (html: String, finalURL: URL?) {
+        func loadHTML(_ url: URL) async throws -> (html: String, finalURL: URL?) {
+            await syncWebKitCookiesToSharedStorage()
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 12
+            applyMoodleMobileHeaders(to: &request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                throw MoodleError.serverError
+            }
+            return (String(data: data, encoding: .utf8) ?? "", http.url)
+        }
+
+        var page = try await loadHTML(url)
+        guard allowSilentRefresh else { return page }
+
+        if looksLikeLoginPage(html: page.html, finalURL: page.finalURL) {
+            let refreshed = await SSOSessionService.shared.requestRefresh()
+            if refreshed {
+                await establishEUNISessionViaSSO()
+                page = try await loadHTML(url)
+            }
+        }
+
+        // If it is still a login page after refresh attempts, treat as a real auth failure.
+        if looksLikeLoginPage(html: page.html, finalURL: page.finalURL) {
+            throw MoodleError.notAuthenticated
+        }
+
+        return page
+    }
+
+    private func looksLikeLoginPage(html: String, finalURL: URL?) -> Bool {
+        let url = finalURL?.absoluteString.lowercased() ?? ""
+        if url.contains("/login/index.php") || url.contains("/sso/default.aspx") {
+            return true
+        }
+        let lower = html.lowercased()
+        if lower.contains("name=\"username\"") && lower.contains("name=\"password\"") {
+            return true
+        }
+        if lower.contains("id=\"login\"") && lower.contains("login/index.php") {
+            return true
+        }
+        return false
+    }
+
+    private func parseAttendanceHTML(_ html: String) -> MoodleAttendanceHTMLResult {
+        let tableRegex = try? NSRegularExpression(
+            pattern: "(<table[^>]*>[\\s\\S]*?</table>)",
+            options: [.caseInsensitive]
+        )
+        let allTables = captureGroups(in: html, regex: tableRegex)
+
+        let candidateTables = allTables.filter { table in
+            let lower = table.lowercased()
+            guard !lower.contains("class=\"attlist") else { return false }
+            let hasHeaderSet = ["日期", "描述", "狀態", "分數", "備註"].allSatisfy { table.contains($0) }
+            return hasHeaderSet || lower.contains("datecol") || lower.contains("statuscol")
+        }
+
+        let parseTargets = candidateTables.isEmpty ? [html] : candidateTables
+        var parsedCandidates = parseTargets.map { parseAttendanceRecords(from: $0) }
+        parsedCandidates.append(parseAttendanceRecords(from: html))
+
+        let records = parsedCandidates.max(by: { lhs, rhs in
+            if lhs.count != rhs.count { return lhs.count < rhs.count }
+            let lhsEarliest = lhs.map(\.date).min() ?? .distantFuture
+            let rhsEarliest = rhs.map(\.date).min() ?? .distantFuture
+            return lhsEarliest > rhsEarliest
+        }) ?? []
+
+        let statsRowsRegex = try? NSRegularExpression(
+            pattern: "<table[^>]*class=\"[^\"]*attlist[^\"]*\"[^>]*>[\\s\\S]*?</table>",
+            options: [.caseInsensitive]
+        )
+        let statsTable = firstMatch(in: html, regex: statsRowsRegex)
+        let totalText = extractStatValue(from: statsTable, keyContains: "已記錄的上課時段")
+        let percentText = extractStatValue(from: statsTable, keyContains: "出席次數百分比")
+        let parsedTotal = Int((totalText ?? "").replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression))
+        let total = parsedTotal ?? records.count
+        let presentCount = records.filter { $0.isPresent }.count
+        let absentCount = max(total - presentCount, 0)
+
+        return MoodleAttendanceHTMLResult(
+            records: records,
+            total: total,
+            presentCount: presentCount,
+            absentCount: absentCount,
+            percentageText: percentText
+        )
+    }
+
+    private func parseAttendanceRecords(from tableHTML: String) -> [MoodleAttendanceHTMLRecord] {
+        let rowRegex = try? NSRegularExpression(
+            pattern: "<tr[^>]*>([\\s\\S]*?)</tr>",
+            options: [.caseInsensitive]
+        )
+        let rows = captureGroups(in: tableHTML, regex: rowRegex)
+
+        var records: [MoodleAttendanceHTMLRecord] = []
+        var runningId = 1
+
+        for row in rows {
+            let lowerRow = row.lowercased()
+            guard lowerRow.contains("<td") else { continue }
+
+            let cells = extractTableCells(row)
+            let dateCell = extractTableCell(row, classHint: "datecol")
+            let descCell = extractTableCell(row, classHint: "desccol")
+            let statusCell = extractTableCell(row, classHint: "statuscol")
+            let pointsCell = extractTableCell(row, classHint: "pointscol")
+            let remarksCell = extractTableCell(row, classHint: "remarkscol")
+
+            let mergedDateCell = !dateCell.isEmpty ? dateCell : (cells.indices.contains(0) ? cells[0] : "")
+            let mergedDescCell = !descCell.isEmpty ? descCell : (cells.indices.contains(1) ? cells[1] : "")
+            let mergedStatusCell = !statusCell.isEmpty ? statusCell : (cells.indices.contains(2) ? cells[2] : "")
+            let mergedPointsCell = !pointsCell.isEmpty ? pointsCell : (cells.indices.contains(3) ? cells[3] : "")
+            let mergedRemarksCell = !remarksCell.isEmpty ? remarksCell : (cells.indices.contains(4) ? cells[4] : "")
+
+            let dateTime = parseAttendanceDateTime(raw: mergedDateCell)
+            let statusLabel = sanitizeAttendanceText(mergedStatusCell) ?? "未簽到"
+            let scoreText = sanitizeAttendanceText(mergedPointsCell)
+            let description = sanitizeAttendanceText(mergedDescCell)
+            let remarks = sanitizeAttendanceText(mergedRemarksCell)
+
+            let hasDate = dateTime.date.timeIntervalSince1970 > 0
+            let hasMeaningfulStatus = !statusLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if !hasDate || !hasMeaningfulStatus {
+                continue
+            }
+
+            let isPresent = inferAttendancePresence(from: statusLabel)
+
+            records.append(
+                MoodleAttendanceHTMLRecord(
+                    id: runningId,
+                    date: dateTime.date,
+                    timeText: dateTime.timeText,
+                    description: description,
+                    statusLabel: statusLabel,
+                    scoreText: scoreText,
+                    remarks: remarks,
+                    isPresent: isPresent
+                )
+            )
+            runningId += 1
+        }
+
+        return records
+    }
+
+    private func extractTableCell(_ rowHTML: String, classHint: String) -> String {
+        let pattern = "<td[^>]*class=\"[^\"]*\(NSRegularExpression.escapedPattern(for: classHint))[^\"]*\"[^>]*>([\\s\\S]*?)</td>"
+        let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        if let raw = firstCapturedValue(in: rowHTML, regex: regex) {
+            return raw
+        }
+
+        return ""
+    }
+
+    private func extractTableCells(_ rowHTML: String) -> [String] {
+        let regex = try? NSRegularExpression(
+            pattern: "<td[^>]*>([\\s\\S]*?)</td>",
+            options: [.caseInsensitive]
+        )
+        return captureGroups(in: rowHTML, regex: regex)
+    }
+
+    private func extractStatValue(from tableHTML: String?, keyContains: String) -> String? {
+        guard let tableHTML else { return nil }
+        let rowRegex = try? NSRegularExpression(pattern: "<tr[^>]*>([\\s\\S]*?)</tr>", options: [.caseInsensitive])
+        let rows = captureGroups(in: tableHTML, regex: rowRegex)
+
+        for row in rows {
+            let cellsRegex = try? NSRegularExpression(pattern: "<td[^>]*>([\\s\\S]*?)</td>", options: [.caseInsensitive])
+            let cells = captureGroups(in: row, regex: cellsRegex)
+            guard cells.count >= 2 else { continue }
+
+            let key = sanitizeAttendanceText(cells[0]) ?? ""
+            if key.contains(keyContains) {
+                return sanitizeAttendanceText(cells[1])
+            }
+        }
+
+        return nil
+    }
+
+    private func parseAttendanceDateTime(raw: String) -> (date: Date, timeText: String) {
+        let plain = sanitizeAttendanceText(raw) ?? ""
+        let normalized = plain
+            .replacingOccurrences(of: "[\u{00A0}\u{2000}-\u{200B}]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let datePattern = "(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日"
+        let regex = try? NSRegularExpression(pattern: datePattern)
+
+        if let regex,
+           let match = regex.firstMatch(in: normalized, range: NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)),
+           match.numberOfRanges >= 4,
+           let yRange = Range(match.range(at: 1), in: normalized),
+           let mRange = Range(match.range(at: 2), in: normalized),
+           let dRange = Range(match.range(at: 3), in: normalized),
+           let y = Int(normalized[yRange]), let m = Int(normalized[mRange]), let d = Int(normalized[dRange]) {
+            var comp = DateComponents()
+            comp.calendar = Calendar(identifier: .gregorian)
+            comp.year = y
+            comp.month = m
+            comp.day = d
+            let date = comp.date ?? Date(timeIntervalSince1970: 0)
+
+            let timeText = normalized.replacingOccurrences(of: datePattern, with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\\(週.\\)", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            return (date, timeText)
+        }
+
+        return (Date(timeIntervalSince1970: 0), normalized)
+    }
+
+    private func inferAttendancePresence(from statusLabel: String) -> Bool {
+        let s = statusLabel.lowercased()
+        if s.contains("出席") || s == "p" { return true }
+        if s.contains("未到") || s.contains("缺席") || s.contains("曠課") || s == "a" { return false }
+        if s.contains("遲到") || s.contains("late") || s == "l" { return true }
+        if s.contains("請假") || s.contains("leave") || s == "e" { return true }
+        return false
+    }
+
+    private func sanitizeAttendanceText(_ raw: String?) -> String? {
+        guard var text = raw, !text.isEmpty else { return nil }
+        text = text.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: "</p>", with: "\n", options: [.caseInsensitive])
+        text = text.replacingOccurrences(of: "</nobr>", with: " ", options: [.caseInsensitive])
+        text = text.replacingOccurrences(of: "<nobr[^>]*>", with: "", options: [.caseInsensitive, .regularExpression])
+        text = text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        text = text.htmlDecoded
+        text = text.replacingOccurrences(of: "\\n{2,}", with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: "[ \t]{2,}", with: " ", options: .regularExpression)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func firstMatch(in text: String, regex: NSRegularExpression?) -> String? {
+        guard let regex else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              let r = Range(match.range, in: text) else {
+            return nil
+        }
+        return String(text[r])
+    }
+
+    private func captureGroups(in text: String, regex: NSRegularExpression?) -> [String] {
+        guard let regex else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.matches(in: text, options: [], range: range).compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let r = Range(match.range(at: 1), in: text) else {
+                return nil
+            }
+            return String(text[r])
+        }
+    }
+
+    private func firstCapturedValue(in text: String, regex: NSRegularExpression?) -> String? {
+        captureGroups(in: text, regex: regex).first
     }
 
     private func uploadAssignmentFileViaCoreFiles(
