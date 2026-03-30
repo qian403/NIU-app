@@ -32,9 +32,8 @@ struct EventRegistrationView: View {
         .navigationTitle("活動報名")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            // 頁面一開啟就嘗試預先登入，避免後續操作遇到 Session 過期
+            // 頁面一開啟先預熱 Tab1；Tab2 改為切換進去時再自行啟動，避免背景失敗狀態被帶到前景
             tab1ViewModel.prewarmLoginIfNeeded()
-            tab2ViewModel.prewarmLoginIfNeeded()
         }
     }
 }

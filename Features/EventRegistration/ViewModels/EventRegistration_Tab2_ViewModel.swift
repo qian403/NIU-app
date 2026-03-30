@@ -35,55 +35,94 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     // WebView
     private var webView: WKWebView?
     private var navigationDelegate: NavigationDelegate?
+    private var notificationObservers: [NSObjectProtocol] = []
     
     // 登入狀態追蹤
     private var loginAttemptCount = 0
     private let maxLoginAttempts = 2
     private let loginRequesterID = UUID().uuidString
     private var hasInitialized = false
+    private var isSubmittingLogin = false
+    private var loginSubmitTimestamp: Date?
+    private var loginFieldRetryCount = 0
+    private var loginPageReloadCount = 0
+    private var emptyLoginDOMCount = 0
+    private var loginRecoveryWorkItem: DispatchWorkItem?
+    private let maxLoginFieldRetries = 3
+    private let maxLoginPageReloads = 2
+    private let maxEmptyLoginDOMBeforeRecreate = 2
+    private let loginSubmitCooldown: TimeInterval = 1.5
 
-    private func escapeForSingleQuotedJavaScript(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
-            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
-    }
-    
     // JavaScript 抓取已報名活動列表
     private let jsGetData: String = """
         (function() { 
             var data = []; 
-            var count = document.querySelector('.col-md-11.col-md-offset-1.col-sm-10.col-xs-12.col-xs-offset-0').querySelectorAll('.row.enr-list-sec').length;
+            var container = document.querySelector('.col-md-11.col-md-offset-1.col-sm-10.col-xs-12.col-xs-offset-0') || document;
+            var rows = container.querySelectorAll('.row.enr-list-sec');
+            var rowStates = document.querySelectorAll('.row.bg-warning');
+            var count = rows.length;
             for(let i=0; i<count; i++) {
-                let row = document.querySelectorAll('.row.enr-list-sec')[i];
-                let row_state = document.querySelectorAll('.row.bg-warning')[i];
+                let row = rows[i];
+                let row_state = rowStates[i];
                 let dialog = row.querySelector('.table');
-                let name = row.querySelector('h3').innerText.trim();
-                let department = row.querySelector('.col-sm-3.text-center.enr-list-dep-nam.hidden-xs').title.split('：')[1].trim();
-                let state = row_state.querySelector('.text-danger.text-shadow').innerText.split('：')[1].trim();
-                let event_state = row.querySelector('.btn.btn-danger').innerText.trim();
-                let eventSerialID = row.querySelector('p').innerText.split('：')[1].split(' ')[0].trim();
-                let eventTime = row.querySelector('.fa-calendar').parentElement.innerText.replace(/\\s+/g,'').replace('~','起\\n')+'止'.trim();
-                let eventLocation = row.querySelector('.fa-map-marker').parentElement.innerText.trim();
-                let eventDetail = dialog.querySelectorAll('tr')[3].querySelectorAll('td')[1]
-                    .innerHTML
-                    .replace(/<br\\s*\\/?>/gi, '\\n')
-                    .replace(/&nbsp;/gi, ' ')
-                    .replace(/<[^>]*>/g, '')
-                    .replace('\"','')
-                    .trim();
-                let contactInfoText = dialog.querySelectorAll('tr')[5].querySelectorAll('td')[1].innerHTML;
-                let contactInfos = contactInfoText.split('<br>').map(function(info) {
+                if (!row || !dialog) { continue; }
+                let name = row.querySelector('h3') ? row.querySelector('h3').innerText.trim() : '';
+                let departmentNode = row.querySelector('.col-sm-3.text-center.enr-list-dep-nam.hidden-xs');
+                let department = departmentNode && departmentNode.title
+                    ? (departmentNode.title.includes('：')
+                        ? ((departmentNode.title.split('：')[1] || '').trim())
+                        : (departmentNode.title.includes(':')
+                            ? departmentNode.title.split(':')[1].trim()
+                            : departmentNode.title.trim()))
+                    : '';
+                let stateNode = row_state ? row_state.querySelector('.text-danger.text-shadow') : null;
+                let state = stateNode
+                    ? (stateNode.innerText.includes('：')
+                        ? ((stateNode.innerText.split('：')[1] || '').trim())
+                        : (stateNode.innerText.includes(':')
+                            ? stateNode.innerText.split(':')[1].trim()
+                            : stateNode.innerText.trim()))
+                    : '';
+                let eventStateNode = row.querySelector('.btn.btn-danger');
+                let event_state = eventStateNode ? eventStateNode.innerText.trim() : '';
+                let eventSerialID = row.querySelector('p')
+                    ? ((row.querySelector('p').innerText.includes('：')
+                        ? (row.querySelector('p').innerText.split('：')[1] || '')
+                        : (row.querySelector('p').innerText.includes(':')
+                            ? row.querySelector('p').innerText.split(':')[1]
+                            : row.querySelector('p').innerText))
+                        .split(' ')[0].trim())
+                    : '';
+                let eventTime = row.querySelector('.fa-calendar') ? row.querySelector('.fa-calendar').parentElement.innerText.replace(/\\s+/g,'').replace('~','起\\n')+'止'.trim() : '';
+                let eventLocation = row.querySelector('.fa-map-marker') ? row.querySelector('.fa-map-marker').parentElement.innerText.trim() : '';
+                let eventDetail = dialog.querySelectorAll('tr')[3] && dialog.querySelectorAll('tr')[3].querySelectorAll('td')[1]
+                    ? dialog.querySelectorAll('tr')[3].querySelectorAll('td')[1]
+                        .innerHTML
+                        .replace(/<br\\s*\\/?>/gi, '\\n')
+                        .replace(/&nbsp;/gi, ' ')
+                        .replace(/<[^>]*>/g, '')
+                        .replace('"','')
+                        .trim()
+                    : '';
+                let contactInfoText = dialog.querySelectorAll('tr')[5] && dialog.querySelectorAll('tr')[5].querySelectorAll('td')[1]
+                    ? dialog.querySelectorAll('tr')[5].querySelectorAll('td')[1].innerHTML
+                    : '';
+                let contactInfos = contactInfoText ? contactInfoText.split('<br>').map(function(info) {
                     return info.replace(/<[^>]*>/g,'').trim();
-                });
-                let Related_links = dialog.querySelectorAll('tr')[6].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').trim();
-                let Remark = dialog.querySelectorAll('tr')[7].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('\"','').trim();
-                let Multi_factor_authentication = dialog.querySelectorAll('tr')[8].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('\"','').trim();
-                let eventRegisterTime = dialog.querySelectorAll('tr')[9].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('~','~\\n').trim();
-                data[i] = {name, department, state, event_state, eventSerialID, eventTime, eventLocation, eventDetail, contactInfoName: contactInfos[0], contactInfoTel: contactInfos[1], contactInfoMail: contactInfos[2], Related_links, Remark, Multi_factor_authentication, eventRegisterTime};
+                }) : ['', '', ''];
+                let Related_links = dialog.querySelectorAll('tr')[6] && dialog.querySelectorAll('tr')[6].querySelectorAll('td')[1]
+                    ? dialog.querySelectorAll('tr')[6].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').trim()
+                    : '';
+                let Remark = dialog.querySelectorAll('tr')[7] && dialog.querySelectorAll('tr')[7].querySelectorAll('td')[1]
+                    ? dialog.querySelectorAll('tr')[7].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('"','').trim()
+                    : '';
+                let Multi_factor_authentication = dialog.querySelectorAll('tr')[8] && dialog.querySelectorAll('tr')[8].querySelectorAll('td')[1]
+                    ? dialog.querySelectorAll('tr')[8].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('"','').trim()
+                    : '';
+                let eventRegisterTime = dialog.querySelectorAll('tr')[9] && dialog.querySelectorAll('tr')[9].querySelectorAll('td')[1]
+                    ? dialog.querySelectorAll('tr')[9].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('~','~\\n').trim()
+                    : '';
+                data[i] = {name, department, state, event_state, eventSerialID, eventTime, eventLocation, eventDetail, contactInfoName: contactInfos[0] || '', contactInfoTel: contactInfos[1] || '', contactInfoMail: contactInfos[2] || '', Related_links, Remark, Multi_factor_authentication, eventRegisterTime};
             }
             return JSON.stringify(data);
         })();
@@ -95,7 +134,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
         // 不要立即登入，等到 View 出現時再檢查
         
         // 監聽報名相關通知
-        NotificationCenter.default.addObserver(
+        let submitObserver = NotificationCenter.default.addObserver(
             forName: .didSubmitEventRegistration,
             object: nil,
             queue: .main
@@ -105,8 +144,9 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 self.loadEventList()
             }
         }
+        notificationObservers.append(submitObserver)
         
-        NotificationCenter.default.addObserver(
+        let changeObserver = NotificationCenter.default.addObserver(
             forName: .didChangeEventRegistration,
             object: nil,
             queue: .main
@@ -116,11 +156,20 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 self.loadEventList()
             }
         }
+        notificationObservers.append(changeObserver)
     }
     
     /// 當 Tab2 View 出現時調用此方法
     func onViewAppear() {
-        prewarmLoginIfNeeded()
+        if !hasInitialized {
+            prewarmLoginIfNeeded()
+            return
+        }
+
+        // 若背景預熱期間失敗，切到本分頁時要主動重試，避免卡在舊狀態
+        if events.isEmpty || isOverlayVisible {
+            loadEventList()
+        }
     }
 
     /// 供外部在頁面剛開啟時先行觸發登入，避免切換到本分頁時才發現登入過期
@@ -132,7 +181,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     }
     
     deinit {
-        NotificationCenter.default.removeObserver(self)
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        notificationObservers.removeAll()
     }
     
     private func setupWebView() {
@@ -147,27 +197,87 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
         webView?.navigationDelegate = navigationDelegate
     }
     
+    private func escapeForSingleQuotedJavaScript(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+    }
+
     func startLogin() {
         isOverlayVisible = true
         overlayText = "載入中"
         loginAttemptCount = 0
-        
-        // 直接訪問已報名列表頁面，如果未登入會自動重定向到登入頁
-        if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act/ApplyMe") {
-            let request = URLRequest(url: url)
-            webView?.load(request)
-        }
+        resetLoginProgress()
+        navigateToApplyMe()
     }
-    
+
     func loadEventList() {
         isOverlayVisible = true
         overlayText = "載入中"
-        loginAttemptCount = 0  // 重置登入狀態，允許重新登入
-        
-        if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act/ApplyMe") {
-            let request = URLRequest(url: url)
-            webView?.load(request)
+        loginAttemptCount = 0
+        resetLoginProgress()
+        navigateToApplyMe()
+    }
+
+    private func resetLoginProgress() {
+        loginRecoveryWorkItem?.cancel()
+        loginRecoveryWorkItem = nil
+        isSubmittingLogin = false
+        loginSubmitTimestamp = nil
+        loginFieldRetryCount = 0
+        loginPageReloadCount = 0
+        emptyLoginDOMCount = 0
+    }
+
+    private func scheduleLoginRecoveryIfNeeded() {
+        guard isSubmittingLogin else { return }
+        loginRecoveryWorkItem?.cancel()
+
+        let elapsed: TimeInterval
+        if let submitTime = loginSubmitTimestamp {
+            elapsed = Date().timeIntervalSince(submitTime)
+        } else {
+            elapsed = 0
         }
+
+        let waitTime = max(0.2, loginSubmitCooldown - elapsed + 0.1)
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.loginRecoveryWorkItem = nil
+            guard self.isSubmittingLogin else { return }
+            guard let currentURL = self.webView?.url?.absoluteString,
+                  currentURL.contains("/MvcTeam/Account/Login") else {
+                return
+            }
+
+            print("[EventRegistration Tab2] 登入提交後仍停留登入頁，觸發恢復流程")
+            self.isSubmittingLogin = false
+            self.checkLoginError()
+        }
+
+        loginRecoveryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + waitTime, execute: workItem)
+    }
+
+    private func navigateToApplyMe() {
+        if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act/ApplyMe") {
+            webView?.load(URLRequest(url: url))
+        }
+    }
+
+    private func loadCanonicalLoginPage() {
+        if let loginURL = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Account/Login?ReturnUrl=%2FMvcTeam%2FAct%2FApplyMe") {
+            webView?.load(URLRequest(url: loginURL))
+        }
+    }
+
+    private func recreateWebViewForLoginRecovery() {
+        print("[EventRegistration Tab2] 偵測到空白登入 DOM，重建 WebView 後重試")
+        setupWebView()
     }
     
     // 手動刷新
@@ -304,30 +414,40 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     
     private func handlePageFinished(url: String) {
         print("[EventRegistration Tab2] 頁面載入完成: \(url)")
-        
+
         if url.contains("/MvcTeam/Account/Login") {
-            // 被重定向到登入頁面，表示未登入，執行登入
             overlayText = "正在登入"
+            if isSubmittingLogin,
+               let submitTime = loginSubmitTimestamp,
+               Date().timeIntervalSince(submitTime) < loginSubmitCooldown {
+                print("[EventRegistration Tab2] 登入提交等待跳轉中，略過重入")
+                scheduleLoginRecoveryIfNeeded()
+                return
+            }
+            if isSubmittingLogin {
+                print("[EventRegistration Tab2] 登入提交逾時仍在登入頁，重置提交狀態")
+                isSubmittingLogin = false
+            }
             checkLoginError()
         } else if url.contains("/MvcTeam/Act/ApplyMe") {
-            // 已報名列表頁面載入完成（可能是已登入直接顯示，或登入後跳轉）
-            if loginAttemptCount > 0 {
-                // 只有在曾經執行登入時才通知，避免無意義喚醒
-                EventRegistrationWebViewManager.shared.notifyLoginCompleted()
-            }
-            loginAttemptCount = 0  // 重置登入狀態
+            EventRegistrationWebViewManager.shared.completeLoginIfNeeded(requesterID: loginRequesterID)
+            loginAttemptCount = 0
+            resetLoginProgress()
             refresh()
+        } else if url.contains("/MvcTeam/Act") {
+            // redirect 到 /MvcTeam/Act，導向已報名列表
+            navigateToApplyMe()
         }
     }
-    
+
     private func checkLoginError() {
         webView?.evaluateJavaScript("document.body.innerText") { [weak self] result, error in
             guard let self = self else { return }
-            
+
             if let bodyText = result as? String {
-                // 檢查是否有錯誤訊息
                 if bodyText.contains("帳號或密碼錯誤") || bodyText.contains("登入失敗") {
                     Task { @MainActor in
+                        self.isSubmittingLogin = false
                         self.isOverlayVisible = false
                         self.toastMessage = "帳號或密碼錯誤"
                         self.showToast = true
@@ -335,19 +455,17 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                     return
                 }
             }
-            
-            // 檢查是否已達登入重試上限，避免無限循環
+
             if self.loginAttemptCount >= self.maxLoginAttempts {
-                print("[EventRegistration Tab2] 已達登入重試上限，停止重試")
                 Task { @MainActor in
+                    self.isSubmittingLogin = false
                     self.isOverlayVisible = false
                     self.toastMessage = "登入失敗，請檢查帳號密碼"
                     self.showToast = true
                 }
                 return
             }
-            
-            // 沒有錯誤，請求登入
+
             EventRegistrationWebViewManager.shared.requestLogin(requesterID: self.loginRequesterID) { [weak self] in
                 Task { @MainActor in
                     guard let self = self else { return }
@@ -355,69 +473,174 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                     self.performEventSystemLogin()
                 }
             } waitCompletion: { [weak self] in
-                // 其他 tab 登入完成，直接重新加載頁面
                 Task { @MainActor in
                     guard let self = self else { return }
                     print("[EventRegistration Tab2] 其他 tab 已完成登入，重新加載頁面")
                     self.loginAttemptCount = 0
-                    if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act/ApplyMe") {
-                        let request = URLRequest(url: url)
-                        self.webView?.load(request)
-                    }
+                    self.resetLoginProgress()
+                    self.navigateToApplyMe()
                 }
             }
         }
     }
-    
+
     private func performEventSystemLogin() {
-        // 從 LoginRepository 取得帳號密碼
+        guard !isSubmittingLogin else {
+            print("[EventRegistration Tab2] 登入提交進行中，略過重複提交")
+            return
+        }
+
         guard let credentials = LoginRepository.shared.getSavedCredentials() else {
             isOverlayVisible = false
             toastMessage = "無法取得登入資訊"
             showToast = true
             return
         }
-        
+
         overlayText = "正在登入活動系統"
         let escapedUsername = escapeForSingleQuotedJavaScript(credentials.username)
         let escapedPassword = escapeForSingleQuotedJavaScript(credentials.password)
-        
-        // 延遲確保頁面載入完成
+        isSubmittingLogin = true
+        loginSubmitTimestamp = Date()
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self else { return }
-            
-            // 填入帳號密碼並提交
+
             let loginScript = """
             (function() {
-                var usernameField = document.querySelector('input[name="Account"]') || document.getElementById('Account');
-                var passwordField = document.querySelector('input[name="Password"]') || document.getElementById('Password');
-                
-                if (usernameField && passwordField) {
-                    usernameField.value = '\(escapedUsername)';
-                    passwordField.value = '\(escapedPassword)';
-                    
-                    // 找到表單並提交
-                    var form = usernameField.closest('form');
-                    if (form) {
-                        form.submit();
-                        return 'submitted';
-                    }
+                if (window.location.href.indexOf('/MvcTeam/Account/Login') === -1) {
+                    return 'not_login_page';
                 }
-                return 'failed';
+
+                function pick(selectors) {
+                    for (var i = 0; i < selectors.length; i++) {
+                        var el = document.querySelector(selectors[i]);
+                        if (el) { return el; }
+                    }
+                    return null;
+                }
+
+                var usernameField = pick([
+                    'input[name="Account"]',
+                    '#Account',
+                    'input[id*="Account"]',
+                    'input[name*="account" i]',
+                    'input[type="text"]',
+                    'input[type="email"]'
+                ]);
+                var passwordField = pick([
+                    'input[name="Password"]',
+                    '#Password',
+                    'input[id*="Password"]',
+                    'input[name*="password" i]',
+                    'input[type="password"]'
+                ]);
+
+                if (!usernameField || !passwordField) {
+                    var pwdCount = document.querySelectorAll('input[type="password"]').length;
+                    var inputCount = document.querySelectorAll('input').length;
+                    var formCount = document.querySelectorAll('form').length;
+                    return 'missing_fields|ready=' + document.readyState + '|forms=' + formCount + '|inputs=' + inputCount + '|pwd=' + pwdCount + '|url=' + window.location.href;
+                }
+
+                usernameField.focus();
+                usernameField.value = '\(escapedUsername)';
+                usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+                usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+
+                passwordField.focus();
+                passwordField.value = '\(escapedPassword)';
+                passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+                passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+
+                var form = usernameField.closest('form') || passwordField.closest('form') || document.querySelector('form');
+                if (form) {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                    return 'submitted';
+                }
+
+                var submitBtn = pick([
+                    'button[type="submit"]',
+                    'input[type="submit"]',
+                    'button.btn-primary',
+                    'button'
+                ]);
+                if (submitBtn) {
+                    submitBtn.click();
+                    return 'submitted';
+                }
+
+                return 'missing_submit';
             })();
             """
-            
+
             self.webView?.evaluateJavaScript(loginScript) { result, error in
                 Task { @MainActor in
                     if let resultString = result as? String {
                         print("[EventRegistration Tab2] 登入提交結果: \(resultString)")
-                        if resultString == "failed" {
-                            self.isOverlayVisible = false
-                            self.toastMessage = "登入頁面載入失敗"
-                            self.showToast = true
+
+                        let isMissingFields = resultString.hasPrefix("missing_fields")
+                        let isMissingSubmit = resultString.hasPrefix("missing_submit")
+
+                        switch resultString {
+                        case "submitted":
+                            self.loginFieldRetryCount = 0
+                            self.loginPageReloadCount = 0
+                            self.emptyLoginDOMCount = 0
+                            self.scheduleLoginRecoveryIfNeeded()
+
+                        case let value where isMissingFields || isMissingSubmit:
+                            self.isSubmittingLogin = false
+                            if isMissingFields,
+                               value.contains("|forms=0|"),
+                               value.contains("|inputs=0|") {
+                                self.emptyLoginDOMCount += 1
+                                if self.emptyLoginDOMCount >= self.maxEmptyLoginDOMBeforeRecreate {
+                                    self.emptyLoginDOMCount = 0
+                                    self.loginFieldRetryCount = 0
+                                    self.recreateWebViewForLoginRecovery()
+                                    self.loadCanonicalLoginPage()
+                                    return
+                                }
+                            } else {
+                                self.emptyLoginDOMCount = 0
+                            }
+
+                            if self.loginFieldRetryCount < self.maxLoginFieldRetries {
+                                self.loginFieldRetryCount += 1
+                                if isMissingFields {
+                                    print("[EventRegistration Tab2] 登入欄位未就緒詳情: \(value)")
+                                }
+                                print("[EventRegistration Tab2] 登入欄位未就緒，等待重試 (\(self.loginFieldRetryCount)/\(self.maxLoginFieldRetries))")
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                    self.performEventSystemLogin()
+                                }
+                            } else if self.loginPageReloadCount < self.maxLoginPageReloads {
+                                self.loginPageReloadCount += 1
+                                self.loginFieldRetryCount = 0
+                                print("[EventRegistration Tab2] 登入頁疑似未完整載入，重新載入固定登入頁 (\(self.loginPageReloadCount)/\(self.maxLoginPageReloads))")
+                                self.loadCanonicalLoginPage()
+                            } else {
+                                self.isOverlayVisible = false
+                                self.toastMessage = "登入頁面載入失敗"
+                                self.showToast = true
+                            }
+
+                        case "not_login_page":
+                            self.isSubmittingLogin = false
+                            self.navigateToApplyMe()
+
+                        default:
+                            self.isSubmittingLogin = false
+                            self.loadCanonicalLoginPage()
                         }
                     } else if let error = error {
                         print("[EventRegistration Tab2] 登入錯誤: \(error)")
+                        self.isSubmittingLogin = false
                         self.isOverlayVisible = false
                         self.toastMessage = "登入失敗"
                         self.showToast = true
@@ -426,7 +649,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
             }
         }
     }
-    
+
     // MARK: - 取消報名
     func cancelRegistration(eventID: String) {
         isOverlayVisible = true

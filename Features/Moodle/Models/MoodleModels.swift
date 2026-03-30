@@ -449,6 +449,46 @@ struct MoodleGradeItem: Codable, Identifiable {
     }
 }
 
+// MARK: - Notifications
+struct MoodlePopupNotification: Identifiable {
+    let id: Int
+    let subject: String
+    let message: String
+    let timeCreated: Date?
+    let timeCreatedPretty: String?
+    let contextURL: String?
+    let component: String?
+    let isRead: Bool
+
+    var title: String {
+        let text = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "M 園區通知" : text
+    }
+
+    var plainMessage: String {
+        let text = message
+            .htmlDecoded
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "（無內容）" : text
+    }
+
+    var timeText: String {
+        let pretty = timeCreatedPretty?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !pretty.isEmpty { return pretty }
+        if let timeCreated {
+            return Self.relativeFormatter.localizedString(for: timeCreated, relativeTo: Date())
+        }
+        return ""
+    }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+}
+
 // MARK: - HTML Decode Helper
 extension String {
     var htmlDecoded: String {

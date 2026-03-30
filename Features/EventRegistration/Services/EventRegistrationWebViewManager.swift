@@ -30,23 +30,30 @@ final class EventRegistrationWebViewManager {
         if isLoggingIn {
             // 同一個 tab 在登入流程中再次回到登入頁，允許直接重試，避免把自己鎖死在等待佇列
             if activeLoginRequesterID == requesterID {
-                print("[EventRegistration] 同一個 tab 重新嘗試登入")
+                print("[EventRegistration] 同一個 tab 重新嘗試登入 requester=\(requesterID)")
                 loginAction()
                 return
             }
 
             // 已經有其他 Tab 在登入，等待完成後執行 waitCompletion
-            print("[EventRegistration] 已有其他 tab 在登入，等待完成")
+            print("[EventRegistration] 已有其他 tab 在登入，等待完成 requester=\(requesterID), active=\(activeLoginRequesterID ?? "nil")")
             loginCompletionHandlers.append(waitCompletion)
         } else {
             // 開始登入
-            print("[EventRegistration] 開始執行登入")
+            print("[EventRegistration] 開始執行登入 requester=\(requesterID)")
             isLoggingIn = true
             activeLoginRequesterID = requesterID
             loginAction()
         }
     }
     
+    /// 只要任一 tab 已到達可視為登入成功的頁面，就可結束登入鎖，避免跨 tab 卡死
+    func completeLoginIfNeeded(requesterID: String) {
+        guard isLoggingIn else { return }
+        print("[EventRegistration] 收到登入完成訊號 requester=\(requesterID), active=\(activeLoginRequesterID ?? "nil")")
+        notifyLoginCompleted()
+    }
+
     /// 通知登入完成
     func notifyLoginCompleted() {
         print("[EventRegistration] 登入完成，通知其他等待的 tab")

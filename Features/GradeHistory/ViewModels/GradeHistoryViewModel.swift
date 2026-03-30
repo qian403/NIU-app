@@ -23,9 +23,10 @@ final class GradeHistoryViewModel: ObservableObject {
     @Published var selectedMode: GradeQueryMode = .history
     @Published var semesters: [SemesterGrade] = []
     @Published var termSnapshot: TermScoreSnapshot?
-    @Published var selectedCategory: CourseCategory = .all
+    @Published var selectedSemesterID: String? = nil
     @Published var expandedSemesters: Set<String> = []
     @Published var showWebView = false
+    @Published var isModeLoading = false
 
     private var sessionRefreshAttempted = false
     private var termCache: [GradeQueryMode: CachedTermEntry] = [:]
@@ -37,13 +38,16 @@ final class GradeHistoryViewModel: ObservableObject {
     // MARK: - Derived data
 
     var displayedSemesters: [SemesterGrade] {
-        semesters
-            .map { $0.filtered(by: selectedCategory) }
-            .filter { selectedCategory == .all || !$0.courses.isEmpty }
-            .sorted { lhs, rhs in
-                if lhs.year == rhs.year { return lhs.term.order > rhs.term.order }
-                return lhs.year > rhs.year
-            }
+        let filtered: [SemesterGrade]
+        if let id = selectedSemesterID {
+            filtered = semesters.filter { $0.id == id }
+        } else {
+            filtered = semesters
+        }
+        return filtered.sorted { lhs, rhs in
+            if lhs.year == rhs.year { return lhs.term.order > rhs.term.order }
+            return lhs.year > rhs.year
+        }
     }
 
     var summary: GradeHistorySummary {
@@ -153,7 +157,12 @@ final class GradeHistoryViewModel: ObservableObject {
                     }
                     return
             }
-            loadState = .loading
+            let alreadyLoaded = loadState == .loaded
+            if alreadyLoaded {
+                isModeLoading = true
+            } else {
+                loadState = .loading
+            }
             showWebView = true
             return
         }
@@ -167,12 +176,18 @@ final class GradeHistoryViewModel: ObservableObject {
             return
         }
 
-        loadState = .loading
+        let alreadyLoaded = loadState == .loaded
+        if alreadyLoaded {
+            isModeLoading = true
+        } else {
+            loadState = .loading
+        }
         showWebView = true
     }
 
     func handleWebResult(_ result: GradeHistoryWebResult) {
         showWebView = false
+        isModeLoading = false
 
         switch result {
         case .historySuccess(let fetchedSemesters):

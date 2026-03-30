@@ -643,7 +643,7 @@ private struct SettingsPrivacyPolicyView: View {
 
                 Text("一、重要聲明：非官方性質")
                     .font(.system(size: 17, weight: .semibold))
-                Text("本 App 為個人開發之第三方校務系統輔助工具，與「國立宜蘭大學 (NIU)」官方並無任何隸屬、合作或授權關係。本 App 僅作為存取校務系統之第三方介面（套皮工具），旨在優化使用者之操作體驗。")
+                Text("本 App 為個人開發之第三方校務輔助工具，與「國立宜蘭大學 (NIU)」官方並無任何隸屬、合作或授權關係。本 App 透過原生介面整合校務入口，提供課表/成績查詢、Moodle 整合、活動報名、行事曆匯出與通知管理等功能，以提升行動端使用體驗。")
 
                 Text("二、帳號登入與個人資料處理")
                     .font(.system(size: 17, weight: .semibold))

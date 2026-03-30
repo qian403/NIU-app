@@ -35,12 +35,23 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
     // WebView
     private var webView: WKWebView?
     private var navigationDelegate: NavigationDelegate?
+    private var notificationObservers: [NSObjectProtocol] = []
     
     // 登入狀態追蹤
     private var loginAttemptCount = 0
     private let maxLoginAttempts = 2
     private let loginRequesterID = UUID().uuidString
     private var hasInitialized = false
+    private var isSubmittingLogin = false
+    private var loginSubmitTimestamp: Date?
+    private var loginFieldRetryCount = 0
+    private var loginPageReloadCount = 0
+    private var emptyLoginDOMCount = 0
+    private var loginRecoveryWorkItem: DispatchWorkItem?
+    private let maxLoginFieldRetries = 3
+    private let maxLoginPageReloads = 2
+    private let maxEmptyLoginDOMBeforeRecreate = 2
+    private let loginSubmitCooldown: TimeInterval = 1.5
     
     // SSO ID
     private var ssoID: String = ""
@@ -101,7 +112,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
         // 不要立即登入，等到 View 出現時再檢查
         
         // 監聽報名相關通知
-        NotificationCenter.default.addObserver(
+        let submitObserver = NotificationCenter.default.addObserver(
             forName: .didSubmitEventRegistration,
             object: nil,
             queue: .main
@@ -111,8 +122,9 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                 self.loadEventList()
             }
         }
+        notificationObservers.append(submitObserver)
         
-        NotificationCenter.default.addObserver(
+        let changeObserver = NotificationCenter.default.addObserver(
             forName: .didChangeEventRegistration,
             object: nil,
             queue: .main
@@ -122,10 +134,12 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                 self.loadEventList()
             }
         }
+        notificationObservers.append(changeObserver)
     }
     
     deinit {
-        NotificationCenter.default.removeObserver(self)
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        notificationObservers.removeAll()
     }
     
     /// 當 Tab1 View 出現時調用此方法
@@ -157,6 +171,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
         isOverlayVisible = true
         overlayText = "載入中"
         loginAttemptCount = 0
+        resetLoginProgress()
         
         // 直接訪問活動列表頁面，如果未登入會自動重定向到登入頁
         if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act") {
@@ -169,11 +184,63 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
         isOverlayVisible = true
         overlayText = "載入中"
         loginAttemptCount = 0  // 重置登入狀態，允許重新登入
+        resetLoginProgress()
         
         if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act") {
             let request = URLRequest(url: url)
             webView?.load(request)
         }
+    }
+
+    private func resetLoginProgress() {
+        loginRecoveryWorkItem?.cancel()
+        loginRecoveryWorkItem = nil
+        isSubmittingLogin = false
+        loginSubmitTimestamp = nil
+        loginFieldRetryCount = 0
+        loginPageReloadCount = 0
+        emptyLoginDOMCount = 0
+    }
+
+    private func loadCanonicalLoginPage() {
+        if let loginURL = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Account/Login?ReturnUrl=%2FMvcTeam%2FAct") {
+            webView?.load(URLRequest(url: loginURL))
+        }
+    }
+
+    private func recreateWebViewForLoginRecovery() {
+        print("[EventRegistration] 偵測到空白登入 DOM，重建 WebView 後重試")
+        setupWebView()
+    }
+
+    private func scheduleLoginRecoveryIfNeeded() {
+        guard isSubmittingLogin else { return }
+        loginRecoveryWorkItem?.cancel()
+
+        let elapsed: TimeInterval
+        if let submitTime = loginSubmitTimestamp {
+            elapsed = Date().timeIntervalSince(submitTime)
+        } else {
+            elapsed = 0
+        }
+
+        let waitTime = max(0.2, loginSubmitCooldown - elapsed + 0.1)
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.loginRecoveryWorkItem = nil
+            guard self.isSubmittingLogin else { return }
+            guard let currentURL = self.webView?.url?.absoluteString,
+                  currentURL.contains("/MvcTeam/Account/Login") else {
+                return
+            }
+
+            print("[EventRegistration] 登入提交後仍停留登入頁，觸發恢復流程")
+            self.isSubmittingLogin = false
+            self.checkLoginError()
+        }
+
+        loginRecoveryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + waitTime, execute: workItem)
     }
     
     // 手動刷新
@@ -314,14 +381,23 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
         if url.contains("/MvcTeam/Account/Login") {
             // 被重定向到登入頁面，表示未登入，執行登入
             overlayText = "正在登入"
+            if isSubmittingLogin,
+               let submitTime = loginSubmitTimestamp,
+               Date().timeIntervalSince(submitTime) < loginSubmitCooldown {
+                print("[EventRegistration] 登入提交等待跳轉中，略過重入")
+                scheduleLoginRecoveryIfNeeded()
+                return
+            }
+            if isSubmittingLogin {
+                print("[EventRegistration] 登入提交逾時仍在登入頁，重置提交狀態")
+                isSubmittingLogin = false
+            }
             checkLoginError()
         } else if url.contains("/MvcTeam/Act") && !url.contains("/Apply/") {
             // 活動列表頁面載入完成（可能是已登入直接顯示，或登入後跳轉）
-            if loginAttemptCount > 0 {
-                // 只有在曾經執行登入時才通知，避免無意義喚醒
-                EventRegistrationWebViewManager.shared.notifyLoginCompleted()
-            }
+            EventRegistrationWebViewManager.shared.completeLoginIfNeeded(requesterID: loginRequesterID)
             loginAttemptCount = 0  // 重置登入狀態
+            resetLoginProgress()
             refresh()
         } else if url.contains("/Apply/") && isPostHandled {
             // 報名頁面載入完成，執行報名
@@ -337,6 +413,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                 // 檢查是否有錯誤訊息
                 if bodyText.contains("帳號或密碼錯誤") || bodyText.contains("登入失敗") {
                     Task { @MainActor in
+                        self.isSubmittingLogin = false
                         self.isOverlayVisible = false
                         self.toastMessage = "帳號或密碼錯誤"
                         self.showToast = true
@@ -349,6 +426,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
             if self.loginAttemptCount >= self.maxLoginAttempts {
                 print("[EventRegistration] 已達登入重試上限，停止重試")
                 Task { @MainActor in
+                    self.isSubmittingLogin = false
                     self.isOverlayVisible = false
                     self.toastMessage = "登入失敗，請檢查帳號密碼"
                     self.showToast = true
@@ -369,6 +447,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                     guard let self = self else { return }
                     print("[EventRegistration] 其他 tab 已完成登入，重新加載頁面")
                     self.loginAttemptCount = 0
+                    self.resetLoginProgress()
                     if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act") {
                         let request = URLRequest(url: url)
                         self.webView?.load(request)
@@ -379,6 +458,11 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
     }
     
     private func performEventSystemLogin() {
+        guard !isSubmittingLogin else {
+            print("[EventRegistration] 登入提交進行中，略過重複提交")
+            return
+        }
+
         // 從 LoginRepository 取得帳號密碼
         guard let credentials = LoginRepository.shared.getSavedCredentials() else {
             isOverlayVisible = false
@@ -390,6 +474,8 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
         overlayText = "正在登入活動系統"
         let escapedUsername = escapeForSingleQuotedJavaScript(credentials.username)
         let escapedPassword = escapeForSingleQuotedJavaScript(credentials.password)
+        isSubmittingLogin = true
+        loginSubmitTimestamp = Date()
         
         // 延遲確保頁面載入完成
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -398,21 +484,73 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
             // 填入帳號密碼並提交
             let loginScript = """
             (function() {
-                var usernameField = document.querySelector('input[name="Account"]') || document.getElementById('Account');
-                var passwordField = document.querySelector('input[name="Password"]') || document.getElementById('Password');
-                
-                if (usernameField && passwordField) {
-                    usernameField.value = '\(escapedUsername)';
-                    passwordField.value = '\(escapedPassword)';
-                    
-                    // 找到表單並提交
-                    var form = usernameField.closest('form');
-                    if (form) {
-                        form.submit();
-                        return 'submitted';
-                    }
+                if (window.location.href.indexOf('/MvcTeam/Account/Login') === -1) {
+                    return 'not_login_page';
                 }
-                return 'failed';
+
+                function pick(selectors) {
+                    for (var i = 0; i < selectors.length; i++) {
+                        var el = document.querySelector(selectors[i]);
+                        if (el) { return el; }
+                    }
+                    return null;
+                }
+
+                var usernameField = pick([
+                    'input[name="Account"]',
+                    '#Account',
+                    'input[id*="Account"]',
+                    'input[name*="account" i]',
+                    'input[type="text"]',
+                    'input[type="email"]'
+                ]);
+                var passwordField = pick([
+                    'input[name="Password"]',
+                    '#Password',
+                    'input[id*="Password"]',
+                    'input[name*="password" i]',
+                    'input[type="password"]'
+                ]);
+
+                if (!usernameField || !passwordField) {
+                    var pwdCount = document.querySelectorAll('input[type="password"]').length;
+                    var inputCount = document.querySelectorAll('input').length;
+                    var formCount = document.querySelectorAll('form').length;
+                    return 'missing_fields|ready=' + document.readyState + '|forms=' + formCount + '|inputs=' + inputCount + '|pwd=' + pwdCount + '|url=' + window.location.href;
+                }
+
+                usernameField.focus();
+                usernameField.value = '\(escapedUsername)';
+                usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+                usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+
+                passwordField.focus();
+                passwordField.value = '\(escapedPassword)';
+                passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+                passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+
+                var form = usernameField.closest('form') || passwordField.closest('form') || document.querySelector('form');
+                if (form) {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                    return 'submitted';
+                }
+
+                var submitBtn = pick([
+                    'button[type="submit"]',
+                    'input[type="submit"]',
+                    'button.btn-primary',
+                    'button'
+                ]);
+                if (submitBtn) {
+                    submitBtn.click();
+                    return 'submitted';
+                }
+
+                return 'missing_submit';
             })();
             """
             
@@ -420,13 +558,67 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                 Task { @MainActor in
                     if let resultString = result as? String {
                         print("[EventRegistration] 登入提交結果: \(resultString)")
-                        if resultString == "failed" {
-                            self.isOverlayVisible = false
-                            self.toastMessage = "登入頁面載入失敗"
-                            self.showToast = true
+
+                        let isMissingFields = resultString.hasPrefix("missing_fields")
+                        let isMissingSubmit = resultString.hasPrefix("missing_submit")
+
+                        switch resultString {
+                        case "submitted":
+                            self.loginFieldRetryCount = 0
+                            self.loginPageReloadCount = 0
+                            self.emptyLoginDOMCount = 0
+                            self.scheduleLoginRecoveryIfNeeded()
+
+                        case let value where isMissingFields || isMissingSubmit:
+                            self.isSubmittingLogin = false
+                            if isMissingFields,
+                               value.contains("|forms=0|"),
+                               value.contains("|inputs=0|") {
+                                self.emptyLoginDOMCount += 1
+                                if self.emptyLoginDOMCount >= self.maxEmptyLoginDOMBeforeRecreate {
+                                    self.emptyLoginDOMCount = 0
+                                    self.loginFieldRetryCount = 0
+                                    self.recreateWebViewForLoginRecovery()
+                                    self.loadCanonicalLoginPage()
+                                    return
+                                }
+                            } else {
+                                self.emptyLoginDOMCount = 0
+                            }
+
+                            if self.loginFieldRetryCount < self.maxLoginFieldRetries {
+                                self.loginFieldRetryCount += 1
+                                if isMissingFields {
+                                    print("[EventRegistration] 登入欄位未就緒詳情: \(value)")
+                                }
+                                print("[EventRegistration] 登入欄位未就緒，等待重試 (\(self.loginFieldRetryCount)/\(self.maxLoginFieldRetries))")
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                    self.performEventSystemLogin()
+                                }
+                            } else if self.loginPageReloadCount < self.maxLoginPageReloads {
+                                self.loginPageReloadCount += 1
+                                self.loginFieldRetryCount = 0
+                                print("[EventRegistration] 登入頁疑似未完整載入，重新載入固定登入頁 (\(self.loginPageReloadCount)/\(self.maxLoginPageReloads))")
+                                self.loadCanonicalLoginPage()
+                            } else {
+                                self.isOverlayVisible = false
+                                self.toastMessage = "登入頁面載入失敗"
+                                self.showToast = true
+                            }
+
+                        case "not_login_page":
+                            self.isSubmittingLogin = false
+                            if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act") {
+                                self.webView?.load(URLRequest(url: url))
+                            }
+
+                        default:
+                            self.isSubmittingLogin = false
+                            self.loadCanonicalLoginPage()
                         }
                     } else if let error = error {
                         print("[EventRegistration] 登入錯誤: \(error)")
+                        self.isSubmittingLogin = false
                         self.isOverlayVisible = false
                         self.toastMessage = "登入失敗"
                         self.showToast = true
