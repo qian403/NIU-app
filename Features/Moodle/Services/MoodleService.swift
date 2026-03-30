@@ -9,6 +9,9 @@ final class MoodleService {
     private var privateToken: String?
     private var userId: Int?
     private var userContextId: Int?
+    private var popupNotificationCache: [MoodlePopupNotification] = []
+    private var popupNotificationCacheAt: Date?
+    private let popupNotificationCacheTTL: TimeInterval = 3600
     
     private init() {}
     
@@ -52,6 +55,8 @@ final class MoodleService {
         privateToken = nil
         userId = nil
         userContextId = nil
+        popupNotificationCache = []
+        popupNotificationCacheAt = nil
     }
     
     // MARK: - API Calls
@@ -315,6 +320,95 @@ final class MoodleService {
             params: ["courseids[0]": "\(courseId)"]
         )
         return resp.pages
+    }
+
+    func fetchPopupNotifications(limit: Int = 30, offset: Int = 0, forceRefresh: Bool = false) async throws -> [MoodlePopupNotification] {
+        let normalizedLimit = max(1, min(limit, 100))
+        let normalizedOffset = max(0, offset)
+
+        if !forceRefresh,
+           let cacheAt = popupNotificationCacheAt,
+           Date().timeIntervalSince(cacheAt) < popupNotificationCacheTTL {
+            return Array(popupNotificationCache.prefix(normalizedLimit))
+        }
+
+        let params = [
+            "limit": "\(normalizedLimit)",
+            "offset": "\(normalizedOffset)"
+        ]
+
+        if let fromCoreMessage = try? await fetchNotificationsViaCoreMessage(limit: normalizedLimit),
+           !fromCoreMessage.isEmpty {
+            popupNotificationCache = fromCoreMessage
+            popupNotificationCacheAt = Date()
+            return Array(fromCoreMessage.prefix(normalizedLimit))
+        }
+
+        let candidates = [
+            "message_popup_get_popup_notifications",
+            "core_message_get_popup_notifications"
+        ]
+
+        var lastError: Error?
+        for functionName in candidates {
+            do {
+                let raw = try await callAPIRaw(function: functionName, params: params)
+                let parsed = parsePopupNotifications(raw)
+                if !parsed.isEmpty {
+                    popupNotificationCache = parsed
+                    popupNotificationCacheAt = Date()
+                    return Array(parsed.prefix(normalizedLimit))
+                }
+            } catch {
+                lastError = error
+            }
+        }
+
+        do {
+            let crawled = try await fetchPopupNotificationsViaCrawler(limit: normalizedLimit)
+            popupNotificationCache = crawled
+            popupNotificationCacheAt = Date()
+            return Array(crawled.prefix(normalizedLimit))
+        } catch {
+            if let lastError, isNoRecordError(lastError) {
+                popupNotificationCache = []
+                popupNotificationCacheAt = Date()
+                return []
+            }
+            throw lastError ?? error
+        }
+
+        throw lastError ?? MoodleError.serverError
+    }
+
+    private func fetchNotificationsViaCoreMessage(limit: Int) async throws -> [MoodlePopupNotification] {
+        guard let userId else { throw MoodleError.notAuthenticated }
+
+        let notificationsParams = [
+            "useridto": "\(userId)",
+            "useridfrom": "0",
+            "type": "notifications",
+            "newestfirst": "1",
+            "limitfrom": "0",
+            "limitnum": "\(limit)"
+        ]
+
+        let rawNotifications = try await callAPIRaw(function: "core_message_get_messages", params: notificationsParams)
+        let parsedNotifications = parsePopupNotifications(rawNotifications)
+        if !parsedNotifications.isEmpty {
+            return parsedNotifications
+        }
+
+        let bothParams = [
+            "useridto": "\(userId)",
+            "useridfrom": "0",
+            "type": "both",
+            "newestfirst": "1",
+            "limitfrom": "0",
+            "limitnum": "\(limit)"
+        ]
+        let rawBoth = try await callAPIRaw(function: "core_message_get_messages", params: bothParams)
+        return parsePopupNotifications(rawBoth)
     }
 
     func fetchUnusedDraftItemId() async throws -> Int {
@@ -732,6 +826,284 @@ final class MoodleService {
         if let strVal = value as? String { return Int(strVal) }
         if let numVal = value as? NSNumber { return numVal.intValue }
         return nil
+    }
+
+    private func boolValue(_ value: Any?) -> Bool? {
+        if let boolVal = value as? Bool { return boolVal }
+        if let intVal = intValue(value) { return intVal != 0 }
+        if let strVal = value as? String {
+            let normalized = strVal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["1", "true", "yes", "y"].contains(normalized) { return true }
+            if ["0", "false", "no", "n"].contains(normalized) { return false }
+        }
+        return nil
+    }
+
+    private func parsePopupNotifications(_ raw: Any?) -> [MoodlePopupNotification] {
+        let dictArray: [[String: Any]]
+
+        if let array = raw as? [[String: Any]] {
+            dictArray = array
+        } else if let dict = raw as? [String: Any] {
+            if let notifications = dict["notifications"] as? [[String: Any]] {
+                dictArray = notifications
+            } else if let messages = dict["messages"] as? [[String: Any]] {
+                dictArray = messages
+            } else if let single = dict["notification"] as? [String: Any] {
+                dictArray = [single]
+            } else {
+                dictArray = []
+            }
+        } else {
+            dictArray = []
+        }
+
+        let parsed = dictArray.enumerated().map { index, item in
+            mapPopupNotification(item, fallbackID: index + 1_000_000)
+        }
+
+        return parsed.sorted { lhs, rhs in
+            let left = lhs.timeCreated ?? .distantPast
+            let right = rhs.timeCreated ?? .distantPast
+            return left > right
+        }
+    }
+
+    private func mapPopupNotification(_ dict: [String: Any], fallbackID: Int) -> MoodlePopupNotification {
+        let id = intValue(dict["id"]) ?? intValue(dict["notificationid"]) ?? fallbackID
+
+        let subject = (dict["shortenedsubject"] as? String)
+            ?? (dict["subject"] as? String)
+            ?? (dict["name"] as? String)
+            ?? (dict["title"] as? String)
+            ?? (dict["contexturlname"] as? String)
+            ?? ""
+
+        let message = (dict["fullmessagehtml"] as? String)
+            ?? (dict["smallmessage"] as? String)
+            ?? (dict["text"] as? String)
+            ?? (dict["fullmessage"] as? String)
+            ?? (dict["message"] as? String)
+            ?? ""
+
+        let rawTimeCreatedTS = intValue(dict["timecreated"]) ?? intValue(dict["timecreatedus"])
+        let normalizedTS = rawTimeCreatedTS.map { $0 > 4_000_000_000 ? ($0 / 1000) : $0 }
+        let timeCreated = normalizedTS.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+
+        let timeCreatedPretty = (dict["timecreatedpretty"] as? String)
+            ?? (dict["timesent"] as? String)
+
+        let contextURL = (dict["contexturl"] as? String)
+            ?? (dict["url"] as? String)
+
+        let timeread = intValue(dict["timeread"]) ?? 0
+        let isRead = boolValue(dict["read"])
+            ?? boolValue(dict["isread"])
+            ?? (timeread > 0)
+
+        return MoodlePopupNotification(
+            id: id,
+            subject: subject,
+            message: message,
+            timeCreated: timeCreated,
+            timeCreatedPretty: timeCreatedPretty,
+            contextURL: contextURL,
+            component: dict["component"] as? String,
+            isRead: isRead
+        )
+    }
+
+    private func fetchPopupNotificationsViaCrawler(limit: Int) async throws -> [MoodlePopupNotification] {
+        guard let targetURL = URL(string: "\(baseURL)/message/output/popup/notifications.php") else {
+            throw MoodleError.invalidURL
+        }
+
+        await syncWebKitCookiesToSharedStorage()
+        await establishEUNISessionViaSSO()
+
+        if let autoURL = try? await autologinURL(for: targetURL.absoluteString),
+           let page = try? await loadEUNIHTMLPage(url: autoURL, allowSilentRefresh: true) {
+            let parsed = parsePopupNotificationsFromHTML(page.html, baseURL: page.finalURL ?? targetURL)
+            return Array(parsed.prefix(limit))
+        }
+
+        let page = try await loadEUNIHTMLPage(url: targetURL, allowSilentRefresh: true)
+        let parsed = parsePopupNotificationsFromHTML(page.html, baseURL: page.finalURL ?? targetURL)
+        return Array(parsed.prefix(limit))
+    }
+
+    private func parsePopupNotificationsFromHTML(_ html: String, baseURL: URL) -> [MoodlePopupNotification] {
+        var parsed: [MoodlePopupNotification] = []
+
+        let anchorRegex = try? NSRegularExpression(
+            pattern: "<a[^>]*href=\"([^\"]*(?:notificationid=\\d+|messageid=\\d+)[^\"]*)\"[^>]*>([\\s\\S]*?)</a>",
+            options: [.caseInsensitive]
+        )
+        if let anchorRegex {
+            let range = NSRange(html.startIndex..<html.endIndex, in: html)
+            let matches = anchorRegex.matches(in: html, options: [], range: range)
+            for (index, match) in matches.enumerated() where match.numberOfRanges >= 3 {
+                guard let hrefRange = Range(match.range(at: 1), in: html),
+                      let innerRange = Range(match.range(at: 2), in: html) else {
+                    continue
+                }
+                let href = String(html[hrefRange])
+                let inner = String(html[innerRange])
+
+                let idText = extractFirstMatch(in: href, patterns: [
+                    "notificationid=(\\d+)",
+                    "messageid=(\\d+)"
+                ])
+                let id = Int(idText ?? "") ?? (2_000_000 + index)
+
+                let title = sanitizeNotificationText(extractFirstMatch(in: inner, patterns: [
+                    "<(?:div|span)[^>]*class=\"[^\"]*(?:subject|title|notification)[^\"]*\"[^>]*>([\\s\\S]*?)</(?:div|span)>",
+                    "<strong[^>]*>([\\s\\S]*?)</strong>",
+                    "<h[1-6][^>]*>([\\s\\S]*?)</h[1-6]>"
+                ])) ?? sanitizeNotificationText(inner) ?? "M 園區通知"
+
+                let timeText = sanitizeNotificationText(extractFirstMatch(in: inner, patterns: [
+                    "<(?:div|span)[^>]*class=\"[^\"]*time[^\"]*\"[^>]*>([\\s\\S]*?)</(?:div|span)>",
+                    "<time[^>]*>([\\s\\S]*?)</time>"
+                ]))
+
+                let preview = sanitizeNotificationText(extractFirstMatch(in: inner, patterns: [
+                    "<(?:div|span)[^>]*class=\"[^\"]*(?:preview|excerpt|summary|message)[^\"]*\"[^>]*>([\\s\\S]*?)</(?:div|span)>",
+                    "<p[^>]*>([\\s\\S]*?)</p>"
+                ]))
+
+                let contextURL = resolveNotificationURL(href, baseURL: baseURL)
+                let lower = inner.lowercased()
+                let isRead = !(lower.contains("unread") || lower.contains("is-unread") || lower.contains("notification-unread"))
+
+                parsed.append(
+                    MoodlePopupNotification(
+                        id: id,
+                        subject: title,
+                        message: preview ?? title,
+                        timeCreated: nil,
+                        timeCreatedPretty: timeText,
+                        contextURL: contextURL,
+                        component: "message_popup",
+                        isRead: isRead
+                    )
+                )
+            }
+        }
+
+        if parsed.isEmpty {
+            let blocks = notificationItemBlocks(from: html)
+            parsed = blocks.enumerated().compactMap { index, block in
+                let idText = extractFirstMatch(in: block, patterns: [
+                    "data-notificationid=\"(\\d+)\"",
+                    "data-id=\"(\\d+)\"",
+                    "id=\"notification-(\\d+)\"",
+                    "notificationid=(\\d+)"
+                ])
+                let id = Int(idText ?? "") ?? (2_000_000 + index)
+                let title = sanitizeNotificationText(extractFirstMatch(in: block, patterns: [
+                    "<h[1-6][^>]*>([\\s\\S]*?)</h[1-6]>",
+                    "<strong[^>]*>([\\s\\S]*?)</strong>",
+                    "data-region=\"subject\"[^>]*>([\\s\\S]*?)</"
+                ])) ?? "M 園區通知"
+                let body = sanitizeNotificationText(extractFirstMatch(in: block, patterns: [
+                    "data-region=\"notification-content\"[^>]*>([\\s\\S]*?)</",
+                    "class=\"[^\"]*(?:content-item-body|notification-message|message)[^\"]*\"[^>]*>([\\s\\S]*?)</",
+                    "<p[^>]*>([\\s\\S]*?)</p>"
+                ])) ?? title
+                let lower = block.lowercased()
+                let isRead = !(lower.contains("unread") || lower.contains("is-unread") || lower.contains("notification-unread"))
+
+                guard !(title == "M 園區通知" && body == "M 園區通知") else { return nil }
+
+                return MoodlePopupNotification(
+                    id: id,
+                    subject: title,
+                    message: body,
+                    timeCreated: nil,
+                    timeCreatedPretty: nil,
+                    contextURL: nil,
+                    component: "message_popup",
+                    isRead: isRead
+                )
+            }
+        }
+
+        if let detail = sanitizeNotificationText(extractFirstMatch(in: html, patterns: [
+            "<div[^>]*class=\"[^\"]*(?:message|notification)[^\"]*(?:content|detail|full)[^\"]*\"[^>]*>([\\s\\S]*?)</div>",
+            "<article[^>]*>([\\s\\S]*?)</article>"
+        ])),
+           !detail.isEmpty,
+           !parsed.isEmpty {
+            let first = parsed[0]
+            parsed[0] = MoodlePopupNotification(
+                id: first.id,
+                subject: first.subject,
+                message: detail,
+                timeCreated: first.timeCreated,
+                timeCreatedPretty: first.timeCreatedPretty,
+                contextURL: first.contextURL,
+                component: first.component,
+                isRead: first.isRead
+            )
+        }
+
+        var seen = Set<String>()
+        parsed = parsed.filter { item in
+            let key = "\(item.id)-\(item.subject)-\(item.timeCreatedPretty ?? "")"
+            return seen.insert(key).inserted
+        }
+
+        return parsed.sorted { lhs, rhs in
+            let left = lhs.timeCreated ?? .distantPast
+            let right = rhs.timeCreated ?? .distantPast
+            return left > right
+        }
+    }
+
+    private func notificationItemBlocks(from html: String) -> [String] {
+        let patterns = [
+            "<(?:li|div)[^>]*(?:data-region=\\\"notification\\\"|data-notificationid|class=\\\"[^\\\"]*notification[^\\\"]*\\\")[^>]*>([\\s\\S]*?)</(?:li|div)>",
+            "<(?:li|div)[^>]*(?:class=\\\"[^\\\"]*message[^\\\"]*\\\"|data-region=\\\"message\\\")[^>]*>([\\s\\S]*?)</(?:li|div)>"
+        ]
+
+        var blocks: [String] = []
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            blocks.append(contentsOf: captureGroups(in: html, regex: regex))
+        }
+
+        var seen = Set<String>()
+        return blocks
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count > 20 }
+            .filter { seen.insert($0).inserted }
+    }
+
+    private func sanitizeNotificationText(_ raw: String?) -> String? {
+        guard var text = raw, !text.isEmpty else { return nil }
+        text = text.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: "</p>", with: "\n", options: [.caseInsensitive])
+        text = text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        text = text.htmlDecoded
+        text = text.replacingOccurrences(of: "\\n{2,}", with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func resolveNotificationURL(_ rawURL: String?, baseURL: URL) -> String? {
+        guard let rawURL else { return nil }
+        let cleaned = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        return URL(string: cleaned, relativeTo: baseURL)?.absoluteURL.absoluteString
+    }
+
+    private func isNoRecordError(_ error: Error) -> Bool {
+        let text = error.localizedDescription.lowercased()
+        return text.contains("找不到資料紀錄")
+            || text.contains("找不到資料记录")
+            || text.contains("cannot find data record")
     }
 
     private func applyMoodleMobileHeaders(to request: inout URLRequest) {
@@ -1495,6 +1867,7 @@ final class MoodleService {
         }
         return nil
     }
+
 }
 
 // MARK: - Error Types

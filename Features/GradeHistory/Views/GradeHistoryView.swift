@@ -13,8 +13,8 @@ struct GradeHistoryView: View {
                 case .idle, .loading:
                     ProgressView(loadingText)
                         .progressViewStyle(.circular)
-                        .tint(.black)
-                        .foregroundColor(.black.opacity(0.6))
+                        .tint(.primary)
+                        .foregroundColor(.primary.opacity(0.6))
 
                 case .error(let message):
                     errorView(message: message)
@@ -35,10 +35,15 @@ struct GradeHistoryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: vm.refresh) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 16, weight: .light))
-                            .foregroundColor(.primary)
+                    if vm.isModeLoading {
+                        ProgressView()
+                            .tint(.primary)
+                    } else {
+                        Button(action: vm.refresh) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 16, weight: .light))
+                                .foregroundColor(.primary)
+                        }
                     }
                 }
             }
@@ -67,7 +72,7 @@ struct GradeHistoryView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("查詢模式")
                 .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.black.opacity(0.55))
+                .foregroundColor(.primary.opacity(0.55))
             Picker("查詢模式", selection: $vm.selectedMode) {
                 ForEach(GradeQueryMode.allCases) { mode in
                     Text(mode.rawValue).tag(mode)
@@ -97,13 +102,13 @@ struct GradeHistoryView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("累計 GPA")
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.primary.opacity(0.55))
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(String(format: "%.2f", summary.cumulativeGPA))
                             .font(.system(size: 32, weight: .bold))
                         Text("/ 4.30")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(.primary.opacity(0.5))
                     }
                     Capsule()
                         .fill(Color.primary.opacity(0.08))
@@ -145,7 +150,7 @@ struct GradeHistoryView: View {
         HStack(spacing: 8) {
             Text(title)
                 .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.black.opacity(0.55))
+                .foregroundColor(.primary.opacity(0.55))
             Spacer()
             Text(value)
                 .font(.system(size: 14, weight: .medium))
@@ -155,16 +160,33 @@ struct GradeHistoryView: View {
 
     private var filterSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("課程類別")
+            Text("學期篩選")
                 .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.black.opacity(0.55))
-            Picker("課程類別", selection: $vm.selectedCategory) {
-                ForEach(CourseCategory.allCases) { category in
-                    Text(category.shortLabel).tag(category)
+                .foregroundColor(.primary.opacity(0.55))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    filterChip(label: "全部", id: nil)
+                    ForEach(vm.semesters.sorted { lhs, rhs in
+                        if lhs.year == rhs.year { return lhs.term.order > rhs.term.order }
+                        return lhs.year > rhs.year
+                    }) { sem in
+                        filterChip(label: "\(sem.year)\(sem.term.rawValue)", id: sem.id)
+                    }
                 }
             }
-            .pickerStyle(.segmented)
         }
+    }
+
+    private func filterChip(label: String, id: String?) -> some View {
+        let selected = vm.selectedSemesterID == id
+        return Text(label)
+            .font(.system(size: 13, weight: selected ? .medium : .regular))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(selected ? Color.primary : Color.primary.opacity(0.06))
+            .foregroundColor(selected ? Color(.systemBackground) : .primary)
+            .clipShape(Capsule())
+            .onTapGesture { vm.selectedSemesterID = id }
     }
 
     private var termSummarySection: some View {
@@ -256,10 +278,10 @@ struct GradeHistoryView: View {
         VStack(spacing: 12) {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(.black.opacity(0.35))
+                .foregroundColor(.primary.opacity(0.35))
             Text("目前沒有符合篩選條件的課程")
                 .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.black.opacity(0.55))
+                .foregroundColor(.primary.opacity(0.55))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.large)
@@ -269,10 +291,10 @@ struct GradeHistoryView: View {
         VStack(spacing: 12) {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(.black.opacity(0.35))
+                .foregroundColor(.primary.opacity(0.35))
             Text("目前沒有可顯示的\(vm.selectedMode.rawValue)成績")
                 .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.black.opacity(0.55))
+                .foregroundColor(.primary.opacity(0.55))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.large)
@@ -282,10 +304,10 @@ struct GradeHistoryView: View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(.black.opacity(0.35))
+                .foregroundColor(.primary.opacity(0.35))
             Text(message)
                 .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.black.opacity(0.6))
+                .foregroundColor(.primary.opacity(0.6))
                 .multilineTextAlignment(.center)
             Button("重新載入") {
                 vm.refresh()
@@ -314,7 +336,7 @@ private struct GradeTrendView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("GPA 走勢")
                 .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.black.opacity(0.55))
+                .foregroundColor(.primary.opacity(0.55))
 
             GeometryReader { proxy in
                 let width = max(proxy.size.width, 1)
@@ -336,7 +358,7 @@ private struct GradeTrendView: View {
                             path.addLine(to: CGPoint(x: width, y: y))
                         }
                     }
-                    .stroke(Color.black.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .stroke(Color.primary.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
                     Path { path in
                         guard let first = chartPoints.first else { return }
@@ -359,7 +381,7 @@ private struct GradeTrendView: View {
 
                         Text(String(format: "%.2f", points[index].gpa))
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.black.opacity(0.55))
+                            .foregroundColor(.primary.opacity(0.55))
                             .position(x: point.x, y: max(10, point.y - 12))
                     }
                 }
@@ -370,7 +392,7 @@ private struct GradeTrendView: View {
                 ForEach(points.indices, id: \.self) { index in
                     Text(points[index].label)
                         .font(.system(size: 11, weight: .light))
-                        .foregroundColor(.black.opacity(0.55))
+                        .foregroundColor(.primary.opacity(0.55))
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                         .frame(maxWidth: .infinity)
@@ -399,14 +421,14 @@ private struct GradeSemesterCard: View {
                     if let rank = semester.classRank, !rank.isEmpty {
                         Text("班級排名：\(rank)")
                             .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.black.opacity(0.55))
+                            .foregroundColor(.primary.opacity(0.55))
                     }
                 }
                 Spacer()
                 Button(action: toggle) {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.black.opacity(0.7))
+                        .foregroundColor(.primary.opacity(0.7))
                         .padding(8)
                         .contentShape(Rectangle())
                 }
@@ -421,7 +443,7 @@ private struct GradeSemesterCard: View {
 
             ProgressView(value: semester.passRate)
                 .progressViewStyle(.linear)
-                .tint(.black)
+                .tint(.primary)
                 .padding(.top, 4)
 
             if isExpanded {
@@ -438,7 +460,7 @@ private struct GradeSemesterCard: View {
                     if semester.courses.count > 1 {
                         Text("其餘 \(semester.courses.count - 1) 門課程…")
                             .font(.system(size: 12, weight: .light))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(.primary.opacity(0.5))
                     }
                 }
             }
@@ -459,7 +481,7 @@ private struct StatPill: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 11, weight: .regular))
-                .foregroundColor(.black.opacity(0.55))
+                .foregroundColor(.primary.opacity(0.55))
             Text(value)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.primary)
@@ -487,12 +509,12 @@ private struct GradeCourseRow: View {
                 HStack(spacing: 8) {
                     Text(course.code)
                         .font(.system(size: 12, weight: .light))
-                        .foregroundColor(.black.opacity(0.6))
+                        .foregroundColor(.primary.opacity(0.6))
                     Badge(text: course.category.shortLabel)
                     if let remark = course.remarks, !remark.isEmpty {
                         Text(remark)
                             .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.black.opacity(0.55))
+                            .foregroundColor(.primary.opacity(0.55))
                     }
                 }
             }
@@ -502,10 +524,10 @@ private struct GradeCourseRow: View {
             VStack(spacing: 4) {
                 Text(String(format: "%.0f", course.score))
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(course.passed ? .black : .red)
+                    .foregroundColor(course.passed ? .primary : .red)
                 Text("學分 \(String(format: "%.0f", course.credits))")
                     .font(.system(size: 11, weight: .light))
-                    .foregroundColor(.black.opacity(0.5))
+                    .foregroundColor(.primary.opacity(0.5))
             }
             .frame(width: 70)
         }
@@ -551,8 +573,8 @@ private struct TermScoreRow: View {
     }
 
     private func scoreColor(text: String) -> Color {
-        guard let value = Double(text) else { return .black.opacity(0.65) }
-        return value >= 60 ? .black : .red
+        guard let value = Double(text) else { return .primary.opacity(0.65) }
+        return value >= 60 ? .primary : .red
     }
 }
 

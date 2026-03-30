@@ -238,6 +238,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
             if urlStr.contains("Default.aspx") {
                 lastPostFailed = false  // 重置失敗標誌
+                getSSOViewState = false  // 允許重新提交登入
                 checkLoginError_SSO(in: webView) { [weak self] errorResult in
                     if let errorResult = errorResult {
                         self?.parent.onResult(errorResult)
@@ -480,11 +481,13 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 if (!img) return null;
                 if (img.src && img.src.indexOf('data:image') === 0) return img.src;
                 if (!img.complete || img.naturalWidth === 0) return null;
+                var dpr = window.devicePixelRatio || 1;
                 var canvas = document.createElement('canvas');
-                canvas.width = img.naturalWidth;
-                canvas.height = img.naturalHeight;
+                canvas.width = img.naturalWidth * dpr;
+                canvas.height = img.naturalHeight * dpr;
                 var ctx = canvas.getContext('2d');
                 if (!ctx) return null;
+                ctx.scale(dpr, dpr);
                 ctx.drawImage(img, 0, 0);
                 try {
                     return canvas.toDataURL('image/png');

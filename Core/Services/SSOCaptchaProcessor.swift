@@ -245,6 +245,7 @@ public final class SSOCaptchaProcessor {
             case "S": c = "5"
             case "B": c = "8"
             case "Z": c = "2"
+            case ">", "}": c = "7"
             default: c = ch
             }
             out.append(c)

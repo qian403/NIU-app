@@ -1,9 +1,12 @@
 import SwiftUI
 import WebKit
 import Combine
+import MapKit
+import CoreLocation
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
+    private static let moodleNotificationURL = "https://euni.niu.edu.tw/message/output/popup/notifications.php"
     
     var body: some View {
         NavigationStack {
@@ -49,13 +52,27 @@ struct HomeView: View {
             .buttonStyle(PlainButtonStyle())
             
             Spacer()
-            
-            NavigationLink(destination: SettingsView()) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 20, weight: .light))
-                    .foregroundColor(.primary)
+
+            HStack(spacing: Theme.Spacing.medium) {
+                NavigationLink(
+                    destination: MoodleNotificationsView(
+                        title: "M 園區通知",
+                        targetURL: HomeView.moodleNotificationURL
+                    )
+                ) {
+                    Image(systemName: "bell.badge")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                NavigationLink(destination: SettingsView()) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
         }
     }
     
@@ -402,6 +419,605 @@ struct HomeView: View {
             return value.isEmpty ? trimmed : value
         }
         return trimmed
+    }
+}
+
+@MainActor
+private final class MoodleNotificationsViewModel: ObservableObject {
+    enum LoadState {
+        case idle
+        case loading
+        case loaded
+        case error(String)
+    }
+
+    @Published var loadState: LoadState = .idle
+    @Published var notifications: [MoodlePopupNotification] = []
+
+    private let service = MoodleService.shared
+
+    func loadNotifications(username: String, password: String, forceRefresh: Bool = false) async {
+        if notifications.isEmpty {
+            loadState = .loading
+        }
+
+        do {
+            if !service.isAuthenticated {
+                try await service.authenticate(username: username, password: password)
+            }
+
+            notifications = try await service.fetchPopupNotifications(limit: 50, forceRefresh: forceRefresh)
+            loadState = .loaded
+        } catch {
+            if notifications.isEmpty {
+                loadState = .error(error.localizedDescription)
+            }
+            print("[MoodleNotification] 載入通知失敗: \(error.localizedDescription)")
+        }
+    }
+
+    func setMissingCredentialsError() {
+        loadState = .error("尚未找到登入資訊，請重新登入後再試一次。")
+    }
+}
+
+private struct MoodleNotificationsView: View {
+    let title: String
+    let targetURL: String
+
+    @StateObject private var viewModel = MoodleNotificationsViewModel()
+
+    var body: some View {
+        Group {
+            if !viewModel.notifications.isEmpty {
+                notificationList
+            } else {
+                switch viewModel.loadState {
+                case .idle, .loading:
+                    loadingView
+                case .loaded:
+                    emptyView
+                case .error(let message):
+                    errorView(message)
+                }
+            }
+        }
+        .background(Color(.systemBackground))
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if case .idle = viewModel.loadState {
+                await loadNotifications(forceRefresh: false)
+            }
+        }
+        .refreshable {
+            await loadNotifications(forceRefresh: true)
+        }
+    }
+
+    private var notificationList: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                ForEach(viewModel.notifications) { notification in
+                    NavigationLink(destination: MoodleNotificationDetailView(notification: notification)) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(notification.title)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(2)
+
+                                Spacer(minLength: 8)
+
+                                if !notification.isRead {
+                                    Circle()
+                                        .fill(Color.blue)
+                                        .frame(width: 8, height: 8)
+                                        .padding(.top, 5)
+                                }
+                            }
+
+                            Text(notification.plainMessage)
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundColor(.primary.opacity(0.75))
+                                .lineLimit(4)
+
+                            HStack(spacing: 8) {
+                                if !notification.timeText.isEmpty {
+                                    Label(notification.timeText, systemImage: "clock")
+                                        .font(.system(size: 11, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                if let component = notification.component,
+                                   !component.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text(component)
+                                        .font(.system(size: 11, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer(minLength: 0)
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.secondary.opacity(0.7))
+                            }
+                        }
+                        .padding(Theme.Spacing.medium)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.medium)
+            .padding(.vertical, Theme.Spacing.small)
+        }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            ProgressView()
+            Text("正在抓取通知…")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "bell.slash")
+                .font(.system(size: 34, weight: .light))
+                .foregroundColor(.secondary)
+            Text("目前沒有通知")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 34, weight: .light))
+                .foregroundColor(.secondary)
+            Text(message)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button("重試") {
+                Task { await loadNotifications(forceRefresh: true) }
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(Color(.systemBackground))
+            .padding(.horizontal, 22)
+            .padding(.vertical, 10)
+            .background(Color.primary)
+            .cornerRadius(20)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func loadNotifications(forceRefresh: Bool) async {
+        _ = targetURL
+
+        guard let credentials = LoginRepository.shared.getSavedCredentials() else {
+            viewModel.setMissingCredentialsError()
+            return
+        }
+
+        await viewModel.loadNotifications(
+            username: credentials.username,
+            password: credentials.password,
+            forceRefresh: forceRefresh
+        )
+    }
+}
+
+private struct MoodleNotificationDetailView: View {
+    let notification: MoodlePopupNotification
+
+    @State private var mapCoordinate: CLLocationCoordinate2D?
+    @State private var mapLoading = false
+    @State private var mapErrorText: String?
+    @State private var cameraPosition: MapCameraPosition = .automatic
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(notification.title)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.primary)
+
+                if !notification.timeText.isEmpty {
+                    Label(notification.timeText, systemImage: "clock")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    if let account = extractValue(for: ["您的帳號", "帳號"]) {
+                        detailRow(title: "帳號", value: account)
+                    }
+                    if let loginTime = extractValue(for: ["登入時間", "time"]) {
+                        detailRow(title: "登入時間", value: loginTime)
+                    }
+                    if let device = extractValue(for: ["登入設備", "device"]) {
+                        detailRow(title: "登入設備", value: device)
+                    }
+                    if let ip = extractedIP {
+                        detailRow(title: "來源 IP", value: ip)
+                    }
+                }
+
+                Text(displayMessageText)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if isLoginNotification {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("登入位置")
+                                .font(.system(size: 16, weight: .semibold))
+                            Spacer()
+                            if mapLoading {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                        }
+
+                        if let mapCoordinate {
+                            Map(position: $cameraPosition) {
+                                Marker("登入位置", coordinate: mapCoordinate)
+                            }
+                            .frame(height: 220)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        } else if let mapErrorText {
+                            Text(mapErrorText)
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("正在嘗試定位登入來源…")
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(Theme.Spacing.medium)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+                }
+            }
+            .padding(Theme.Spacing.medium)
+        }
+        .background(Color(.systemBackground))
+        .navigationTitle("通知內容")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await resolveLoginMapIfNeeded()
+        }
+    }
+
+    private var isLoginNotification: Bool {
+        let text = "\(notification.title)\n\(messageForParsing)".lowercased()
+        return text.contains("登入") || text.contains("login")
+    }
+
+    private var extractedIP: String? {
+        if let ipValue = extractValue(for: ["來源 IP", "IP"]) {
+            let candidate = ipValue
+                .components(separatedBy: .whitespacesAndNewlines)
+                .first(where: { !$0.isEmpty })?
+                .trimmingCharacters(in: CharacterSet(charactersIn: ",，。:："))
+            if let candidate, isIPv4(candidate) {
+                return candidate
+            }
+        }
+
+        let text = messageForParsing
+        guard let regex = try? NSRegularExpression(pattern: #"\b(?:\d{1,3}\.){3}\d{1,3}\b"#) else {
+            return nil
+        }
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: nsRange),
+              let range = Range(match.range, in: text) else {
+            return nil
+        }
+        return String(text[range])
+    }
+
+    private var messageForParsing: String {
+        notification.plainMessage
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    private var displayMessageText: String {
+        let text = messageForParsing
+
+        if !isLoginNotification {
+            return deduplicateSentences(text)
+        }
+
+        var cleaned = text
+
+        if let account = extractValue(for: ["您的帳號", "帳號"]), !account.isEmpty {
+            cleaned = cleaned.replacingOccurrences(of: account, with: "")
+        }
+        if let loginTime = extractValue(for: ["登入時間", "time"]), !loginTime.isEmpty {
+            cleaned = cleaned.replacingOccurrences(of: loginTime, with: "")
+        }
+        if let device = extractValue(for: ["登入設備", "device"]), !device.isEmpty {
+            cleaned = cleaned.replacingOccurrences(of: device, with: "")
+        }
+        if let ip = extractedIP, !ip.isEmpty {
+            cleaned = cleaned.replacingOccurrences(of: ip, with: "")
+        }
+
+        for prefix in ["您的帳號", "帳號", "登入時間", "登入設備", "IP", "來源 IP"] {
+            cleaned = cleaned.replacingOccurrences(of: prefix, with: "")
+        }
+
+        cleaned = cleaned
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let concise = deduplicateSentences(cleaned)
+        return concise.isEmpty ? deduplicateSentences(text) : concise
+    }
+
+    private func detailRow(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(.primary)
+        }
+    }
+
+    private func extractValue(for labels: [String]) -> String? {
+        let text = messageForParsing
+
+        if labels.contains("您的帳號") || labels.contains("帳號") {
+            if let value = extractSegment(
+                from: text,
+                starts: ["您的帳號", "帳號"],
+                ends: ["登入時間", "登入設備", "IP", "來源 IP", "如果", "您好", "嗨"]
+            ) {
+                return value
+            }
+        }
+
+        if labels.contains("登入時間") || labels.contains("time") {
+            if let value = extractSegment(
+                from: text,
+                starts: ["登入時間", "time"],
+                ends: ["登入設備", "IP", "來源 IP", "如果", "您好", "嗨"]
+            ) {
+                return value
+            }
+        }
+
+        if labels.contains("登入設備") || labels.contains("device") {
+            if let value = extractSegment(
+                from: text,
+                starts: ["登入設備", "device"],
+                ends: ["IP", "來源 IP", "如果", "您好", "嗨"]
+            ) {
+                return value
+            }
+        }
+
+        if labels.contains("來源 IP") || labels.contains("IP") {
+            if let value = extractSegment(
+                from: text,
+                starts: ["來源 IP", "IP"],
+                ends: ["如果", "您好", "嗨"]
+            ) {
+                return value
+            }
+        }
+
+        for label in labels {
+            let escaped = NSRegularExpression.escapedPattern(for: label)
+            let patterns = [
+                "\(escaped)\\s*[:：]\\s*([^\\n]+)",
+                "\(escaped)\\s*([^\\n]+)"
+            ]
+            for pattern in patterns {
+                guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+                let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+                guard let match = regex.firstMatch(in: text, options: [], range: nsRange),
+                      match.numberOfRanges > 1,
+                      let range = Range(match.range(at: 1), in: text) else {
+                    continue
+                }
+                let value = String(text[range]).trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ":：,，。")))
+                if !value.isEmpty { return value }
+            }
+        }
+        return nil
+    }
+
+    private func resolveLoginMapIfNeeded() async {
+        guard isLoginNotification else { return }
+        guard mapCoordinate == nil else { return }
+
+        mapLoading = true
+        defer { mapLoading = false }
+
+        if let coordinate = extractCoordinate(from: notification.plainMessage) {
+            applyMapCoordinate(coordinate)
+            return
+        }
+
+        if let ip = extractedIP,
+           let coordinate = await resolveCoordinateFromIP(ip) {
+            applyMapCoordinate(coordinate)
+            return
+        }
+
+        if let locationText = extractValue(for: ["登入地點", "登入位置", "location"]),
+           let coordinate = await geocodeLocation(locationText) {
+            applyMapCoordinate(coordinate)
+            return
+        }
+
+        mapErrorText = "此通知沒有可定位的位置資訊。"
+    }
+
+    private func applyMapCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        mapCoordinate = coordinate
+        cameraPosition = .region(
+            MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+            )
+        )
+    }
+
+    private func extractCoordinate(from text: String) -> CLLocationCoordinate2D? {
+        guard let regex = try? NSRegularExpression(pattern: #"(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)"#) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 2,
+              let latRange = Range(match.range(at: 1), in: text),
+              let lonRange = Range(match.range(at: 2), in: text),
+              let lat = Double(text[latRange]),
+              let lon = Double(text[lonRange]),
+              (-90...90).contains(lat),
+              (-180...180).contains(lon) else {
+            return nil
+        }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
+    private func geocodeLocation(_ query: String) async -> CLLocationCoordinate2D? {
+        await withCheckedContinuation { continuation in
+            CLGeocoder().geocodeAddressString(query) { placemarks, _ in
+                let coordinate = placemarks?.first?.location?.coordinate
+                continuation.resume(returning: coordinate)
+            }
+        }
+    }
+
+    private func resolveCoordinateFromIP(_ ip: String) async -> CLLocationCoordinate2D? {
+        guard let url = URL(string: "https://ipapi.co/\(ip)/json/") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return nil
+            }
+
+            struct IPGeoResponse: Decodable {
+                let latitude: Double?
+                let longitude: Double?
+                let lat: Double?
+                let lon: Double?
+            }
+
+            let decoded = try JSONDecoder().decode(IPGeoResponse.self, from: data)
+            let latitude = decoded.latitude ?? decoded.lat
+            let longitude = decoded.longitude ?? decoded.lon
+            guard let latitude, let longitude else { return nil }
+            return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        } catch {
+            return nil
+        }
+    }
+
+    private func extractSegment(from text: String, starts: [String], ends: [String]) -> String? {
+        guard let start = firstMatchedRange(in: text, candidates: starts) else { return nil }
+
+        let searchStart = start.upperBound
+        let suffix = String(text[searchStart...])
+
+        var endIndexInSuffix = suffix.endIndex
+        for end in ends {
+            if let range = suffix.range(of: end, options: [.caseInsensitive]), range.lowerBound < endIndexInSuffix {
+                endIndexInSuffix = range.lowerBound
+            }
+        }
+
+        let segment = String(suffix[..<endIndexInSuffix])
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ":：,，。")))
+
+        return segment.isEmpty ? nil : segment
+    }
+
+    private func firstMatchedRange(in text: String, candidates: [String]) -> Range<String.Index>? {
+        var best: Range<String.Index>?
+
+        for token in candidates {
+            guard let range = text.range(of: token, options: [.caseInsensitive]) else { continue }
+            if let best, range.lowerBound >= best.lowerBound { continue }
+            best = range
+        }
+
+        return best
+    }
+
+    private func deduplicateSentences(_ text: String) -> String {
+        let normalized = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !normalized.isEmpty else { return "" }
+
+        let parts = normalized
+            .components(separatedBy: CharacterSet(charactersIn: "。!?！？\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        var seen = Set<String>()
+        var uniqueParts: [String] = []
+
+        for part in parts {
+            let key = part.lowercased()
+            if seen.insert(key).inserted {
+                uniqueParts.append(part)
+            }
+        }
+
+        if uniqueParts.isEmpty {
+            return normalized
+        }
+
+        return uniqueParts.joined(separator: "。") + "。"
+    }
+
+    private func isIPv4(_ value: String) -> Bool {
+        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        for part in parts {
+            guard let number = Int(part), (0...255).contains(number) else {
+                return false
+            }
+        }
+        return true
     }
 }
 
@@ -1196,15 +1812,34 @@ private struct MoreFeaturesMenuView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                    Text("更多功能即將推出")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.primary.opacity(0.6))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(Theme.Spacing.medium)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                        )
+                    HStack(spacing: Theme.Spacing.medium) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 18, weight: .light))
+                            .foregroundColor(.primary)
+                            .frame(width: 34, height: 34)
+                            .background(
+                                Circle()
+                                    .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
+                            )
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("宜大 AI 助理")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.primary)
+                            Text("此功能已移除")
+                                .font(.system(size: 12, weight: .light))
+                                .foregroundColor(.primary.opacity(0.5))
+                        }
+
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .padding(Theme.Spacing.medium)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
                 }
                 .padding(.horizontal, Theme.Spacing.large)
                 .padding(.top, Theme.Spacing.medium)

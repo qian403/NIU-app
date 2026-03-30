@@ -130,6 +130,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        let contentController = WKUserContentController()
+        config.userContentController = contentController
         self.webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
@@ -434,6 +436,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         }
         group.notify(queue: .main) { completion() }
     }
+
 
     // MARK: - WKNavigationDelegate
 

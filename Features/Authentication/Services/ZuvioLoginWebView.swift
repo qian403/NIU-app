@@ -113,6 +113,12 @@ struct ZuvioLoginWebView: ZuvioViewRepresentable {
                 hasReported = true
                 timeoutTimer?.invalidate()
                 onResult(false)
+            } else if currentURL.contains("submitLogin") && hasSentLogin {
+                // 停在 submitLogin 表示登入失敗（成功會跳轉）
+                print("[Zuvio] submitLogin 未跳轉，視為失敗")
+                hasReported = true
+                timeoutTimer?.invalidate()
+                onResult(false)
             }
         }
         

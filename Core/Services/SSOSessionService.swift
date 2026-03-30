@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import UIKit
 
 /// Manages transparent SSO session refresh across all features.
 ///
@@ -47,7 +48,7 @@ final class SSOSessionService: ObservableObject {
     private var lastRefreshFailureAt: Date?
     private var consecutiveFailures = 0
     private let minAttemptGapSeconds: TimeInterval = 8
-    private let successReuseSeconds: TimeInterval = 90
+    private let successReuseSeconds: TimeInterval = 3600
     private let failureCooldownBaseSeconds: TimeInterval = 45
     private let failureCooldownMaxSeconds: TimeInterval = 300
 
@@ -84,6 +85,7 @@ final class SSOSessionService: ObservableObject {
     /// background automatically a few times before returning `false`.
     func requestRefresh() async -> Bool {
         guard autoRefreshEnabled else { return false }
+        guard isAppActive else { return false }
         guard LoginRepository.shared.getSavedCredentials() != nil else { return false }
 
         let now = Date()
@@ -135,6 +137,7 @@ final class SSOSessionService: ObservableObject {
 
     private func requestSingleRefresh() async -> Bool {
         guard autoRefreshEnabled else { return false }
+        guard isAppActive else { return false }
 
         guard let creds = LoginRepository.shared.getSavedCredentials() else {
             return false
@@ -209,5 +212,9 @@ final class SSOSessionService: ObservableObject {
             self.consecutiveFailures += 1
             self.drainPending(success: false)
         }
+    }
+
+    private var isAppActive: Bool {
+        UIApplication.shared.applicationState == .active
     }
 }
