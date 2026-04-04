@@ -28,6 +28,9 @@
 		10A32DCC2F4327A60009BB45 /* SSOCaptchaProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */; };
 		10A32DCD2F4327A60009BB45 /* LoginRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC62F4327A60009BB45 /* LoginRepository.swift */; };
 		10A32DCF2F4327A60009BB45 /* SSOSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */; };
+		10D1F8762F80C57900034946 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 10D1F8752F80C57900034946 /* WidgetKit.framework */; };
+		10D1F8782F80C57900034946 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 10D1F8772F80C57900034946 /* SwiftUI.framework */; };
+		10D1F8892F80C57A00034946 /* NIU-LiveActivitiesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */; };
 		2A6F9D26FB8E49BDC6BC0719 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA77F7A401878E68B8284D4 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift */; };
 		3D5EA0A44D60577AA027C3F3 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */; };
@@ -72,6 +75,30 @@
 		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		10D1F8872F80C57A00034946 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 10A32D5E2F431B8B0009BB45 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 10D1F8722F80C57900034946;
+			remoteInfo = "NIU-LiveActivitiesExtension";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		10D1F88A2F80C57A00034946 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				10D1F8892F80C57A00034946 /* NIU-LiveActivitiesExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		10A32D662F431B8B0009BB45 /* NIU-APP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NIU-APP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -108,6 +135,9 @@
 		10A32DC62F4327A60009BB45 /* LoginRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginRepository.swift; sourceTree = "<group>"; };
 		10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOCaptchaProcessor.swift; sourceTree = "<group>"; };
 		10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOSessionService.swift; sourceTree = "<group>"; };
+		10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "NIU-LiveActivitiesExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		10D1F8752F80C57900034946 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		10D1F8772F80C57900034946 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Models/EventRegistrationModels.swift; sourceTree = "<group>"; };
 		1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = academic_calendar.json; sourceTree = "<group>"; };
 		1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
@@ -128,8 +158,8 @@
 		9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Services/EventRegistrationWebViewManager.swift; sourceTree = "<group>"; };
 		9E96602F196B61E6AF082552 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5C /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
-		A9F0C1D2E3F4A5B6C7D8E9E0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistration_Tab1_View.swift; sourceTree = "<group>"; };
+		A9F0C1D2E3F4A5B6C7D8E9E0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AA01BC11AA01BC11AA01BC11 /* Features/ClassSchedule/Models/ClassScheduleModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Models/ClassScheduleModels.swift; sourceTree = "<group>"; };
 		AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/ClassScheduleWebView.swift; sourceTree = "<group>"; };
 		AA01BC13AA01BC13AA01BC13 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift; sourceTree = "<group>"; };
@@ -161,11 +191,41 @@
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		10D1F88D2F80C57A00034946 /* Exceptions for "NIU-LiveActivities" folder in "NIU-LiveActivitiesExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 10D1F8722F80C57900034946 /* NIU-LiveActivitiesExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		10D1F8792F80C57900034946 /* NIU-LiveActivities */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				10D1F88D2F80C57A00034946 /* Exceptions for "NIU-LiveActivities" folder in "NIU-LiveActivitiesExtension" target */,
+			);
+			path = "NIU-LiveActivities";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		10A32D632F431B8B0009BB45 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		10D1F8702F80C57900034946 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10D1F8782F80C57900034946 /* SwiftUI.framework in Frameworks */,
+				10D1F8762F80C57900034946 /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,6 +239,8 @@
 				10A32DA42F431F630009BB45 /* Features */,
 				10A32DA62F431F630009BB45 /* Resources */,
 				10A32DB02F431F630009BB45 /* Shared */,
+				10D1F8792F80C57900034946 /* NIU-LiveActivities */,
+				10D1F8742F80C57900034946 /* Frameworks */,
 				10A32D672F431B8B0009BB45 /* Products */,
 				10A32DC92F4327A60009BB45 /* Core */,
 				10A32DF42F43C76F0009BB45 /* Recovered References */,
@@ -196,6 +258,7 @@
 				10A32D872F431E350009BB45 /* Resources */,
 				10A32D912F431E350009BB45 /* Shared */,
 				10A32D662F431B8B0009BB45 /* NIU-APP.app */,
+				10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -511,6 +574,15 @@
 			name = "Recovered References";
 			sourceTree = "<group>";
 		};
+		10D1F8742F80C57900034946 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				10D1F8752F80C57900034946 /* WidgetKit.framework */,
+				10D1F8772F80C57900034946 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		4681EB825F20592DB98D822B /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -591,10 +663,12 @@
 				10A32D622F431B8B0009BB45 /* Sources */,
 				10A32D632F431B8B0009BB45 /* Frameworks */,
 				10A32D642F431B8B0009BB45 /* Resources */,
+				10D1F88A2F80C57A00034946 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				10D1F8882F80C57A00034946 /* PBXTargetDependency */,
 			);
 			name = "NIU-APP";
 			packageProductDependencies = (
@@ -603,6 +677,28 @@
 			productReference = 10A32D662F431B8B0009BB45 /* NIU-APP.app */;
 			productType = "com.apple.product-type.application";
 		};
+		10D1F8722F80C57900034946 /* NIU-LiveActivitiesExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 10D1F88E2F80C57A00034946 /* Build configuration list for PBXNativeTarget "NIU-LiveActivitiesExtension" */;
+			buildPhases = (
+				10D1F86F2F80C57900034946 /* Sources */,
+				10D1F8702F80C57900034946 /* Frameworks */,
+				10D1F8712F80C57900034946 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				10D1F8792F80C57900034946 /* NIU-LiveActivities */,
+			);
+			name = "NIU-LiveActivitiesExtension";
+			packageProductDependencies = (
+			);
+			productName = "NIU-LiveActivitiesExtension";
+			productReference = 10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -610,11 +706,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					10A32D652F431B8B0009BB45 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					10D1F8722F80C57900034946 = {
+						CreatedOnToolsVersion = 26.3;
 					};
 				};
 			};
@@ -639,6 +738,7 @@
 			projectRoot = "";
 			targets = (
 				10A32D652F431B8B0009BB45 /* NIU-APP */,
+				10D1F8722F80C57900034946 /* NIU-LiveActivitiesExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -653,6 +753,13 @@
 				0E182345FA814B44AC09A920 /* Settings.bundle in Resources */,
 				A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */,
 				A1B2C3D4E5F60718293A4B5D /* LICENSE in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		10D1F8712F80C57900034946 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -724,7 +831,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		10D1F86F2F80C57900034946 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		10D1F8882F80C57A00034946 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 10D1F8722F80C57900034946 /* NIU-LiveActivitiesExtension */;
+			targetProxy = 10D1F8872F80C57A00034946 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		10A32D6F2F431B8C0009BB45 /* Debug */ = {
@@ -943,6 +1065,73 @@
 			};
 			name = Release;
 		};
+		10D1F88B2F80C57A00034946 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "NIU-LiveActivities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "CHIEN.NIU-APP.NIU-LiveActivities";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		10D1F88C2F80C57A00034946 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "NIU-LiveActivities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "CHIEN.NIU-APP.NIU-LiveActivities";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -960,6 +1149,15 @@
 			buildConfigurations = (
 				10A32D722F431B8C0009BB45 /* Debug */,
 				10A32D732F431B8C0009BB45 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		10D1F88E2F80C57A00034946 /* Build configuration list for PBXNativeTarget "NIU-LiveActivitiesExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				10D1F88B2F80C57A00034946 /* Debug */,
+				10D1F88C2F80C57A00034946 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

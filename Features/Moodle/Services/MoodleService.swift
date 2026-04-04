@@ -375,7 +375,7 @@ final class MoodleService {
                 popupNotificationCacheAt = Date()
                 return []
             }
-            throw lastError ?? error
+            lastError = lastError ?? error
         }
 
         throw lastError ?? MoodleError.serverError
@@ -606,6 +606,24 @@ final class MoodleService {
                 "acceptsubmissionstatement": acceptSubmissionStatement ? "1" : "0"
             ]
         )
+    }
+
+    func uploadAssignmentSubmissionFile(
+        assignId: Int,
+        assignmentCMID: Int,
+        assignmentCourseID: Int?,
+        localFileURL: URL
+    ) async throws -> MoodleUploadedFile {
+        let draftItemId = try await fetchUnusedDraftItemId()
+        let uploaded = try await uploadAssignmentFile(
+            localFileURL: localFileURL,
+            draftItemId: draftItemId,
+            assignmentCMID: assignmentCMID,
+            assignmentCourseID: assignmentCourseID
+        )
+        let effectiveDraftItemId = uploaded.itemid > 0 ? uploaded.itemid : draftItemId
+        try await saveAssignmentSubmission(assignId: assignId, draftItemId: effectiveDraftItemId)
+        return uploaded
     }
     
     /// Build a file download URL with token appended

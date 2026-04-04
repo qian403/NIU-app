@@ -1,6 +1,9 @@
 import SwiftUI
 import Combine
 import UserNotifications
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
 
 @MainActor
 final class AppState: ObservableObject {
@@ -13,9 +16,15 @@ final class AppState: ObservableObject {
     /// Used by LoginView to suppress automatic re-login.
     @Published private(set) var didExplicitlyLogout: Bool = false
     private var isRefreshingProfile = false
+    private var notificationObservers: [NSObjectProtocol] = []
 
     init() {
+        observeClassScheduleUpdates()
         checkAuthenticationStatus()
+    }
+
+    deinit {
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     func login(user: User) {
@@ -43,6 +52,7 @@ final class AppState: ObservableObject {
         SSOSessionService.shared.disableAutoRefresh()
         MoodleSessionManager.shared.reset()
         NotificationScheduler.shared.clearAllManagedNotifications()
+        Task { await ClassLiveActivityCoordinator.shared.endAll() }
         print("[App] 使用者已登出")
     }
 
@@ -65,6 +75,7 @@ final class AppState: ObservableObject {
                 MoodleSessionManager.shared.fetchEUNILink()
             }
             Task { await refreshNotificationSchedules() }
+            Task { await refreshClassLiveActivitiesIfNeeded() }
             Task { await refreshProfileIfNeeded() }
         }
     }
@@ -145,6 +156,25 @@ final class AppState: ObservableObject {
         await refreshNotificationSchedules()
     }
 
+    func setClassRemindersEnabled(_ enabled: Bool) async {
+        notificationSettings.classReminderEnabled = enabled
+        notificationSettings.save()
+        if enabled {
+            _ = await NotificationScheduler.shared.requestAuthorizationIfNeeded()
+        }
+        await refreshNotificationSchedules()
+    }
+
+    func setClassLiveActivityEnabled(_ enabled: Bool) async {
+        notificationSettings.classLiveActivityEnabled = enabled
+        notificationSettings.save()
+        if enabled {
+            await refreshClassLiveActivitiesIfNeeded()
+        } else {
+            await ClassLiveActivityCoordinator.shared.endAll()
+        }
+    }
+
     func refreshNotificationSchedules() async {
         guard isAuthenticated else { return }
         guard let credentials = LoginRepository.shared.getSavedCredentials() else { return }
@@ -153,6 +183,34 @@ final class AppState: ObservableObject {
             username: credentials.username,
             password: credentials.password
         )
+        await refreshClassLiveActivitiesIfNeeded()
+    }
+
+    func applicationDidBecomeActive() async {
+        await refreshClassLiveActivitiesIfNeeded()
+    }
+
+
+    private func observeClassScheduleUpdates() {
+        let observer = NotificationCenter.default.addObserver(
+            forName: .classScheduleDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task {
+                await self.refreshNotificationSchedules()
+                await self.refreshClassLiveActivitiesIfNeeded()
+            }
+        }
+        notificationObservers.append(observer)
+
+    }
+
+    private func refreshClassLiveActivitiesIfNeeded() async {
+        guard isAuthenticated else { return }
+        guard notificationSettings.classLiveActivityEnabled else { return }
+        await ClassLiveActivityCoordinator.shared.refreshFromScheduleCache()
     }
 }
 
@@ -167,12 +225,16 @@ private enum StorageKeys {
 struct NotificationSettings {
     var assignmentDeadlineEnabled: Bool
     var academicCalendarEnabled: Bool
+    var classReminderEnabled: Bool
+    var classLiveActivityEnabled: Bool
 
     static func load() -> NotificationSettings {
         let defaults = UserDefaults.standard
         return NotificationSettings(
             assignmentDeadlineEnabled: defaults.object(forKey: NotificationKeys.assignmentDeadlineEnabled) as? Bool ?? false,
-            academicCalendarEnabled: defaults.object(forKey: NotificationKeys.academicCalendarEnabled) as? Bool ?? false
+            academicCalendarEnabled: defaults.object(forKey: NotificationKeys.academicCalendarEnabled) as? Bool ?? false,
+            classReminderEnabled: defaults.object(forKey: NotificationKeys.classReminderEnabled) as? Bool ?? false,
+            classLiveActivityEnabled: defaults.object(forKey: NotificationKeys.classLiveActivityEnabled) as? Bool ?? false
         )
     }
 
@@ -180,12 +242,16 @@ struct NotificationSettings {
         let defaults = UserDefaults.standard
         defaults.set(assignmentDeadlineEnabled, forKey: NotificationKeys.assignmentDeadlineEnabled)
         defaults.set(academicCalendarEnabled, forKey: NotificationKeys.academicCalendarEnabled)
+        defaults.set(classReminderEnabled, forKey: NotificationKeys.classReminderEnabled)
+        defaults.set(classLiveActivityEnabled, forKey: NotificationKeys.classLiveActivityEnabled)
     }
 }
 
 private enum NotificationKeys {
     static let assignmentDeadlineEnabled = "app.notification.assignmentDeadlineEnabled"
     static let academicCalendarEnabled = "app.notification.academicCalendarEnabled"
+    static let classReminderEnabled = "app.notification.classReminderEnabled"
+    static let classLiveActivityEnabled = "app.notification.classLiveActivityEnabled"
 }
 
 @MainActor
@@ -195,6 +261,8 @@ private final class NotificationScheduler {
     private let center = UNUserNotificationCenter.current()
     private let assignmentPrefix = "notify.assignment."
     private let calendarPrefix = "notify.calendar."
+    private let classReminderPrefix = "notify.class."
+    private let classScheduleCacheKey = "classSchedule.v2.cachedData"
 
     private init() {}
 
@@ -217,7 +285,11 @@ private final class NotificationScheduler {
             let pending = await pendingRequests()
             let ids = pending
                 .map(\.identifier)
-                .filter { $0.hasPrefix(assignmentPrefix) || $0.hasPrefix(calendarPrefix) }
+                .filter {
+                    $0.hasPrefix(assignmentPrefix) ||
+                    $0.hasPrefix(calendarPrefix) ||
+                    $0.hasPrefix(classReminderPrefix)
+                }
             guard !ids.isEmpty else { return }
             center.removePendingNotificationRequests(withIdentifiers: ids)
         }
@@ -226,8 +298,9 @@ private final class NotificationScheduler {
     func scheduleAll(settings: NotificationSettings, username: String, password: String) async {
         await clear(byPrefix: assignmentPrefix)
         await clear(byPrefix: calendarPrefix)
+        await clear(byPrefix: classReminderPrefix)
 
-        guard settings.assignmentDeadlineEnabled || settings.academicCalendarEnabled else { return }
+        guard settings.assignmentDeadlineEnabled || settings.academicCalendarEnabled || settings.classReminderEnabled else { return }
         guard await requestAuthorizationIfNeeded() else { return }
 
         if settings.assignmentDeadlineEnabled {
@@ -235,6 +308,9 @@ private final class NotificationScheduler {
         }
         if settings.academicCalendarEnabled {
             await scheduleAcademicCalendarEvents()
+        }
+        if settings.classReminderEnabled {
+            await scheduleClassReminders()
         }
     }
 
@@ -323,6 +399,39 @@ private final class NotificationScheduler {
         }
     }
 
+    private func scheduleClassReminders() async {
+        guard let data = UserDefaults.standard.data(forKey: classScheduleCacheKey),
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
+            return
+        }
+
+        let reminderMinutes = 10
+        for (dayOffset, dayHeader) in schedule.dayHeaders.enumerated() {
+            guard let weekday = weekdayIndex(from: dayHeader) else { continue }
+            for period in schedule.periods {
+                guard let course = period.course(for: dayOffset),
+                      let start = period.startMinutes,
+                      start >= reminderMinutes else { continue }
+
+                let fireMinutes = start - reminderMinutes
+                let hour = fireMinutes / 60
+                let minute = fireMinutes % 60
+
+                let room = course.classroom?.nilIfEmpty ?? "教室資訊未提供"
+                let body = "\(course.name)（\(room)）將於 \(period.startTimeLabel) 上課"
+                let courseToken = stableToken("\(course.name)-\(period.id)-\(dayOffset)")
+                await addRepeatingNotification(
+                    identifier: "\(classReminderPrefix)\(weekday).\(period.id).\(courseToken)",
+                    title: "即將上課",
+                    body: body,
+                    weekday: weekday,
+                    hour: hour,
+                    minute: minute
+                )
+            }
+        }
+    }
+
     private func addNotification(identifier: String, title: String, body: String, date: Date) async {
         let content = UNMutableNotificationContent()
         content.title = title
@@ -337,6 +446,52 @@ private final class NotificationScheduler {
         } catch {
             print("[Notification] 新增通知失敗 (\(identifier)): \(error.localizedDescription)")
         }
+    }
+
+    private func addRepeatingNotification(
+        identifier: String,
+        title: String,
+        body: String,
+        weekday: Int,
+        hour: Int,
+        minute: Int
+    ) async {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        var components = DateComponents()
+        components.weekday = weekday
+        components.hour = hour
+        components.minute = minute
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        do {
+            try await add(request: request)
+        } catch {
+            print("[Notification] 新增重複課程通知失敗 (\(identifier)): \(error.localizedDescription)")
+        }
+    }
+
+    private func weekdayIndex(from dayHeader: String) -> Int? {
+        if dayHeader.contains("一") { return 2 }
+        if dayHeader.contains("二") { return 3 }
+        if dayHeader.contains("三") { return 4 }
+        if dayHeader.contains("四") { return 5 }
+        if dayHeader.contains("五") { return 6 }
+        if dayHeader.contains("六") { return 7 }
+        if dayHeader.contains("日") || dayHeader.contains("天") { return 1 }
+        return nil
+    }
+
+    private func stableToken(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics
+        let scalars = raw.unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        return String(scalars)
     }
 
     private func currentAcademicSemester() -> String {
@@ -384,3 +539,199 @@ public extension String {
         return trimmed.isEmpty ? nil : trimmed
     }
 }
+
+extension Notification.Name {
+    static let classScheduleDidUpdate = Notification.Name("classScheduleDidUpdate")
+}
+
+#if canImport(ActivityKit)
+@available(iOS 16.1, *)
+struct ClassLiveActivityAttributes: ActivityAttributes {
+    public struct ContentState: Codable, Hashable {
+        let mode: String // "current" or "upcoming"
+        let courseName: String
+        let classroom: String
+        let teacher: String
+        let periodLabel: String
+        let startDate: Date
+        let endDate: Date
+        let nextCourseName: String?
+        let nextClassroom: String?
+        let nextStartDate: Date?
+    }
+
+    let token: String
+}
+
+@MainActor
+private final class ClassLiveActivityCoordinator {
+    static let shared = ClassLiveActivityCoordinator()
+    private let cacheKey = "classSchedule.v2.cachedData"
+    private let appGroupIdentifier = "group.CHIEN.NIU-APP"
+
+    private init() {}
+
+    func refreshFromScheduleCache() async {
+        guard #available(iOS 16.1, *) else { return }
+        let now = Date()
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            await endAll()
+            return
+        }
+        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+        guard let data = defaults.data(forKey: cacheKey),
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              let snapshot = classSnapshot(from: schedule, now: now) else {
+            await endAll()
+            return
+        }
+
+        let state = ClassLiveActivityAttributes.ContentState(
+            mode: snapshot.mode,
+            courseName: snapshot.primary.courseName,
+            classroom: snapshot.primary.classroom,
+            teacher: snapshot.primary.teacher,
+            periodLabel: snapshot.primary.periodLabel,
+            startDate: snapshot.primary.start,
+            endDate: snapshot.primary.end,
+            nextCourseName: snapshot.next?.courseName,
+            nextClassroom: snapshot.next?.classroom,
+            nextStartDate: snapshot.next?.start
+        )
+
+        let token = stableToken("\(snapshot.primary.start.timeIntervalSince1970)-\(snapshot.primary.courseName)-\(snapshot.primary.periodLabel)")
+        let attributes = ClassLiveActivityAttributes(token: token)
+        let staleDate = snapshot.mode == "current" ? snapshot.primary.end : snapshot.primary.start
+        let content = ActivityContent(state: state, staleDate: staleDate)
+
+        if let activity = Activity<ClassLiveActivityAttributes>.activities.first {
+            await activity.update(content)
+            return
+        }
+
+        do {
+            _ = try Activity<ClassLiveActivityAttributes>.request(
+                attributes: attributes,
+                content: content,
+                pushType: nil
+            )
+        } catch {
+            print("[LiveActivity] 啟動失敗: \(error.localizedDescription)")
+        }
+    }
+
+    func endAll() async {
+        guard #available(iOS 16.1, *) else { return }
+        for activity in Activity<ClassLiveActivityAttributes>.activities {
+            let final = ActivityContent(state: activity.content.state, staleDate: Date())
+            await activity.end(final, dismissalPolicy: .immediate)
+        }
+    }
+
+    private typealias ClassSession = (courseName: String, classroom: String, teacher: String, periodLabel: String, start: Date, end: Date)
+
+    private func classSnapshot(from schedule: ClassSchedule, now: Date) -> (mode: String, primary: ClassSession, next: ClassSession?)? {
+        let candidates = sessionsForDisplayDays(from: schedule, now: now)
+            .filter { $0.end > now }
+            .sorted { $0.start < $1.start }
+
+        guard !candidates.isEmpty else { return nil }
+
+        if let current = candidates.first(where: { $0.start <= now && now < $0.end }) {
+            let next = candidates.first(where: { $0.start >= current.end })
+            return ("current", current, next)
+        }
+
+        let next = candidates[0]
+        let following = candidates.count > 1 ? candidates[1] : nil
+        return ("upcoming", next, following)
+    }
+
+    private func sessionsForDisplayDays(from schedule: ClassSchedule, now: Date) -> [ClassSession] {
+        var candidates: [ClassSession] = []
+        let calendar = Calendar.current
+        let currentWeekday = calendar.component(.weekday, from: now)
+        let startOfToday = calendar.startOfDay(for: now)
+        let targetWeekdays: Set<Int> = {
+            if currentWeekday == 7 || currentWeekday == 1 {
+                // Weekend preview mode: read Monday + Tuesday classes.
+                return [2, 3]
+            }
+            return [currentWeekday]
+        }()
+
+        for (offset, dayHeader) in schedule.dayHeaders.enumerated() {
+            guard let weekday = weekdayIndex(from: dayHeader), targetWeekdays.contains(weekday) else { continue }
+            for period in schedule.periods {
+                guard let course = period.course(for: offset),
+                      let startMins = period.startMinutes,
+                      let endMins = period.endMinutes else { continue }
+
+                let duration = endMins - startMins
+                guard duration > 0 else { continue }
+
+                let startDate: Date?
+                if weekday == currentWeekday {
+                    startDate = calendar.date(byAdding: .minute, value: startMins, to: startOfToday)
+                } else {
+                    startDate = nextDateForWeekday(weekday, minutes: startMins, from: now)
+                }
+
+                guard let startDate,
+                      let endDate = calendar.date(byAdding: .minute, value: duration, to: startDate) else {
+                    continue
+                }
+
+                let room = course.classroom?.nilIfEmpty ?? "教室待確認"
+                let teacher = course.teacher?.nilIfEmpty ?? "授課教師待確認"
+                let periodLabel = "第\(period.id)節"
+                candidates.append((course.name, room, teacher, periodLabel, startDate, endDate))
+            }
+        }
+
+        return candidates
+    }
+
+    private func nextDateForWeekday(_ weekday: Int, minutes: Int, from now: Date) -> Date? {
+        var comps = DateComponents()
+        comps.weekday = weekday
+        comps.hour = minutes / 60
+        comps.minute = minutes % 60
+
+        return Calendar.current.nextDate(
+            after: now,
+            matching: comps,
+            matchingPolicy: .nextTime,
+            direction: .forward
+        )
+    }
+
+    private func weekdayIndex(from dayHeader: String) -> Int? {
+        if dayHeader.contains("一") { return 2 }
+        if dayHeader.contains("二") { return 3 }
+        if dayHeader.contains("三") { return 4 }
+        if dayHeader.contains("四") { return 5 }
+        if dayHeader.contains("五") { return 6 }
+        if dayHeader.contains("六") { return 7 }
+        if dayHeader.contains("日") || dayHeader.contains("天") { return 1 }
+        return nil
+    }
+
+    private func stableToken(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics
+        let scalars = raw.unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        return String(scalars)
+    }
+
+}
+#else
+@MainActor
+private final class ClassLiveActivityCoordinator {
+    static let shared = ClassLiveActivityCoordinator()
+    private init() {}
+    func refreshFromScheduleCache() async {}
+    func endAll() async {}
+}
+#endif

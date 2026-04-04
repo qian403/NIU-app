@@ -28,6 +28,7 @@ final class ClassScheduleViewModel: ObservableObject {
     private var sessionRefreshAttempted = false
 
     private let cacheKey = "classSchedule.v2.cachedData"
+    private let appGroupIdentifier = "group.CHIEN.NIU-APP"
 
     // MARK: - Computed helpers
 
@@ -124,6 +125,7 @@ final class ClassScheduleViewModel: ObservableObject {
             // Recalculate today's index now that we have the real day headers
             selectedDayIndex = todayDayIndex
             saveToCache(parsed)
+            NotificationCenter.default.post(name: .classScheduleDidUpdate, object: nil)
             loadState = .fresh
 
         case .notAvailable(let message):
@@ -244,10 +246,12 @@ final class ClassScheduleViewModel: ObservableObject {
     private func saveToCache(_ schedule: ClassSchedule) {
         if let data = try? JSONEncoder().encode(schedule) {
             UserDefaults.standard.set(data, forKey: cacheKey)
+            UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: cacheKey)
         }
     }
 
     private func clearCache() {
         UserDefaults.standard.removeObject(forKey: cacheKey)
+        UserDefaults(suiteName: appGroupIdentifier)?.removeObject(forKey: cacheKey)
     }
 }
