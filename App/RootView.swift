@@ -4,6 +4,7 @@ struct RootView: View {
     @StateObject private var appState = AppState()
     @ObservedObject private var sessionService = SSOSessionService.shared
     @AppStorage("app.appearance.mode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -33,6 +34,10 @@ struct RootView: View {
         }
         .environmentObject(appState)
         .preferredColorScheme(currentAppearanceMode.colorScheme)
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .active else { return }
+            Task { await appState.applicationDidBecomeActive() }
+        }
     }
 
     private var currentAppearanceMode: AppAppearanceMode {

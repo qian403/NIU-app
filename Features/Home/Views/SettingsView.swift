@@ -442,6 +442,30 @@ private struct NotificationMenuView: View {
                     )
                 )
 
+                notificationToggleRow(
+                    icon: "bell.and.waves.left.and.right",
+                    title: "上課前提醒",
+                    subtitle: "每週固定於上課前 10 分鐘提醒教室",
+                    isOn: Binding(
+                        get: { appState.notificationSettings.classReminderEnabled },
+                        set: { newValue in
+                            Task { await appState.setClassRemindersEnabled(newValue) }
+                        }
+                    )
+                )
+
+                notificationToggleRow(
+                    icon: "rectangle.topthird.inset.filled",
+                    title: "即時動態（Live Activities）",
+                    subtitle: "鎖定畫面與靈動島顯示下一堂課與教室",
+                    isOn: Binding(
+                        get: { appState.notificationSettings.classLiveActivityEnabled },
+                        set: { newValue in
+                            Task { await appState.setClassLiveActivityEnabled(newValue) }
+                        }
+                    )
+                )
+
                 Button {
                     Task {
                         isRefreshingNotifications = true
@@ -452,7 +476,7 @@ private struct NotificationMenuView: View {
                     actionRow(
                         icon: "bell.badge",
                         title: "立即更新通知",
-                        subtitle: "重新同步作業與重要日期提醒",
+                        subtitle: "重新同步通知與即時動態",
                         trailingText: isRefreshingNotifications ? "更新中..." : nil
                     )
                 }

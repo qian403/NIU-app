@@ -7,6 +7,7 @@ import CoreLocation
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
     private static let moodleNotificationURL = "https://euni.niu.edu.tw/message/output/popup/notifications.php"
+    @State private var navigateToClassSchedule = false
     
     var body: some View {
         NavigationStack {
@@ -31,10 +32,28 @@ struct HomeView: View {
                 }
             }
             .navigationBarHidden(true)
+            .navigationDestination(isPresented: $navigateToClassSchedule) {
+                ClassScheduleView()
+            }
+        }
+        .onOpenURL { url in
+            guard shouldOpenClassSchedule(from: url) else { return }
+            navigateToClassSchedule = true
         }
         .task {
             await appState.refreshProfileIfNeeded()
         }
+    }
+
+    private func shouldOpenClassSchedule(from url: URL) -> Bool {
+        let scheme = url.scheme?.lowercased()
+        let host = url.host?.lowercased()
+        let path = url.path.lowercased()
+
+        guard scheme == "niuapp" else { return false }
+        if host == "class-schedule" { return true }
+        if path == "/class-schedule" { return true }
+        return false
     }
     
     private var headerSection: some View {
@@ -365,49 +384,6 @@ struct HomeView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-                Text("更多功能")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(.primary.opacity(0.5))
-                    .padding(.top, Theme.Spacing.small)
-
-                NavigationLink(destination: MoreFeaturesMenuView()) {
-                    HStack(spacing: Theme.Spacing.medium) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.system(size: 24, weight: .light))
-                            .foregroundColor(.primary)
-                            .frame(width: 50, height: 50)
-                            .background(
-                                Circle()
-                                    .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                            )
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("更多功能")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.primary)
-
-                            Text("更多功能")
-                                .font(.system(size: 13, weight: .light))
-                                .foregroundColor(.primary.opacity(0.5))
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(.primary.opacity(0.3))
-                    }
-                    .padding(Theme.Spacing.medium)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
         }
     }
 
@@ -911,11 +887,23 @@ private struct MoodleNotificationDetailView: View {
     }
 
     private func geocodeLocation(_ query: String) async -> CLLocationCoordinate2D? {
-        await withCheckedContinuation { continuation in
-            CLGeocoder().geocodeAddressString(query) { placemarks, _ in
-                let coordinate = placemarks?.first?.location?.coordinate
-                continuation.resume(returning: coordinate)
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return nil }
+
+        guard let request = MKGeocodingRequest(addressString: trimmedQuery) else { return nil }
+        do {
+            let mapItems = try await request.mapItems
+            for mapItem in mapItems {
+                let _ = mapItem.address
+                let _ = mapItem.addressRepresentations
+                let coordinate = mapItem.location.coordinate
+                if CLLocationCoordinate2DIsValid(coordinate) {
+                    return coordinate
+                }
             }
+            return nil
+        } catch {
+            return nil
         }
     }
 
@@ -1802,51 +1790,5 @@ private extension String {
     var trimmedOrDash: String {
         let value = trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "-" : value
-    }
-}
-
-private struct MoreFeaturesMenuView: View {
-    var body: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                    HStack(spacing: Theme.Spacing.medium) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 18, weight: .light))
-                            .foregroundColor(.primary)
-                            .frame(width: 34, height: 34)
-                            .background(
-                                Circle()
-                                    .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                            )
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("宜大 AI 助理")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(.primary)
-                            Text("此功能已移除")
-                                .font(.system(size: 12, weight: .light))
-                                .foregroundColor(.primary.opacity(0.5))
-                        }
-
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .padding(Theme.Spacing.medium)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                    )
-                }
-                .padding(.horizontal, Theme.Spacing.large)
-                .padding(.top, Theme.Spacing.medium)
-                .padding(.bottom, Theme.Spacing.large)
-            }
-        }
-        .navigationTitle("更多功能")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

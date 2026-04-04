@@ -105,3 +105,9 @@ NIU-APP/
 fix_*.rb
 check_*.sh
 add_*.rb
+/tmp
+/skills-lock.json
+/agent
+/.vscode
+/.roo
+/.agents

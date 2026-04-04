@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MoodleAssignmentView: View {
     let assignment: MoodleAssignment
@@ -9,6 +10,8 @@ struct MoodleAssignmentView: View {
     @State private var isDeleting = false
     @State private var actionMessage: String?
     @State private var isSubmittingForGrading = false
+    @State private var isPickingFile = false
+    @State private var isUploading = false
     
     var body: some View {
         ScrollView {
@@ -159,13 +162,12 @@ struct MoodleAssignmentView: View {
                 Divider()
 
                 VStack(spacing: 10) {
-                    NavigationLink(destination: MoodleWebPageView(
-                        title: "網頁上傳作業",
-                        targetURL: editSubmissionURL
-                    )) {
+                    Button {
+                        isPickingFile = true
+                    } label: {
                         HStack {
-                            Image(systemName: "globe")
-                            Text("上傳檔案")
+                            Image(systemName: "square.and.arrow.up")
+                            Text(isUploading ? "上傳中..." : "上傳檔案")
                         }
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.primary)
@@ -176,6 +178,20 @@ struct MoodleAssignmentView: View {
                                 .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
                         )
                         .contentShape(Rectangle())
+                    }
+                    .disabled(isUploading)
+                    .contentShape(Rectangle())
+
+                    NavigationLink(destination: MoodleWebPageView(
+                        title: "網頁上傳作業",
+                        targetURL: editSubmissionURL
+                    )) {
+                        HStack {
+                            Image(systemName: "globe")
+                            Text("網頁模式（備用）")
+                        }
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
                     .contentShape(Rectangle())
@@ -231,7 +247,7 @@ struct MoodleAssignmentView: View {
                         .foregroundColor(.secondary)
                 }
 
-                Text("作業檔案上傳暫時改為網頁模式，完成後返回此頁可重新整理狀態。")
+                Text("上傳完成後會自動儲存為作業草稿，最後再按「送出作業（最終）」完成繳交。")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
             }
@@ -242,6 +258,13 @@ struct MoodleAssignmentView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await loadSubmission()
+        }
+        .fileImporter(
+            isPresented: $isPickingFile,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFileImport(result)
         }
     }
     
@@ -367,5 +390,64 @@ struct MoodleAssignmentView: View {
         name.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
+    }
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let sourceURL = urls.first else {
+                actionMessage = "未選擇檔案"
+                return
+            }
+            Task {
+                await uploadFile(sourceURL)
+            }
+        case .failure(let error):
+            actionMessage = "選擇檔案失敗：\(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func uploadFile(_ sourceURL: URL) async {
+        isUploading = true
+        actionMessage = nil
+        defer { isUploading = false }
+
+        do {
+            let copiedURL = try prepareReadableCopy(from: sourceURL)
+            defer { try? FileManager.default.removeItem(at: copiedURL) }
+
+            _ = try await MoodleService.shared.uploadAssignmentSubmissionFile(
+                assignId: assignment.id,
+                assignmentCMID: assignment.cmid,
+                assignmentCourseID: assignment.course,
+                localFileURL: copiedURL
+            )
+
+            actionMessage = "檔案已上傳並儲存為草稿"
+            await loadSubmission()
+        } catch {
+            actionMessage = "上傳失敗：\(error.localizedDescription)"
+        }
+    }
+
+    private func prepareReadableCopy(from sourceURL: URL) throws -> URL {
+        let hasSecurityScope = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if hasSecurityScope {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fileManager = FileManager.default
+        let uploadDir = fileManager.temporaryDirectory.appendingPathComponent("moodle-upload", isDirectory: true)
+        try fileManager.createDirectory(at: uploadDir, withIntermediateDirectories: true)
+
+        let filename = sourceURL.lastPathComponent.isEmpty
+            ? "upload-\(UUID().uuidString)"
+            : sourceURL.lastPathComponent
+        let destination = uploadDir.appendingPathComponent("\(UUID().uuidString)-\(filename)")
+        try fileManager.copyItem(at: sourceURL, to: destination)
+        return destination
     }
 }
