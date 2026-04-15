@@ -35,8 +35,14 @@ struct RootView: View {
         .environmentObject(appState)
         .preferredColorScheme(currentAppearanceMode.colorScheme)
         .onChange(of: scenePhase) { _, newValue in
-            guard newValue == .active else { return }
-            Task { await appState.applicationDidBecomeActive() }
+            switch newValue {
+            case .active:
+                Task { await appState.applicationDidBecomeActive() }
+            case .background:
+                appState.applicationDidEnterBackground()
+            default:
+                break
+            }
         }
     }
 

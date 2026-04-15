@@ -1,4 +1,5 @@
 import SwiftUI
+import BackgroundTasks
 
 @main
 struct NIUApp: App {
@@ -15,8 +16,13 @@ struct NIUApp: App {
     
     private func setupApp() {
         registerSettingsBundleDefaults()
+        registerBackgroundTasks()
         configureAppearance()
         printStartupInfo()
+    }
+
+    private func registerBackgroundTasks() {
+        ClassLiveActivityBackgroundRefreshCoordinator.shared.register()
     }
     
     private func configureAppearance() {

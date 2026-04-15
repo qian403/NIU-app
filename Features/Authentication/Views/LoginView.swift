@@ -159,7 +159,7 @@ struct LoginView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background(Color.primary)
+            .background(Color.accentColor)
             .cornerRadius(26)
         }
         .disabled(viewModel.isLoading || !viewModel.isFormValid)

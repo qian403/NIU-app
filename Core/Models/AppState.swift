@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import BackgroundTasks
 import UserNotifications
 #if canImport(ActivityKit)
 import ActivityKit
@@ -52,6 +53,7 @@ final class AppState: ObservableObject {
         SSOSessionService.shared.disableAutoRefresh()
         MoodleSessionManager.shared.reset()
         NotificationScheduler.shared.clearAllManagedNotifications()
+        ClassLiveActivityBackgroundRefreshCoordinator.shared.cancel()
         Task { await ClassLiveActivityCoordinator.shared.endAll() }
         print("[App] 使用者已登出")
     }
@@ -169,8 +171,10 @@ final class AppState: ObservableObject {
         notificationSettings.classLiveActivityEnabled = enabled
         notificationSettings.save()
         if enabled {
-            await refreshClassLiveActivitiesIfNeeded()
+            await refreshClassLiveActivitiesIfNeeded(forceRebuild: true)
+            ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
         } else {
+            ClassLiveActivityBackgroundRefreshCoordinator.shared.cancel()
             await ClassLiveActivityCoordinator.shared.endAll()
         }
     }
@@ -184,10 +188,16 @@ final class AppState: ObservableObject {
             password: credentials.password
         )
         await refreshClassLiveActivitiesIfNeeded()
+        ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
     }
 
     func applicationDidBecomeActive() async {
-        await refreshClassLiveActivitiesIfNeeded()
+        await refreshClassLiveActivitiesIfNeeded(forceRebuild: true)
+        ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
+    }
+
+    func applicationDidEnterBackground() {
+        ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
     }
 
 
@@ -207,10 +217,10 @@ final class AppState: ObservableObject {
 
     }
 
-    private func refreshClassLiveActivitiesIfNeeded() async {
+    private func refreshClassLiveActivitiesIfNeeded(forceRebuild: Bool = false) async {
         guard isAuthenticated else { return }
         guard notificationSettings.classLiveActivityEnabled else { return }
-        await ClassLiveActivityCoordinator.shared.refreshFromScheduleCache()
+        await ClassLiveActivityCoordinator.shared.refreshFromScheduleCache(forceRebuild: forceRebuild)
     }
 }
 
@@ -555,23 +565,21 @@ struct ClassLiveActivityAttributes: ActivityAttributes {
         let periodLabel: String
         let startDate: Date
         let endDate: Date
-        let nextCourseName: String?
-        let nextClassroom: String?
-        let nextStartDate: Date?
     }
 
     let token: String
 }
 
 @MainActor
-private final class ClassLiveActivityCoordinator {
+final class ClassLiveActivityCoordinator {
     static let shared = ClassLiveActivityCoordinator()
     private let cacheKey = "classSchedule.v2.cachedData"
     private let appGroupIdentifier = "group.CHIEN.NIU-APP"
+    private let stalePaddingMinutes = 20
 
     private init() {}
 
-    func refreshFromScheduleCache() async {
+    func refreshFromScheduleCache(forceRebuild: Bool = false) async {
         guard #available(iOS 16.1, *) else { return }
         let now = Date()
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -593,19 +601,42 @@ private final class ClassLiveActivityCoordinator {
             teacher: snapshot.primary.teacher,
             periodLabel: snapshot.primary.periodLabel,
             startDate: snapshot.primary.start,
-            endDate: snapshot.primary.end,
-            nextCourseName: snapshot.next?.courseName,
-            nextClassroom: snapshot.next?.classroom,
-            nextStartDate: snapshot.next?.start
+            endDate: snapshot.primary.end
         )
 
-        let token = stableToken("\(snapshot.primary.start.timeIntervalSince1970)-\(snapshot.primary.courseName)-\(snapshot.primary.periodLabel)")
+        let token = stableToken("class-live-activity")
         let attributes = ClassLiveActivityAttributes(token: token)
-        let staleDate = snapshot.mode == "current" ? snapshot.primary.end : snapshot.primary.start
+        let staleDate = calendarStaleDate(for: snapshot)
         let content = ActivityContent(state: state, staleDate: staleDate)
 
-        if let activity = Activity<ClassLiveActivityAttributes>.activities.first {
+        if forceRebuild {
+            await endAll()
+        }
+
+        let activities = Activity<ClassLiveActivityAttributes>.activities
+
+        if activities.count > 1 {
+            for activity in activities {
+                let final = ActivityContent(state: activity.content.state, staleDate: Date())
+                await activity.end(final, dismissalPolicy: .immediate)
+            }
+
+            do {
+                _ = try Activity<ClassLiveActivityAttributes>.request(
+                    attributes: attributes,
+                    content: content,
+                    pushType: nil
+                )
+            } catch {
+                print("[LiveActivity] 重建失敗: \(error.localizedDescription)")
+            }
+
+            return
+        }
+
+        if let activity = activities.first {
             await activity.update(content)
+
             return
         }
 
@@ -626,6 +657,28 @@ private final class ClassLiveActivityCoordinator {
             let final = ActivityContent(state: activity.content.state, staleDate: Date())
             await activity.end(final, dismissalPolicy: .immediate)
         }
+    }
+
+    func nextRefreshDate(after now: Date = Date()) -> Date? {
+        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+        guard let data = defaults.data(forKey: cacheKey),
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
+            return nil
+        }
+
+        let candidates = sessionsForDisplayDays(from: schedule, now: now)
+            .sorted { $0.start < $1.start }
+
+        for session in candidates {
+            if now < session.start {
+                return session.start
+            }
+            if session.start <= now && now < session.end {
+                return session.end
+            }
+        }
+
+        return nil
     }
 
     private typealias ClassSession = (courseName: String, classroom: String, teacher: String, periodLabel: String, start: Date, end: Date)
@@ -684,7 +737,7 @@ private final class ClassLiveActivityCoordinator {
 
                 let room = course.classroom?.nilIfEmpty ?? "教室待確認"
                 let teacher = course.teacher?.nilIfEmpty ?? "授課教師待確認"
-                let periodLabel = "第\(period.id)節"
+                let periodLabel = normalizedPeriodLabel(from: period.id)
                 candidates.append((course.name, room, teacher, periodLabel, startDate, endDate))
             }
         }
@@ -725,13 +778,147 @@ private final class ClassLiveActivityCoordinator {
         return String(scalars)
     }
 
+    private func calendarStaleDate(for snapshot: (mode: String, primary: ClassSession, next: ClassSession?)) -> Date {
+        let base = snapshot.mode == "current" ? snapshot.primary.end : snapshot.primary.start
+        return Calendar.current.date(byAdding: .minute, value: stalePaddingMinutes, to: base) ?? base
+    }
+
+    private func normalizedPeriodLabel(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("第") && trimmed.hasSuffix("節") {
+            return trimmed
+        }
+        if trimmed.hasSuffix("節") {
+            return trimmed
+        }
+        return "第\(trimmed)節"
+    }
+
+}
+
+@MainActor
+final class ClassLiveActivityBackgroundRefreshCoordinator {
+    static let shared = ClassLiveActivityBackgroundRefreshCoordinator()
+    static let identifier = "CHIEN.NIU-APP.classLiveActivityRefresh"
+
+    private let minimumDelay: TimeInterval = 60
+    private let shortLeadTime: TimeInterval = 90
+    private let mediumLeadTime: TimeInterval = 5 * 60
+    private let longLeadTime: TimeInterval = 15 * 60
+    private var hasRegistered = false
+
+    private init() {}
+
+    func register() {
+        guard !hasRegistered else { return }
+
+        let registered = BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.identifier,
+            using: nil
+        ) { task in
+            guard let task = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            Task { @MainActor in
+                self.handle(task: task)
+            }
+        }
+
+        hasRegistered = registered
+        if !registered {
+            print("[BGRefresh] 註冊失敗: \(Self.identifier)")
+        }
+    }
+
+    func scheduleIfNeeded() {
+        guard hasRegistered else { return }
+        cancel()
+
+        guard NotificationSettings.load().classLiveActivityEnabled else { return }
+        guard hasAuthenticatedUser else { return }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        guard let transitionDate = ClassLiveActivityCoordinator.shared.nextRefreshDate() else { return }
+
+        let request = BGAppRefreshTaskRequest(identifier: Self.identifier)
+        request.earliestBeginDate = preferredBeginDate(for: transitionDate, now: Date())
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            print("[BGRefresh] 排程失敗: \(error.localizedDescription)")
+        }
+    }
+
+    func cancel() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.identifier)
+    }
+
+    private func handle(task: BGAppRefreshTask) {
+        scheduleIfNeeded()
+
+        let refreshTask = Task { @MainActor in
+            guard NotificationSettings.load().classLiveActivityEnabled, hasAuthenticatedUser else {
+                task.setTaskCompleted(success: true)
+                return
+            }
+
+            await ClassLiveActivityCoordinator.shared.refreshFromScheduleCache()
+            scheduleIfNeeded()
+            task.setTaskCompleted(success: true)
+        }
+
+        task.expirationHandler = {
+            refreshTask.cancel()
+            task.setTaskCompleted(success: false)
+        }
+    }
+
+    private var hasAuthenticatedUser: Bool {
+        guard let username = UserDefaults.standard.string(forKey: StorageKeys.username) else {
+            return false
+        }
+        return !username.isEmpty
+    }
+
+    private func preferredBeginDate(for transitionDate: Date, now: Date) -> Date {
+        let timeUntilTransition = transitionDate.timeIntervalSince(now)
+        let leadTime = preferredLeadTime(for: timeUntilTransition)
+        let targetDate = transitionDate.addingTimeInterval(-leadTime)
+        return max(now.addingTimeInterval(minimumDelay), targetDate)
+    }
+
+    private func preferredLeadTime(for timeUntilTransition: TimeInterval) -> TimeInterval {
+        switch timeUntilTransition {
+        case ...(10 * 60):
+            return shortLeadTime
+        case ...(60 * 60):
+            return mediumLeadTime
+        default:
+            return longLeadTime
+        }
+    }
 }
 #else
 @MainActor
-private final class ClassLiveActivityCoordinator {
+final class ClassLiveActivityCoordinator {
     static let shared = ClassLiveActivityCoordinator()
     private init() {}
     func refreshFromScheduleCache() async {}
     func endAll() async {}
+    func nextRefreshDate(after now: Date = Date()) -> Date? { nil }
+}
+
+@MainActor
+final class ClassLiveActivityBackgroundRefreshCoordinator {
+    static let shared = ClassLiveActivityBackgroundRefreshCoordinator()
+    static let identifier = "CHIEN.NIU-APP.classLiveActivityRefresh"
+
+    private init() {}
+
+    func register() {}
+    func scheduleIfNeeded() {}
+    func cancel() {}
 }
 #endif

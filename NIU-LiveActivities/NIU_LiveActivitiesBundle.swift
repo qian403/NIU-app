@@ -11,6 +11,7 @@ import SwiftUI
 @main
 struct NIU_LiveActivitiesBundle: WidgetBundle {
     var body: some Widget {
+        NIU_CompactWidget()
         NIU_LiveActivities()
         NIU_LiveActivitiesLiveActivity()
     }

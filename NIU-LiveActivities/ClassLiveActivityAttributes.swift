@@ -10,9 +10,6 @@ struct ClassLiveActivityAttributes: ActivityAttributes {
         let periodLabel: String
         let startDate: Date
         let endDate: Date
-        let nextCourseName: String?
-        let nextClassroom: String?
-        let nextStartDate: Date?
     }
 
     let token: String

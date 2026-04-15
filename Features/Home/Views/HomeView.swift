@@ -23,7 +23,7 @@ struct HomeView: View {
                         welcomeSection
                             .padding(.horizontal, Theme.Spacing.large)
                             .padding(.top, Theme.Spacing.small)
-                        
+                         
                         featureCards
                             .padding(.horizontal, Theme.Spacing.large)
                             .padding(.top, Theme.Spacing.large)
@@ -233,7 +233,7 @@ struct HomeView: View {
 	            .buttonStyle(PlainButtonStyle())
 
 	            // 學年度行事曆
-	            NavigationLink(destination: AcademicCalendarPDFView()) {
+	            NavigationLink(destination: AcademicCalendarView()) {
 	                HStack(spacing: Theme.Spacing.medium) {
                     Image(systemName: "calendar")
                         .font(.system(size: 24, weight: .light))
@@ -576,10 +576,10 @@ private struct MoodleNotificationsView: View {
                 Task { await loadNotifications(forceRefresh: true) }
             }
             .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(Color(.systemBackground))
+            .foregroundColor(.white)
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
-            .background(Color.primary)
+            .background(Color.accentColor)
             .cornerRadius(20)
             Spacer()
         }

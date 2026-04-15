@@ -110,10 +110,10 @@ struct MoodleView: View {
                 HStack {
                     Text(semester)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color(.systemBackground))
+                        .foregroundColor(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.primary))
+                        .background(Capsule().fill(Color.accentColor))
                     Spacer()
                 }
                 .padding(.horizontal, Theme.Spacing.medium)
@@ -161,10 +161,10 @@ struct MoodleView: View {
                 Task { await loadWithCredentials() }
             }
             .font(.system(size: 14, weight: .medium))
-            .foregroundColor(Color(.systemBackground))
+            .foregroundColor(.white)
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
-            .background(Color.primary)
+            .background(Color.accentColor)
             .cornerRadius(20)
             Spacer()
         }
