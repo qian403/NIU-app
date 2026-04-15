@@ -76,7 +76,7 @@ struct EventRegistration_Tab1_View: View {
                 .padding(32)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.primary.opacity(0.7))
+                        .fill(Color.accentColor.opacity(0.9))
                 )
             }
         }

@@ -176,7 +176,10 @@ struct AcademicCalendarData: Codable {
     enum CodingKeys: String, CodingKey {
         case calendars
         case semesters  // 本地 JSON 使用 "semesters"
+        case pages
         case lastUpdated
+        case academicYearROC = "academic_year_roc"
+        case latestMaintenanceDateISO = "latest_maintenance_date_iso"
     }
     
     // 手動初始化
@@ -203,11 +206,37 @@ struct AcademicCalendarData: Codable {
                     events: local.events
                 )
             }
+        } else if let pages = try? container.decode([RemoteAcademicCalendarPage].self, forKey: .pages) {
+            let explicitAcademicYear = try? container.decode(Int.self, forKey: .academicYearROC)
+            let groupedPages = Dictionary(grouping: pages, by: \.semester)
+            self.calendars = groupedPages.keys.sorted().compactMap { semesterNumber in
+                guard let semesterPages = groupedPages[semesterNumber], !semesterPages.isEmpty else { return nil }
+                let firstPage = semesterPages.sorted { $0.pageNumber < $1.pageNumber }.first!
+                let startDate = semesterPages
+                    .flatMap(\.events)
+                    .compactMap(\.start)
+                    .sorted()
+                    .first
+                let rocYear = explicitAcademicYear
+                    ?? startDate.map { date -> Int in
+                        let year = Calendar.current.component(.year, from: date) - 1911
+                        return semesterNumber == 2 ? year - 1 : year
+                    }
+                    ?? 114
+                return SemesterCalendar(
+                    semester: "\(rocYear)-\(semesterNumber)",
+                    academicYear: String(rocYear),
+                    semesterNumber: semesterNumber,
+                    title: firstPage.title,
+                    events: semesterPages.flatMap(\.convertedEvents)
+                )
+            }
         } else {
             self.calendars = []
         }
-        
-        self.lastUpdated = try? container.decode(String.self, forKey: .lastUpdated)
+
+        self.lastUpdated = (try? container.decode(String.self, forKey: .lastUpdated))
+            ?? (try? container.decode(String.self, forKey: .latestMaintenanceDateISO))
     }
     
     func encode(to encoder: Encoder) throws {
@@ -215,7 +244,7 @@ struct AcademicCalendarData: Codable {
         try container.encode(calendars, forKey: .calendars)
         try container.encodeIfPresent(lastUpdated, forKey: .lastUpdated)
     }
-    
+
     // 根據學期代碼取得行事曆
     func calendar(for semester: String) -> SemesterCalendar? {
         calendars.first { $0.semester == semester }
@@ -239,4 +268,80 @@ struct LocalSemesterFormat: Codable {
     let year: Int
     let semester: Int
     let events: [CalendarEvent]
+}
+
+struct RemoteAcademicCalendarPage: Codable {
+    let pageNumber: Int
+    let semester: Int
+    let title: String
+    let events: [RemoteAcademicCalendarEvent]
+
+    enum CodingKeys: String, CodingKey {
+        case pageNumber = "page_number"
+        case semester
+        case title
+        case events
+    }
+}
+
+struct RemoteAcademicCalendarEvent: Codable {
+    let dateText: String
+    let startDate: String
+    let endDate: String
+    let description: String
+    let isRange: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case dateText = "date_text"
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case description
+        case isRange = "is_range"
+    }
+
+    var start: Date? {
+        ISO8601DateFormatter().date(from: startDate + "T00:00:00Z")
+    }
+}
+
+extension RemoteAcademicCalendarEvent {
+    var asCalendarEvent: CalendarEvent {
+        CalendarEvent(
+            id: "\(startDate)-\(description)",
+            title: description,
+            description: nil,
+            startDate: startDate,
+            endDate: endDate == startDate ? nil : endDate,
+            type: inferredType
+        )
+    }
+
+    private var inferredType: CalendarEventType {
+        let text = description.lowercased()
+        if text.contains("選") || text.contains("加退選") || text.contains("停修") {
+            return .registration
+        }
+        if text.contains("考") || text.contains("評量") || text.contains("預警") {
+            return .exam
+        }
+        if text.contains("放假") || text.contains("假期") || text.contains("春節") || text.contains("端午") || text.contains("中秋") || text.contains("清明") || text.contains("元旦") || text.contains("國慶") {
+            return .holiday
+        }
+        if text.contains("截止") || text.contains("送交") || text.contains("公告") || text.contains("郵寄") {
+            return .deadline
+        }
+        if text.contains("學期") || text.contains("開學") || text.contains("暑假") || text.contains("寒假") {
+            return .semester
+        }
+        if text.contains("校慶") || text.contains("畢業典禮") || text.contains("訓練") || text.contains("營隊") || text.contains("博覽會") || text.contains("薪傳") {
+            return .activity
+        }
+        return .important
+    }
+}
+
+extension RemoteAcademicCalendarPage {
+    var convertedEvents: [CalendarEvent] {
+        events.map(\.asCalendarEvent)
+    }
 }

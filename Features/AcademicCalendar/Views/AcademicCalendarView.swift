@@ -36,9 +36,9 @@ struct AcademicCalendarView: View {
     private var mainContent: some View {
         VStack(spacing: 0) {
             topHeader
-                .padding(.horizontal)
-                .padding(.top, Theme.Spacing.small)
-                .padding(.bottom, 6)
+                .padding(.horizontal, Theme.Spacing.small)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
             
             // 事件列表
             if viewModel.currentCalendar != nil {
@@ -96,13 +96,13 @@ struct AcademicCalendarView: View {
 
     private var stickyControlsHeader: some View {
         VStack(spacing: 0) {
-            monthSelector
-                .padding(.horizontal, Theme.Spacing.medium)
-                .padding(.vertical, 8)
-
             searchAndFilterSection
-                .padding(.horizontal, Theme.Spacing.medium)
-                .padding(.bottom, Theme.Spacing.small)
+                .padding(.horizontal, Theme.Spacing.small)
+                .padding(.bottom, 4)
+
+            monthSelector
+                .padding(.horizontal, Theme.Spacing.small)
+                .padding(.bottom, 4)
         }
         .background(Theme.Colors.background)
         .overlay(
@@ -114,19 +114,23 @@ struct AcademicCalendarView: View {
     }
 
     private var topHeader: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(headerMonthTitle)
-                    .font(.system(size: 34, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(Theme.Colors.primary)
                     .lineLimit(1)
-                Text(viewModel.currentSemester)
-                    .font(.system(size: 13, weight: .medium))
+                Text(headerSubtitle)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Theme.Colors.secondaryText)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 8)
-            semesterPicker
+
+            if shouldShowYearPicker {
+                semesterPicker
+            }
         }
     }
 
@@ -134,14 +138,24 @@ struct AcademicCalendarView: View {
         if let month = viewModel.selectedMonth {
             return monthName(month)
         }
-        return "全部行程"
+        return viewModel.displayTitle
+    }
+
+    private var headerSubtitle: String {
+        let parts: [String] = [viewModel.displayPeriodLabel, viewModel.sourceLabel]
+            .filter { !$0.isEmpty }
+        return parts.joined(separator: " ・ ")
+    }
+
+    private var shouldShowYearPicker: Bool {
+        (viewModel.calendarData?.calendars.count ?? 0) > 1
     }
     
     // MARK: - Components
     
     private var monthSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 MonthButton(
                     title: "全部",
                     isSelected: viewModel.selectedMonth == nil,
@@ -162,8 +176,8 @@ struct AcademicCalendarView: View {
                     }
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 1)
         }
         .defaultScrollAnchor(.leading)
     }
@@ -185,15 +199,15 @@ struct AcademicCalendarView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Text(viewModel.currentSemester)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 12))
+                    .font(.system(size: 10, weight: .semibold))
             }
             .foregroundColor(Theme.Colors.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .background(
                 Capsule()
                     .fill(Color.gray.opacity(0.12))
@@ -202,30 +216,47 @@ struct AcademicCalendarView: View {
     }
 
     private var searchAndFilterSection: some View {
-        VStack(spacing: Theme.Spacing.small) {
-            HStack(spacing: 8) {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Theme.Colors.tertiaryText)
                 TextField("搜尋活動、關鍵字", text: $searchText)
-                    .font(.system(size: isSearchCompact ? 13 : 14))
+                    .font(.system(size: isSearchCompact ? 12 : 13))
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
                             .foregroundColor(Theme.Colors.tertiaryText)
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, isSearchCompact ? 7 : 10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, isSearchCompact ? 6 : 8)
             .background(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 10)
                     .fill(Color.gray.opacity(0.12))
             )
 
+            if let first = viewModel.todayEvents.first,
+               searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               selectedFilter == nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.orange)
+                    Text(first.title)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+            }
+
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     EventTypeChip(
                         title: "全部",
                         isSelected: selectedFilter == nil
@@ -240,8 +271,8 @@ struct AcademicCalendarView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
             }
             .defaultScrollAnchor(.leading)
         }
@@ -270,6 +301,7 @@ struct AcademicCalendarView: View {
             }
         }
     }
+
     
     private func monthEventsSection(month: Int, events: [CalendarEvent]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -437,13 +469,13 @@ struct MonthButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: compact ? 13 : 14, weight: isSelected ? .semibold : .regular))
+                .font(.system(size: compact ? 12 : 14, weight: isSelected ? .semibold : .regular))
                 .foregroundColor(isSelected ? Color(.systemBackground) : Theme.Colors.primary)
-                .frame(minWidth: compact ? (title == "全部" ? 56 : 44) : nil)
+                .frame(minWidth: compact ? (title == "全部" ? 50 : 40) : nil)
                 .padding(.horizontal, compact ? 0 : 16)
-                .padding(.vertical, compact ? 10 : 8)
+                .padding(.vertical, compact ? 8 : 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 16)
                         .fill(isSelected ? Theme.Colors.primary : Color(.secondarySystemFill))
                 )
         }
@@ -459,10 +491,10 @@ private struct EventTypeChip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
                 .foregroundColor(isSelected ? Color(.systemBackground) : Theme.Colors.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
                 .background(
                     Capsule()
                         .fill(isSelected ? Theme.Colors.primary : Color(.secondarySystemFill))

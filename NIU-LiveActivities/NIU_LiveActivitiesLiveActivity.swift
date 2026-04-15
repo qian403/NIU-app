@@ -26,15 +26,9 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                         Text(context.state.classroom)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
-                        if context.state.mode == "current" {
-                            Text(timerInterval: context.state.startDate...context.state.endDate, countsDown: true)
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text(context.state.startDate, style: .time)
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
+                        Text(progressText(context: context))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
                     }
                 }
                 DynamicIslandExpandedRegion(.center) {
@@ -56,19 +50,9 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                             .font(.caption)
                             .lineLimit(1)
                         Spacer()
-                        if let nextName = context.state.nextCourseName,
-                           let nextRoom = context.state.nextClassroom,
-                           let nextTime = context.state.nextStartDate {
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text("下堂：\(nextName)")
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                                Text("\(nextRoom) • \(nextTime.formatted(date: .omitted, time: .shortened))")
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
+                        Text(progressText(context: context))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
                     }
                 }
             } compactLeading: {
@@ -80,13 +64,8 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                         .font(.caption2)
                 }
             } compactTrailing: {
-                if context.state.mode == "current" {
-                    Text(timerInterval: context.state.startDate...context.state.endDate, countsDown: true)
-                        .font(.caption2.monospacedDigit())
-                } else {
-                    Text(context.state.startDate, style: .time)
-                        .font(.caption2.monospacedDigit())
-                }
+                Text(compactTrailingText(context: context))
+                    .font(.caption2.monospacedDigit())
             } minimal: {
                 if context.state.mode == "current" {
                     Image(systemName: "play.fill")
@@ -108,15 +87,9 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                     .font(.headline)
                     .lineLimit(1)
                 Spacer(minLength: 12)
-                if context.state.mode == "current" {
-                    Text(timerInterval: context.state.startDate...context.state.endDate, countsDown: true)
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(context.state.startDate, style: .time)
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                Text(progressText(context: context))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 10) {
@@ -137,26 +110,6 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-
-            if let nextName = context.state.nextCourseName,
-               let nextRoom = context.state.nextClassroom,
-               let nextStart = context.state.nextStartDate {
-                HStack(spacing: 8) {
-                    Text("下一堂")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(nextName)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Text(nextRoom)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Text(nextStart, style: .time)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -164,19 +117,17 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
 
     private func progressText(context: ActivityViewContext<ClassLiveActivityAttributes>) -> String {
         if context.state.mode == "current" {
-            return "已上 \(elapsedLabel(from: context.state.startDate, to: Date()))"
+            return "\(context.state.endDate.formatted(date: .omitted, time: .shortened)) 下課"
         }
         return "\(context.state.startDate.formatted(date: .omitted, time: .shortened)) 開始"
     }
 
-    private func elapsedLabel(from start: Date, to end: Date) -> String {
-        let value = max(0, Int(end.timeIntervalSince(start)))
-        let hour = value / 3600
-        let minute = (value % 3600) / 60
-        if hour > 0 {
-            return "\(hour)h \(minute)m"
+    private func compactTrailingText(context: ActivityViewContext<ClassLiveActivityAttributes>) -> String {
+        if context.state.mode == "current" {
+            let minutes = max(0, Int(context.state.endDate.timeIntervalSinceNow / 60.0.rounded(.down)))
+            return minutes > 0 ? "\(minutes)m" : context.state.endDate.formatted(date: .omitted, time: .shortened)
         }
-        return "\(minute)m"
+        return context.state.startDate.formatted(date: .omitted, time: .shortened)
     }
 
 }

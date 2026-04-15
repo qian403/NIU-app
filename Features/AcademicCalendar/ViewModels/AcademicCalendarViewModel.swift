@@ -1,13 +1,28 @@
 import Foundation
 import Combine
+import WidgetKit
 
 class AcademicCalendarViewModel: ObservableObject {
+    private let appGroupIdentifier = "group.CHIEN.NIU-APP"
+    private let appGroupCalendarCacheKey = "academicCalendar.shared.cachedData"
     
     @Published var calendarData: AcademicCalendarData?
     @Published var currentSemester: String = ""
     @Published var selectedMonth: Int?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var sourceLabel: String = ""
+
+    var displayTitle: String {
+        currentCalendar?.title ?? "學年度行事曆"
+    }
+
+    var displayPeriodLabel: String {
+        if let calendar = currentCalendar {
+            return "\(calendar.academicYear) 學年度"
+        }
+        return currentSemester
+    }
     
     // 當前學期的行事曆
     var currentCalendar: SemesterCalendar? {
@@ -40,6 +55,15 @@ class AcademicCalendarViewModel: ObservableObject {
                 return startDate >= now && startDate <= thirtyDaysLater
             }
             return false
+        }
+    }
+
+    var todayEvents: [CalendarEvent] {
+        let calendar = Calendar.current
+        return allEvents.filter { event in
+            guard let start = event.start else { return false }
+            let end = event.end ?? start
+            return calendar.isDate(Date(), inSameDayAs: start) || (start <= Date() && Date() <= end)
         }
     }
     
@@ -117,8 +141,7 @@ class AcademicCalendarViewModel: ObservableObject {
     
     /// 從預設 URL 載入（優先使用 Firebase）
     func loadFromDefaultURL() {
-        // Firebase Realtime Database URL - 直接讀取 114 學年度資料
-        let firebaseURL = "https://niu-life-a889d-default-rtdb.asia-southeast1.firebasedatabase.app/%E5%AD%B8%E5%B9%B4%E5%BA%A6%E8%A1%8C%E4%BA%8B%E6%9B%86/114.json"
+        let firebaseURL = "https://niu-life-a889d-default-rtdb.asia-southeast1.firebasedatabase.app/%E5%AD%B8%E5%B9%B4%E5%BA%A6%E8%A1%8C%E4%BA%8B%E6%9B%86/\(CalendarDataSourceConfig.currentAcademicYearROC()).json"
         loadFromFirebaseURL(firebaseURL)
     }
     
@@ -178,7 +201,10 @@ class AcademicCalendarViewModel: ObservableObject {
             }
             
             // 手動建立 AcademicCalendarData
-            self.calendarData = AcademicCalendarData(calendars: calendars, lastUpdated: nil)
+            self.calendarData = self.normalizedCalendarData(
+                AcademicCalendarData(calendars: calendars, lastUpdated: nil)
+            )
+            self.saveSharedCalendarCache(data)
             
             // 如果當前學期不存在，使用最新的學期
             if self.calendarData?.calendar(for: self.currentSemester) == nil,
@@ -229,7 +255,9 @@ class AcademicCalendarViewModel: ObservableObject {
     func parseCalendarData(_ data: Data) {
         do {
             let decoder = JSONDecoder()
-            calendarData = try decoder.decode(AcademicCalendarData.self, from: data)
+            calendarData = normalizedCalendarData(try decoder.decode(AcademicCalendarData.self, from: data))
+            sourceLabel = calendarData?.lastUpdated?.isEmpty == false ? "更新於 \(calendarData?.lastUpdated ?? "")" : "遠端同步"
+            saveSharedCalendarCache(data)
             
             // 如果當前學期不存在，使用最新的學期
             if calendarData?.calendar(for: currentSemester) == nil,
@@ -248,6 +276,34 @@ class AcademicCalendarViewModel: ObservableObject {
             isLoading = false
             print("Calendar parsing error: \(error)")
         }
+    }
+
+    private func saveSharedCalendarCache(_ data: Data) {
+        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+        defaults.set(data, forKey: appGroupCalendarCacheKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    private func normalizedCalendarData(_ data: AcademicCalendarData) -> AcademicCalendarData {
+        guard !data.calendars.isEmpty else { return data }
+
+        let grouped = Dictionary(grouping: data.calendars, by: \.academicYear)
+        let mergedCalendars = grouped.keys.sorted(by: >).compactMap { year -> SemesterCalendar? in
+            guard let calendars = grouped[year], !calendars.isEmpty else { return nil }
+            let mergedEvents = calendars
+                .flatMap(\.events)
+                .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
+
+            return SemesterCalendar(
+                semester: year,
+                academicYear: year,
+                semesterNumber: 0,
+                title: "國立宜蘭大學 \(year) 學年度行事曆",
+                events: mergedEvents
+            )
+        }
+
+        return AcademicCalendarData(calendars: mergedCalendars, lastUpdated: data.lastUpdated)
     }
     
     // MARK: - Actions

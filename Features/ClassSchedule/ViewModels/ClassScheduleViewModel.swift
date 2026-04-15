@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import WidgetKit
 import Combine
 
 @MainActor
@@ -247,6 +248,7 @@ final class ClassScheduleViewModel: ObservableObject {
         if let data = try? JSONEncoder().encode(schedule) {
             UserDefaults.standard.set(data, forKey: cacheKey)
             UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: cacheKey)
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 

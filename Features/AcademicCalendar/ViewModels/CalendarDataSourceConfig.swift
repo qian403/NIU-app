@@ -2,6 +2,17 @@ import Foundation
 
 /// 行事曆資料來源配置
 struct CalendarDataSourceConfig {
+    static func currentAcademicYearROC(from date: Date = Date()) -> Int {
+        let calendar = Calendar.current
+        let gregorianYear = calendar.component(.year, from: date)
+        let month = calendar.component(.month, from: date)
+        let rocYear = gregorianYear - 1911
+        return month >= 8 ? rocYear : rocYear - 1
+    }
+
+    static func remoteAcademicCalendarURLString(for academicYearROC: Int = currentAcademicYearROC()) -> String {
+        "https://tools.chien.dev/data/niu/academic-calendar/\(academicYearROC).json"
+    }
     
     // MARK: - 資料來源類型
     
@@ -27,27 +38,21 @@ struct CalendarDataSourceConfig {
     
     /// 主要資料來源（優先）
     #if DEBUG
-    // 開發時優先使用本地檔案，避免遠端資料還沒更新導致對不上。
-    static let primary: DataSource = .local(filename: "academic_calendar")
+    static let primary: DataSource = .customURL(remoteAcademicCalendarURLString())
     #else
-    static let primary: DataSource = .github(
-        owner: "qian403",
-        repo: "NIU-app",
-        branch: "main",
-        path: "Resources/academic_calendar.json"
-    )
+    static let primary: DataSource = .customURL(remoteAcademicCalendarURLString())
     #endif
     
     /// 備用資料來源（當主要來源失敗時）
     #if DEBUG
     static let fallbacks: [DataSource] = [
-        .github(owner: "qian403", repo: "NIU-app", branch: "main", path: "Resources/academic_calendar.json"),
+        .local(filename: "academic_calendar"),
         .firebase(path: "學年度行事曆"),
     ]
     #else
     static let fallbacks: [DataSource] = [
-        .firebase(path: "學年度行事曆"),
-        .local(filename: "academic_calendar")
+        .local(filename: "academic_calendar"),
+        .firebase(path: "學年度行事曆")
     ]
     #endif
     
@@ -55,7 +60,7 @@ struct CalendarDataSourceConfig {
     
     /// jsDelivr CDN（國內訪問較快）
     static let jsdelivr: DataSource = .customURL(
-        "https://cdn.jsdelivr.net/gh/qian403/NIU-app@main/Resources/academic_calendar.json"
+        remoteAcademicCalendarURLString()
     )
     
     /// Gitee（中國鏡像，備用）

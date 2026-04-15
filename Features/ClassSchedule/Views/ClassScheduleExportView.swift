@@ -190,7 +190,7 @@ struct ClassScheduleExportView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color.primary)
+            .background(Color.accentColor)
             .foregroundColor(.white)
             .cornerRadius(Theme.CornerRadius.medium)
         }
