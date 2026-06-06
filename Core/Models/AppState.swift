@@ -19,6 +19,20 @@ final class AppState: ObservableObject {
     private var isRefreshingProfile = false
     private var notificationObservers: [NSObjectProtocol] = []
 
+    // API Configuration
+    static let apiBaseURL = "https://niu-app-api.your-domain.com" // TODO: Replace with actual API domain
+
+    /// Installation ID for this device (generated on first launch)
+    var installationID: String? {
+        let key = "app.installationID"
+        if let existing = UserDefaults.standard.string(forKey: key) {
+            return existing
+        }
+        let newID = UUID().uuidString
+        UserDefaults.standard.set(newID, forKey: key)
+        return newID
+    }
+
     init() {
         observeClassScheduleUpdates()
         checkAuthenticationStatus()
@@ -211,6 +225,7 @@ final class AppState: ObservableObject {
             Task {
                 await self.refreshNotificationSchedules()
                 await self.refreshClassLiveActivitiesIfNeeded()
+                await self.uploadScheduleToBackend()
             }
         }
         notificationObservers.append(observer)
@@ -221,6 +236,55 @@ final class AppState: ObservableObject {
         guard isAuthenticated else { return }
         guard notificationSettings.classLiveActivityEnabled else { return }
         await ClassLiveActivityCoordinator.shared.refreshFromScheduleCache(forceRebuild: forceRebuild)
+    }
+
+    private func uploadScheduleToBackend() async {
+        guard let installationID = installationID else {
+            print("[AppState] No installation ID, skipping schedule upload")
+            return
+        }
+
+        let cacheKey = "classSchedule.v2.cachedData"
+        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
+            print("[AppState] No schedule to upload")
+            return
+        }
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let scheduleData = try? encoder.encode(schedule),
+              let scheduleJSON = try? JSONSerialization.jsonObject(with: scheduleData) else {
+            print("[AppState] Failed to encode schedule")
+            return
+        }
+
+        let payload: [String: Any] = [
+            "activity_kind": "class_schedule",
+            "schedule": scheduleJSON,
+            "fetched_at": ISO8601DateFormatter().string(from: schedule.fetchedAt)
+        ]
+
+        guard let url = URL(string: "\(Self.apiBaseURL)/v1/installations/\(installationID)/schedule") else {
+            print("[AppState] Invalid schedule API URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                print("[AppState] Schedule uploaded successfully")
+            } else {
+                print("[AppState] Schedule upload failed: \(response)")
+            }
+        } catch {
+            print("[AppState] Schedule upload error: \(error.localizedDescription)")
+        }
     }
 }
 
@@ -576,8 +640,11 @@ final class ClassLiveActivityCoordinator {
     private let cacheKey = "classSchedule.v2.cachedData"
     private let appGroupIdentifier = "group.CHIEN.NIU-APP"
     private let stalePaddingMinutes = 20
+    private var tokenObserverTask: Task<Void, Never>?
 
-    private init() {}
+    private init() {
+        startTokenObserver()
+    }
 
     func refreshFromScheduleCache(forceRebuild: Bool = false) async {
         guard #available(iOS 16.1, *) else { return }
@@ -622,11 +689,12 @@ final class ClassLiveActivityCoordinator {
             }
 
             do {
-                _ = try Activity<ClassLiveActivityAttributes>.request(
+                let activity = try Activity<ClassLiveActivityAttributes>.request(
                     attributes: attributes,
                     content: content,
-                    pushType: nil
+                    pushType: .token
                 )
+                observeTokenUpdates(for: activity)
             } catch {
                 print("[LiveActivity] 重建失敗: \(error.localizedDescription)")
             }
@@ -641,11 +709,12 @@ final class ClassLiveActivityCoordinator {
         }
 
         do {
-            _ = try Activity<ClassLiveActivityAttributes>.request(
+            let activity = try Activity<ClassLiveActivityAttributes>.request(
                 attributes: attributes,
                 content: content,
-                pushType: nil
+                pushType: .token
             )
+            observeTokenUpdates(for: activity)
         } catch {
             print("[LiveActivity] 啟動失敗: \(error.localizedDescription)")
         }
@@ -792,6 +861,66 @@ final class ClassLiveActivityCoordinator {
             return trimmed
         }
         return "第\(trimmed)節"
+    }
+
+    // MARK: - Token Management
+
+    private func startTokenObserver() {
+        guard #available(iOS 16.2, *) else { return }
+        tokenObserverTask?.cancel()
+        tokenObserverTask = Task {
+            let activities = Activity<ClassLiveActivityAttributes>.activities
+            for activity in activities {
+                observeTokenUpdates(for: activity)
+            }
+        }
+    }
+
+    private func observeTokenUpdates(for activity: Activity<ClassLiveActivityAttributes>) {
+        guard #available(iOS 16.2, *) else { return }
+        Task {
+            for await tokenData in activity.pushTokenUpdates {
+                let token = tokenData.base64EncodedString()
+                await uploadToken(pushToStartToken: nil, updateToken: token)
+            }
+        }
+    }
+
+    private func uploadToken(pushToStartToken: String?, updateToken: String?) async {
+        let installationID = UserDefaults.standard.string(forKey: "app.installationID") ?? {
+            let newID = UUID().uuidString
+            UserDefaults.standard.set(newID, forKey: "app.installationID")
+            return newID
+        }()
+
+        let payload: [String: Any] = [
+            "activity_kind": "class_schedule",
+            "update_token": updateToken as Any,
+            "push_to_start_token": pushToStartToken as Any,
+            "token_updated_at": ISO8601DateFormatter().string(from: Date())
+        ]
+
+        let apiBaseURL = "https://niu-app-api.your-domain.com" // TODO: Replace with actual API domain
+        guard let url = URL(string: "\(apiBaseURL)/v1/installations/\(installationID)/live-activity") else {
+            print("[LiveActivity] Invalid API URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                print("[LiveActivity] Token uploaded successfully")
+            } else {
+                print("[LiveActivity] Token upload failed: \(response)")
+            }
+        } catch {
+            print("[LiveActivity] Token upload error: \(error.localizedDescription)")
+        }
     }
 
 }

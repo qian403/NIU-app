@@ -14,78 +14,30 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.large) {
+                VStack(spacing: Theme.Spacing.medium) {
                     accountSection
                     appearanceSection
                     actionsSection
-                    notificationEntrySection
+                    notificationSection
                     aboutSection
-                    statementSection
                     logoutSection
                 }
-                .padding(.horizontal, Theme.Spacing.large)
-                .padding(.top, Theme.Spacing.medium)
-                .padding(.bottom, Theme.Spacing.large)
+                .padding(Theme.Spacing.medium)
             }
 
             if showLogoutConfirm {
-                Color.primary.opacity(0.12)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        showLogoutConfirm = false
-                    }
-
-                VStack(spacing: 20) {
-                    Text("確定要登出嗎？")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.primary)
-
-                    Button(role: .destructive) {
-                        showLogoutConfirm = false
-                        appState.logout()
-                        dismiss()
-                    } label: {
-                        Text("登出")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                            .background(
-                                RoundedRectangle(cornerRadius: 44)
-                                    .fill(Color.primary.opacity(0.08))
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-                .padding(24)
-                .frame(maxWidth: 470)
-                .background(
-                    RoundedRectangle(cornerRadius: 30)
-                        .fill(Color(.systemBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 30)
-                        .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-                )
-                .shadow(color: Color.primary.opacity(0.08), radius: 14, x: 0, y: 6)
-                .padding(.horizontal, 30)
+                logoutConfirmDialog
             }
         }
         .navigationTitle("設定")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .alert("回報問題", isPresented: $showReportAlert) {
-            Button("傳送（含設備資訊）") {
-                sendIssueReport(includeDeviceInfo: true)
-            }
-            Button("傳送（不含設備資訊）") {
-                sendIssueReport(includeDeviceInfo: false)
-            }
+            Button("傳送（含設備資訊）") { sendReport(includeDeviceInfo: true) }
+            Button("傳送（不含設備資訊）") { sendReport(includeDeviceInfo: false) }
             Button("取消", role: .cancel) {}
-        } message: {
-            Text("請選擇是否附帶設備資訊。")
         }
         .alert("無法開啟郵件 App", isPresented: $showMailError) {
             Button("好") {}
@@ -94,125 +46,124 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Account Section
+
     private var accountSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("帳號")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary.opacity(0.45))
+        VStack(spacing: Theme.Spacing.small) {
+            NIUCard {
+                VStack(spacing: Theme.Spacing.small) {
+                    NIUAvatar(appState.currentUser?.name ?? "User", size: .large)
 
-            VStack(alignment: .leading, spacing: 8) {
-                settingsLine(title: "姓名", value: appState.currentUser?.name ?? "-")
-                settingsLine(title: "學號", value: appState.currentUser?.username ?? "-")
-                settingsLine(title: "系所", value: displayDepartment)
-                settingsLine(title: "年級", value: displayGrade)
+                    VStack(spacing: 4) {
+                        Text(appState.currentUser?.name ?? "-")
+                            .font(.system(size: 20, weight: .bold))
+
+                        Text(appState.currentUser?.username ?? "-")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+
+                    Divider().padding(.vertical, Theme.Spacing.xsmall)
+
+                    SettingsInfoRow(icon: "building.2", title: "系所", value: displayDepartment)
+                    SettingsInfoRow(icon: "calendar", title: "年級", value: displayGrade)
+                    SettingsInfoRow(icon: "clock", title: "最後登入", value: lastLoginText)
+                }
             }
-            .padding(Theme.Spacing.medium)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-            )
         }
     }
 
-    private var actionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("同步")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary.opacity(0.45))
-
-            Button {
-                Task { await refreshProfile() }
-            } label: {
-                settingsActionRow(
-                    icon: "arrow.clockwise",
-                    title: "重新抓取個人資訊",
-                    subtitle: "更新系所、年級與登入狀態",
-                    trailingText: isRefreshingProfile ? "更新中..." : nil,
-                    isLoading: isRefreshingProfile
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-    }
+    // MARK: - Appearance Section
 
     private var appearanceSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("外觀")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary.opacity(0.45))
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            sectionLabel("外觀")
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("顯示模式")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
+            NIUCard {
+                HStack {
+                    Image(systemName: "circle.lefthalf.filled")
+                        .font(.system(size: 17))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 28)
 
-                Picker("顯示模式", selection: appearanceSelectionBinding) {
-                    ForEach(AppAppearanceMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                    Text("顯示模式")
+                        .font(.system(size: 16, weight: .medium))
+
+                    Spacer()
+
+                    Picker("", selection: appearanceSelectionBinding) {
+                        ForEach(AppAppearanceMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .tint(Color.accentColor)
                 }
-                .pickerStyle(.segmented)
             }
-            .padding(Theme.Spacing.medium)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-            )
         }
     }
 
-    private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("關於")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary.opacity(0.45))
+    // MARK: - Actions Section
 
-            VStack(alignment: .leading, spacing: 8) {
-                settingsLine(title: "版本", value: appVersionText)
-                settingsLine(title: "最後登入", value: lastLoginText)
-            }
-            .padding(Theme.Spacing.medium)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-            )
+    private var actionsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            sectionLabel("同步")
 
-            Button {
-                showReportAlert = true
-            } label: {
-                settingsActionRow(
-                    icon: "exclamationmark.bubble",
-                    title: "回報問題",
-                    subtitle: "寄信到 hi@chien.dev 回報任何使用上的問題或建議",
-                    trailingText: nil
+            Button { Task { await refreshProfile() } } label: {
+                SettingsActionRow(
+                    icon: "arrow.clockwise",
+                    title: "重新抓取個人資訊",
+                    subtitle: "更新系所、年級與登入狀態"
                 )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.plain)
         }
     }
 
-    private var notificationEntrySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("通知")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary.opacity(0.45))
+    // MARK: - Notification Section
+
+    private var notificationSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            sectionLabel("通知")
 
             NavigationLink(destination: NotificationMenuView()) {
-                settingsActionRow(
-                    icon: "bell.badge",
-                    title: "通知設定",
-                    subtitle: "管理作業死線與重要日期提醒",
-                    trailingText: nil
-                )
+                SettingsNavigationRow(icon: "bell.badge.fill", title: "通知設定", subtitle: "作業死線、重要日期、上課提醒、即時動態")
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.plain)
         }
     }
 
+    // MARK: - About Section
+
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            sectionLabel("關於")
+
+            VStack(spacing: Theme.Spacing.xsmall) {
+                SettingsInfoRow(icon: "info.circle.fill", title: "版本", value: appVersionText)
+
+                Button { showReportAlert = true } label: {
+                    SettingsNavigationRow(icon: "exclamationmark.bubble.fill", title: "回報問題", subtitle: "hi@chien.dev")
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink(destination: PrivacyPolicyView()) {
+                    SettingsNavigationRow(icon: "shield.lefthalf.filled", title: "隱私權聲明", subtitle: "查看資料處理說明")
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink(destination: SpecialThanksView()) {
+                    SettingsNavigationRow(icon: "heart.text.square.fill", title: "特別感謝", subtitle: "致謝開源專案開發者")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Logout Section
+
     private var logoutSection: some View {
-        Button(role: .destructive) {
-            showLogoutConfirm = true
-        } label: {
+        Button { showLogoutConfirm = true } label: {
             HStack {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
                     .font(.system(size: 16, weight: .medium))
@@ -220,105 +171,77 @@ struct SettingsView: View {
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .foregroundColor(.red)
-            .padding(.horizontal, Theme.Spacing.medium)
-            .padding(.vertical, 14)
+            .foregroundStyle(.red)
+            .padding(Theme.Spacing.medium)
             .background(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .strokeBorder(Color.red.opacity(0.35), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous)
+                    .fill(Color.red.opacity(0.1))
             )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.plain)
+        .padding(.top, Theme.Spacing.small)
     }
 
-    private var statementSection: some View {
-        NavigationLink(destination: StatementMenuView()) {
-            settingsActionRow(
-                icon: "doc.text",
-                title: "聲明",
-                subtitle: "隱私權聲明與特別感謝",
-                trailingText: nil
+    // MARK: - Logout Dialog
+
+    private var logoutConfirmDialog: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture { showLogoutConfirm = false }
+
+            VStack(spacing: Theme.Spacing.large) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.system(size: 32, weight: .ultraLight))
+                    .foregroundStyle(.red)
+
+                Text("確定要登出嗎？")
+                    .font(.system(size: 20, weight: .semibold))
+
+                Button {
+                    showLogoutConfirm = false
+                    appState.logout()
+                    dismiss()
+                } label: {
+                    Text("登出")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Capsule(style: .continuous).fill(Color.red))
+                }
+                .buttonStyle(.plain)
+
+                Button { showLogoutConfirm = false } label: {
+                    Text("取消")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(Theme.Spacing.large)
+            .frame(maxWidth: 320)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.xlarge, style: .continuous)
+                    .fill(Color(.systemBackground))
             )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    private func settingsLine(title: String, value: String) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 14))
-                .foregroundColor(.primary.opacity(0.5))
-            Spacer()
-            Text(value)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.primary.opacity(0.8))
-                .multilineTextAlignment(.trailing)
+            .cardShadow(Theme.Shadow.large)
         }
     }
 
-    private func settingsActionRow(
-        icon: String,
-        title: String,
-        subtitle: String,
-        trailingText: String?,
-        isLoading: Bool = false
-    ) -> some View {
-        HStack(spacing: Theme.Spacing.medium) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .light))
-                .foregroundColor(.primary)
-                .frame(width: 34, height: 34)
-                .background(
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                )
-                .rotationEffect(isLoading ? .degrees(360) : .degrees(0))
-                .animation(
-                    isLoading
-                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                        : .default,
-                    value: isLoading
-                )
+    // MARK: - Helpers
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(.primary.opacity(0.5))
-            }
-
-            Spacer()
-
-            if let trailingText {
-                Text(trailingText)
-                    .font(.system(size: 12))
-                    .foregroundColor(.primary.opacity(0.45))
-            } else if isLoading {
-                ProgressView()
-                    .scaleEffect(0.85)
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(.primary.opacity(0.3))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .padding(Theme.Spacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-        )
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color(.secondaryLabel))
+            .padding(.leading, Theme.Spacing.xsmall)
     }
 
     private var appVersionText: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
-        return "\(version) (\(build))"
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
+        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
+        return "\(v) (\(b))"
     }
 
     private var appearanceSelectionBinding: Binding<AppAppearanceMode> {
@@ -329,34 +252,30 @@ struct SettingsView: View {
     }
 
     private var lastLoginText: String {
-        guard let date = UserDefaults.standard.object(forKey: "app.user.loginTime") as? Date else {
-            return "-"
-        }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_TW")
-        formatter.dateFormat = "yyyy年MM月dd日 HH:mm"
-        return formatter.string(from: date)
+        guard let date = UserDefaults.standard.object(forKey: "app.user.loginTime") as? Date else { return "-" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "yyyy年MM月dd日 HH:mm"
+        return f.string(from: date)
     }
 
     private var displayDepartment: String {
-        normalizedDepartment(from: appState.currentUser?.department) ?? "-"
+        normalized(from: appState.currentUser?.department) ?? "-"
     }
 
     private var displayGrade: String {
         appState.currentUser?.grade ?? "-"
     }
 
-    private func normalizedDepartment(from raw: String?) -> String? {
+    private func normalized(from raw: String?) -> String? {
         guard let raw else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return nil }
-
-        let prefixes = ["系所年級：", "系所年級:", "系所：", "系所:"]
-        for prefix in prefixes where trimmed.hasPrefix(prefix) {
-            let value = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return value.isEmpty ? nil : value
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return nil }
+        for p in ["系所年級：", "系所年級:", "系所：", "系所:"] where t.hasPrefix(p) {
+            let v = String(t.dropFirst(p.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return v.isEmpty ? nil : v
         }
-        return trimmed
+        return t
     }
 
     private func refreshProfile() async {
@@ -366,26 +285,22 @@ struct SettingsView: View {
         isRefreshingProfile = false
     }
 
-    private func sendIssueReport(includeDeviceInfo: Bool) {
-        guard let url = makeIssueMailURL(includeDeviceInfo: includeDeviceInfo) else {
+    private func sendReport(includeDeviceInfo: Bool) {
+        guard let url = makeMailURL(includeDeviceInfo: includeDeviceInfo) else {
             showMailError = true
             return
         }
-        openURL(url) { accepted in
-            if !accepted {
-                showMailError = true
-            }
-        }
+        openURL(url) { if !$0 { showMailError = true } }
     }
 
-    private func makeIssueMailURL(includeDeviceInfo: Bool) -> URL? {
+    private func makeMailURL(includeDeviceInfo: Bool) -> URL? {
         let subject = "NIU App 問題回報"
         let body: String
         if includeDeviceInfo {
             body = """
         問題描述
-        
-        
+
+
         設備資訊
         - App 版本：\(appVersionText)
         - iOS：\(UIDevice.current.systemVersion)
@@ -395,19 +310,116 @@ struct SettingsView: View {
         - 時區：\(TimeZone.current.identifier)
         """
         } else {
-            body = """
-        問題描述
-        
-        
-        （未附帶設備資訊）
-        """
+            body = "問題描述\n\n\n（未附帶設備資訊）"
         }
-
-        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        return URL(string: "mailto:hi@chien.dev?subject=\(encodedSubject)&body=\(encodedBody)")
+        let enc = { (s: String) in s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "" }
+        return URL(string: "mailto:hi@chien.dev?subject=\(enc(subject))&body=\(enc(body))")
     }
 }
+
+// MARK: - Settings Info Row (display only)
+
+struct SettingsInfoRow: View {
+    let icon: String
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.small) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28)
+
+            Text(title)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color(.label))
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 15))
+                .foregroundStyle(Color(.secondaryLabel))
+        }
+        .padding(.vertical, Theme.Spacing.xsmall)
+    }
+}
+
+// MARK: - Settings Action Row (button with action)
+
+struct SettingsActionRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.medium) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.accentColor.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color(.label))
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+
+            Spacer()
+        }
+        .padding(Theme.Spacing.medium)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Settings Navigation Row (NavigationLink wrapper)
+
+struct SettingsNavigationRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.medium) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.accentColor.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color(.label))
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(.tertiaryLabel))
+        }
+        .padding(Theme.Spacing.medium)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Notification Menu View
 
 private struct NotificationMenuView: View {
     @EnvironmentObject private var appState: AppState
@@ -415,151 +427,109 @@ private struct NotificationMenuView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 12) {
-                notificationToggleRow(
-                    icon: "checklist.checked",
-                    title: "作業死線通知",
-                    subtitle: "Moodle 作業截止前一天提醒",
-                    isOn: Binding(
-                        get: { appState.notificationSettings.assignmentDeadlineEnabled },
-                        set: { newValue in
-                            Task { await appState.setAssignmentNotificationsEnabled(newValue) }
-                        }
+            ScrollView {
+                VStack(spacing: Theme.Spacing.xsmall) {
+                    notificationToggle(
+                        icon: "checklist.checked",
+                        title: "作業死線通知",
+                        subtitle: "Moodle 作業截止前一天提醒",
+                        isOn: Binding(
+                            get: { appState.notificationSettings.assignmentDeadlineEnabled },
+                            set: { newValue in Task { await appState.setAssignmentNotificationsEnabled(newValue) } }
+                        )
                     )
-                )
 
-                notificationToggleRow(
-                    icon: "calendar.badge.exclamationmark",
-                    title: "重要日期通知",
-                    subtitle: "學年行事曆重要日期前一天提醒",
-                    isOn: Binding(
-                        get: { appState.notificationSettings.academicCalendarEnabled },
-                        set: { newValue in
-                            Task { await appState.setCalendarNotificationsEnabled(newValue) }
-                        }
+                    notificationToggle(
+                        icon: "calendar.badge.exclamationmark",
+                        title: "重要日期通知",
+                        subtitle: "學年行事曆重要日期前一天提醒",
+                        isOn: Binding(
+                            get: { appState.notificationSettings.academicCalendarEnabled },
+                            set: { newValue in Task { await appState.setCalendarNotificationsEnabled(newValue) } }
+                        )
                     )
-                )
 
-                notificationToggleRow(
-                    icon: "bell.and.waves.left.and.right",
-                    title: "上課前提醒",
-                    subtitle: "每週固定於上課前 10 分鐘提醒教室",
-                    isOn: Binding(
-                        get: { appState.notificationSettings.classReminderEnabled },
-                        set: { newValue in
-                            Task { await appState.setClassRemindersEnabled(newValue) }
-                        }
+                    notificationToggle(
+                        icon: "bell.and.waves.left.and.right",
+                        title: "上課前提醒",
+                        subtitle: "每週固定於上課前 10 分鐘提醒",
+                        isOn: Binding(
+                            get: { appState.notificationSettings.classReminderEnabled },
+                            set: { newValue in Task { await appState.setClassRemindersEnabled(newValue) } }
+                        )
                     )
-                )
 
-                notificationToggleRow(
-                    icon: "rectangle.topthird.inset.filled",
-                    title: "即時動態（Live Activities）",
-                    subtitle: "鎖定畫面與靈動島顯示下一堂課與教室",
-                    isOn: Binding(
-                        get: { appState.notificationSettings.classLiveActivityEnabled },
-                        set: { newValue in
-                            Task { await appState.setClassLiveActivityEnabled(newValue) }
-                        }
+                    notificationToggle(
+                        icon: "rectangle.topthird.inset.filled",
+                        title: "即時動態（Live Activities）",
+                        subtitle: "鎖定畫面與靈動島顯示下一堂課",
+                        isOn: Binding(
+                            get: { appState.notificationSettings.classLiveActivityEnabled },
+                            set: { newValue in Task { await appState.setClassLiveActivityEnabled(newValue) } }
+                        )
                     )
-                )
 
-                Button {
-                    Task {
-                        isRefreshingNotifications = true
-                        await appState.refreshNotificationSchedules()
-                        isRefreshingNotifications = false
+                    Button {
+                        Task {
+                            isRefreshingNotifications = true
+                            await appState.refreshNotificationSchedules()
+                            isRefreshingNotifications = false
+                        }
+                    } label: {
+                        HStack(spacing: Theme.Spacing.medium) {
+                            Image(systemName: "bell.badge")
+                                .font(.system(size: 17, weight: .light))
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 36, height: 36)
+                                .background(Circle().fill(Color.accentColor.opacity(0.12)))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("立即更新通知")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(Color(.label))
+                                Text(isRefreshingNotifications ? "更新中..." : "重新同步通知與即時動態")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color(.tertiaryLabel))
+                            }
+
+                            Spacer()
+
+                            if isRefreshingNotifications {
+                                ProgressView().scaleEffect(0.8)
+                            }
+                        }
+                        .padding(Theme.Spacing.medium)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous)
+                                .fill(Color(.secondarySystemGroupedBackground))
+                        )
                     }
-                } label: {
-                    actionRow(
-                        icon: "bell.badge",
-                        title: "立即更新通知",
-                        subtitle: "重新同步通知與即時動態",
-                        trailingText: isRefreshingNotifications ? "更新中..." : nil
-                    )
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(PlainButtonStyle())
-
-                Spacer()
+                .padding(Theme.Spacing.medium)
             }
-            .padding(.horizontal, Theme.Spacing.large)
-            .padding(.top, Theme.Spacing.medium)
         }
-        .navigationTitle("通知")
+        .navigationTitle("通知設定")
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func actionRow(
-        icon: String,
-        title: String,
-        subtitle: String,
-        trailingText: String?
-    ) -> some View {
+    private func notificationToggle(icon: String, title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
         HStack(spacing: Theme.Spacing.medium) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .light))
-                .foregroundColor(.primary)
-                .frame(width: 34, height: 34)
-                .background(
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                )
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.accentColor.opacity(0.12)))
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(Color(.label))
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(.primary.opacity(0.5))
-            }
-
-            Spacer()
-
-            if let trailingText {
-                Text(trailingText)
                     .font(.system(size: 12))
-                    .foregroundColor(.primary.opacity(0.45))
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(.primary.opacity(0.3))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .padding(Theme.Spacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-        )
-    }
-
-    private func notificationToggleRow(
-        icon: String,
-        title: String,
-        subtitle: String,
-        isOn: Binding<Bool>
-    ) -> some View {
-        HStack(spacing: Theme.Spacing.medium) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .light))
-                .foregroundColor(.primary)
-                .frame(width: 34, height: 34)
-                .background(
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                )
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(.primary.opacity(0.5))
+                    .foregroundStyle(Color(.tertiaryLabel))
             }
 
             Spacer()
@@ -568,142 +538,44 @@ private struct NotificationMenuView: View {
                 .labelsHidden()
                 .tint(.green)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.medium)
         .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
         )
     }
 }
 
-private struct StatementMenuView: View {
-    var body: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+// MARK: - Privacy Policy View
 
-            VStack(spacing: Theme.Spacing.medium) {
-                NavigationLink(destination: SettingsPrivacyPolicyView()) {
-                    statementRow(
-                        icon: "shield.lefthalf.filled",
-                        title: "隱私權聲明",
-                        subtitle: "查看資料處理與使用說明"
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                NavigationLink(destination: SpecialThanksView()) {
-                    statementRow(
-                        icon: "heart.text.square",
-                        title: "特別感謝",
-                        subtitle: "致謝開源專案開發者"
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                NavigationLink(destination: LicenseView()) {
-                    statementRow(
-                        icon: "doc.plaintext",
-                        title: "LICENSE",
-                        subtitle: "查看開源授權條款"
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Spacer()
-            }
-            .padding(.horizontal, Theme.Spacing.large)
-            .padding(.top, Theme.Spacing.medium)
-        }
-        .navigationTitle("聲明")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func statementRow(icon: String, title: String, subtitle: String) -> some View {
-        HStack(spacing: Theme.Spacing.medium) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .light))
-                .foregroundColor(.primary)
-                .frame(width: 34, height: 34)
-                .background(
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                )
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(.primary.opacity(0.5))
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .light))
-                .foregroundColor(.primary.opacity(0.3))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .padding(Theme.Spacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-        )
-    }
-}
-
-private struct SettingsPrivacyPolicyView: View {
+private struct PrivacyPolicyView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
                 Text("隱私權聲明 (Privacy Policy)")
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(Color(.label))
 
-                Text("感謝您下載並使用本應用程式（以下簡稱「本 App」）。本 App 致力於保護您的個人隱私，並確保您在使用校務相關功能時的資訊安全。在使用本 App 前，請詳閱以下聲明：")
+                Text("感謝您下載並使用本應用程式（以下簡稱「本 App」）。本 App 致力於保護您的個人隱私，並確保您在使用校務相關功能時的資訊安全。")
 
                 Text("一、重要聲明：非官方性質")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("本 App 為個人開發之第三方校務輔助工具，與「國立宜蘭大學 (NIU)」官方並無任何隸屬、合作或授權關係。本 App 透過原生介面整合校務入口，提供課表/成績查詢、Moodle 整合、活動報名、行事曆匯出與通知管理等功能，以提升行動端使用體驗。")
+                    .font(.headline)
+                Text("本 App 為個人開發之第三方校務輔助工具，與「國立宜蘭大學 (NIU)」官方並無任何隸屬、合作或授權關係。")
 
                 Text("二、帳號登入與個人資料處理")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("登入資訊：當您登入校務帳號時，您的帳號與密碼將直接傳送至學校官方伺服器進行身分驗證。本 App 不會記錄、儲存、攔截或傳送您的校務帳號與密碼至開發者伺服器或任何第三方平台。")
-                Text("校務資料存取：本 App 獲取之課表、成績、缺曠課等個人資訊，僅限於提供您在行動裝置上查看與管理之用。")
+                    .font(.headline)
+                Text("您的帳號與密碼將直接傳送至學校官方伺服器進行身分驗證，不會上傳至開發者伺服器。")
 
-                Text("三、資料儲存與保護機制")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("本地存儲 (Local Storage)：為提升使用流暢度，您的基本校務資訊（如課表、姓名等）將加密儲存於您的行動裝置本地端。")
-                Text("Session 與 Cookie：系統會暫存必要的 Session 資訊以維持登入狀態。您隨時可以透過 App 內的「登出」功能，立即清除本機端儲存的所有登入資訊與暫存檔案。")
+                Text("三、資料儲存")
+                    .font(.headline)
+                Text("基本校務資訊儲存在您的裝置本地端；登入帳密儲存在 iOS Keychain。")
 
-                Text("四、數據收集與技術分析")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("為了持續優化 App 品質，我們會收集部分匿名且無法辨識個人身分的統計數據，包括：")
-                Text("使用統計：例如每日活躍人數 (DAU)、各功能點擊頻率。")
-                Text("錯誤回報：App 閃退或載入失敗時的去識別化系統錯誤紀錄。")
-                Text("上述數據僅用於技術改善與效能優化，不包含任何姓名、學號或敏感個資。")
-
-                Text("五、第三方連結與免責聲明")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("外部連結：本 App 部分功能可能導向學校官方網頁。對於外部網站的隱私權政策，本 App 不負任何法律責任。")
-                Text("資料準確性：所有校務資訊均同步自學校伺服器，若資料有誤，請以學校官方行政系統為準。")
-                Text("安全風險：請確保您的行動裝置環境安全。若因裝置遭惡意程式入侵或遺失而導致資料流失，開發者概不負責。")
-
-                Text("六、隱私權聲明之修改")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("開發者保留隨時修改本聲明之權利。修改後的條款將直接更新於本 App 內，不另行個別通知，建議您定期查看。")
-
-                Text("七、聯繫方式")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("若您對本隱私權聲明或資料處理方式有任何疑問、建議或發現潛在漏洞，歡迎透過以下方式聯繫開發者：")
-                Text("開發者聯絡信箱：hi@chien.dev")
-                Text("GitHub 專案頁面：https://github.com/qian403/NIU-app")
+                Text("四、聯繫方式")
+                    .font(.headline)
+                Text("開發者聯絡信箱：hi@chien.dev\nGitHub：https://github.com/qian403/NIU-app")
             }
-            .font(.system(size: 15))
-            .foregroundColor(.primary.opacity(0.75))
+            .font(.body)
+            .foregroundStyle(Color(.secondaryLabel))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.large)
         }
@@ -713,60 +585,54 @@ private struct SettingsPrivacyPolicyView: View {
     }
 }
 
+// MARK: - Special Thanks View
+
 private struct SpecialThanksView: View {
+    private let githubURL = URL(string: "https://github.com/KennyYang0726/NIU_APP_IOS")!
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                Text("感謝下列開源專案與開發者提供靈感與參考：")
-                    .font(.system(size: 15))
-                    .foregroundColor(.primary.opacity(0.75))
+                Text("特別感謝")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Color(.label))
 
-                VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+                Text("感謝下列開源專案與開發者提供靈感與參考：")
+                    .foregroundStyle(Color(.secondaryLabel))
+
+                Link(destination: githubURL) {
                     HStack(spacing: 12) {
-                        Image(systemName: "heart.text.square")
-                            .font(.system(size: 22, weight: .regular))
-                            .foregroundColor(.primary)
-                            .frame(width: 44, height: 44)
-                            .background(
-                                Circle()
-                                    .fill(Color.primary.opacity(0.04))
-                            )
+                        ZStack {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.12))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(Color.accentColor)
+                        }
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text("KennyYang0726")
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.primary)
+                                .foregroundStyle(Color(.label))
                             Text("NIU_APP_IOS 開發者")
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundColor(.primary.opacity(0.6))
+                                .font(.system(size: 14))
+                                .foregroundStyle(Color(.secondaryLabel))
                         }
-                    }
 
-                    if let projectURL = URL(string: "https://github.com/KennyYang0726/NIU_APP_IOS?tab=readme-ov-file") {
-                        Link(destination: projectURL) {
-                            HStack {
-                                Text("查看專案")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Spacer()
-                                Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, Theme.Spacing.medium)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                                    .fill(Color.primary.opacity(0.06))
-                            )
-                            .contentShape(Rectangle())
-                        }
+                        Spacer()
+
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Color(.tertiaryLabel))
                     }
+                    .padding(Theme.Spacing.medium)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
                 }
-                .padding(Theme.Spacing.medium)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-                )
+                .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.large)
@@ -777,39 +643,9 @@ private struct SpecialThanksView: View {
     }
 }
 
-private struct LicenseView: View {
-    private var licenseText: String {
-        if let url = Bundle.main.url(forResource: "LICENSE", withExtension: nil),
-           let text = try? String(contentsOf: url, encoding: .utf8),
-           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return text
-        }
-        return "目前 App 內未包含 LICENSE 檔案。\n你可以透過下方連結查看："
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                Text("LICENSE")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.primary)
-
-                Text(licenseText)
-                    .font(.system(size: 14, weight: .regular, design: .monospaced))
-                    .foregroundColor(.primary.opacity(0.8))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-
-                if let licenseURL = URL(string: "https://github.com/qian403/NIU-app/blob/main/LICENSE") {
-                    Link("GitHub LICENSE", destination: licenseURL)
-                        .font(.system(size: 14, weight: .medium))
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.large)
-        }
-        .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle("LICENSE")
-        .navigationBarTitleDisplayMode(.inline)
+#Preview {
+    NavigationStack {
+        SettingsView()
+            .environmentObject(AppState())
     }
 }

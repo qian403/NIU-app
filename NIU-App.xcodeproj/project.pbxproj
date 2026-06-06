@@ -28,6 +28,8 @@
 		10A32DCC2F4327A60009BB45 /* SSOCaptchaProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */; };
 		10A32DCD2F4327A60009BB45 /* LoginRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DC62F4327A60009BB45 /* LoginRepository.swift */; };
 		10A32DCF2F4327A60009BB45 /* SSOSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */; };
+		10A32DD0A0F4327A60009BB45 /* SSOTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */; };
+		10A32DD1A0F4327A60009BB45 /* SSOGUIDBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */; };
 		10D1F8762F80C57900034946 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 10D1F8752F80C57900034946 /* WidgetKit.framework */; };
 		10D1F8782F80C57900034946 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 10D1F8772F80C57900034946 /* SwiftUI.framework */; };
 		10D1F8892F80C57A00034946 /* NIU-LiveActivitiesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -73,7 +75,14 @@
 		E880B97A27A0F77D4C7CFF25 /* Features/EventRegistration/Views/EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */; };
 		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
 		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
-/* End PBXBuildFile section */
+		A1F235FAF2EF434A85F33837 /* GraduationThresholdModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD1DDFD813A4DAA8FC29C83 /* GraduationThresholdModels.swift */; };
+		54A3EFEFEAA844D3923CD159 /* GraduationThresholdViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8385E0612A14868AF9E80B3 /* GraduationThresholdViewModel.swift */; };
+		DE1B327C5FC7444289A1258A /* GraduationThresholdWebManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0007632818F54337AC583420 /* GraduationThresholdWebManager.swift */; };
+		5980803889554F3D9D60EF5D /* GraduationThresholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F9DB7C84754D54AD782AAF /* GraduationThresholdView.swift */; };
+		07586D80DD784D0B98925264 /* DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* DiverseHoursProgressBar.swift */; };
+	
+		D2F819E2F9104CB298DA8F5E /* NIUComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AC3551E7FD4C20863D3461 /* NIUComponents.swift */; };
+	/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		10D1F8872F80C57A00034946 /* PBXContainerItemProxy */ = {
@@ -135,6 +144,8 @@
 		10A32DC62F4327A60009BB45 /* LoginRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginRepository.swift; sourceTree = "<group>"; };
 		10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOCaptchaProcessor.swift; sourceTree = "<group>"; };
 		10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOSessionService.swift; sourceTree = "<group>"; };
+		10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOTokenStore.swift; sourceTree = "<group>"; };
+		10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOGUIDBridge.swift; sourceTree = "<group>"; };
 		10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "NIU-LiveActivitiesExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		10D1F8752F80C57900034946 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		10D1F8772F80C57900034946 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -189,7 +200,14 @@
 		E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift; sourceTree = "<group>"; };
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
-/* End PBXFileReference section */
+		8CD1DDFD813A4DAA8FC29C83 /* GraduationThresholdModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Models/GraduationThresholdModels.swift; sourceTree = "<group>"; };
+		F8385E0612A14868AF9E80B3 /* GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
+		0007632818F54337AC583420 /* GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
+		13F9DB7C84754D54AD782AAF /* GraduationThresholdView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/GraduationThresholdView.swift; sourceTree = "<group>"; };
+		DEB28B5376A046BDBB7BEF97 /* DiverseHoursProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift; sourceTree = "<group>"; };
+	
+		27AC3551E7FD4C20863D3461 /* NIUComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIUComponents.swift; sourceTree = "<group>"; };
+	/* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		10D1F88D2F80C57A00034946 /* Exceptions for "NIU-LiveActivities" folder in "NIU-LiveActivitiesExtension" target */ = {
@@ -350,10 +368,12 @@
 		10A32D8C2F431E350009BB45 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+
 				10A32D882F431E350009BB45 /* MinimalCard.swift */,
 				10A32D892F431E350009BB45 /* MinimalSecureField.swift */,
 				10A32D8A2F431E350009BB45 /* MinimalTextField.swift */,
 				10A32D8B2F431E350009BB45 /* MinimalToast.swift */,
+				27AC3551E7FD4C20863D3461 /* NIUComponents.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -518,6 +538,8 @@
 				10A32DC62F4327A60009BB45 /* LoginRepository.swift */,
 				10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */,
 				10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */,
+				10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */,
+				10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -770,6 +792,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				
 				79E5A654058A1E7F384DB426 /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift in Sources */,
 				C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */,
 				0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */,
@@ -797,6 +820,8 @@
 				10A32DCC2F4327A60009BB45 /* SSOCaptchaProcessor.swift in Sources */,
 				10A32DCD2F4327A60009BB45 /* LoginRepository.swift in Sources */,
 				10A32DCF2F4327A60009BB45 /* SSOSessionService.swift in Sources */,
+				10A32DD0A0F4327A60009BB45 /* SSOTokenStore.swift in Sources */,
+				10A32DD1A0F4327A60009BB45 /* SSOGUIDBridge.swift in Sources */,
 				10A32DB52F431F630009BB45 /* MinimalToast.swift in Sources */,
 				10A32DB62F431F630009BB45 /* MinimalTextField.swift in Sources */,
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,
@@ -828,7 +853,12 @@
 				AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */,
 				10A32DBD2F431F630009BB45 /* LoginView.swift in Sources */,
 				10A32DBE2F431F630009BB45 /* LoginViewModel.swift in Sources */,
-			);
+				D2F819E2F9104CB298DA8F5E /* NIUComponents.swift in Sources */,
+				A1F235FAF2EF434A85F33837 /* GraduationThresholdModels.swift in Sources */,
+				54A3EFEFEAA844D3923CD159 /* GraduationThresholdViewModel.swift in Sources */,
+				DE1B327C5FC7444289A1258A /* GraduationThresholdWebManager.swift in Sources */,
+				5980803889554F3D9D60EF5D /* GraduationThresholdView.swift in Sources */,
+				07586D80DD784D0B98925264 /* DiverseHoursProgressBar.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		10D1F86F2F80C57900034946 /* Sources */ = {

@@ -111,3 +111,6 @@ add_*.rb
 /.vscode
 /.roo
 /.agents
+/.deriveddata
+/.playwright-mcp
+/.claude
