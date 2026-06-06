@@ -38,9 +38,23 @@ struct ClassScheduleWebView: UIViewRepresentable {
 
         context.coordinator.webView = wv
 
-        // Kick off the flow
-        if let url = URL(string: "https://ccsys.niu.edu.tw/SSO/Std002.aspx") {
-            wv.load(URLRequest(url: url))
+        // Kick off the modern bridge flow:
+        //   1. Fetch a one-shot GUID with the stored JWT
+        //   2. Load acade.niu.edu.tw/NIU/Login.aspx?GUID=<guid> which redirects
+        //      to MainFrame.aspx and establishes the legacy ASP.NET session
+        //   3. WKNavigationDelegate then drives the rest of the flow
+        Task { @MainActor [weak wv] in
+            let account = SSOTokenStore.shared.account
+                ?? LoginRepository.shared.getSavedCredentials()?.username
+                ?? ""
+            guard !account.isEmpty,
+                  let guid = await SSOGUIDBridge.fetchGUID(account: account),
+                  let url = SSOGUIDBridge.acadeLoginURL(guid: guid),
+                  let webView = wv else {
+                context.coordinator.finish(.sessionExpired)
+                return
+            }
+            webView.load(URLRequest(url: url))
         }
         return wv
     }
@@ -54,7 +68,7 @@ struct ClassScheduleWebView: UIViewRepresentable {
         let onResult: (ClassScheduleWebResult) -> Void
         weak var webView: WKWebView?
 
-        private var step: Step = .getAcadeMain
+        private var step: Step = .waitForMainFrame
         private var active = true   // set false after we call onResult once
 
         private enum Step {
@@ -74,7 +88,16 @@ struct ClassScheduleWebView: UIViewRepresentable {
             guard active else { return }
             let url = webView.url?.absoluteString ?? ""
 
-            // Detect expired session → redirected back to login
+            // Detect expired session → bounced to the modern Angular SSO page,
+            // the legacy default page, or acade's TimeOut page
+            if url.contains("ccsys1.niu.edu.tw/SSO") {
+                finish(.sessionExpired)
+                return
+            }
+            if url.contains("TimeOutPage.aspx") {
+                finish(.sessionExpired)
+                return
+            }
             if url.contains("Default.aspx") && step != .getAcadeMain {
                 finish(.sessionExpired)
                 return
@@ -239,7 +262,7 @@ struct ClassScheduleWebView: UIViewRepresentable {
 
         // MARK: - Finish
 
-        private func finish(_ result: ClassScheduleWebResult) {
+        fileprivate func finish(_ result: ClassScheduleWebResult) {
             guard active else { return }
             active = false
             DispatchQueue.main.async {

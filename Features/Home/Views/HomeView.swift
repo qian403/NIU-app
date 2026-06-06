@@ -1,40 +1,55 @@
 import SwiftUI
-import WebKit
-import Combine
-import MapKit
-import CoreLocation
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
-    private static let moodleNotificationURL = "https://euni.niu.edu.tw/message/output/popup/notifications.php"
     @State private var navigateToClassSchedule = false
-    
+    @State private var animateIn = true
+
+    // Today's courses state
+    @State private var relevantPeriods: [(period: ClassPeriod, course: CourseInfo)] = []
+    @State private var todayHasAnyClasses = false
+    @State private var isLoadingCourses = false
+
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
-                
+                LinearGradient(
+                    colors: [
+                        Color(.systemBackground),
+                        Color(.systemGroupedBackground)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
+                    VStack(spacing: Theme.Spacing.large) {
                         headerSection
                             .padding(.horizontal, Theme.Spacing.large)
                             .padding(.top, Theme.Spacing.medium)
-                        
+
                         welcomeSection
                             .padding(.horizontal, Theme.Spacing.large)
-                            .padding(.top, Theme.Spacing.small)
-                         
+
+                        schedulePreview
+                            .padding(.horizontal, Theme.Spacing.large)
+
                         featureCards
                             .padding(.horizontal, Theme.Spacing.large)
-                            .padding(.top, Theme.Spacing.large)
-                            .padding(.bottom, Theme.Spacing.large)
+
+                        Spacer()
                     }
+                    .padding(.bottom, Theme.Spacing.large)
                 }
             }
             .navigationBarHidden(true)
             .navigationDestination(isPresented: $navigateToClassSchedule) {
                 ClassScheduleView()
             }
+        }
+        .onAppear {
+            loadTodayCourses()
         }
         .onOpenURL { url in
             guard shouldOpenClassSchedule(from: url) else { return }
@@ -49,1746 +64,425 @@ struct HomeView: View {
         let scheme = url.scheme?.lowercased()
         let host = url.host?.lowercased()
         let path = url.path.lowercased()
-
         guard scheme == "niuapp" else { return false }
-        if host == "class-schedule" { return true }
-        if path == "/class-schedule" { return true }
-        return false
+        return host == "class-schedule" || path == "/class-schedule"
     }
-    
+
+    // MARK: - Load Today's Courses
+
+    private static let weekdayNames = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+    private static let cacheKey = "classSchedule.v2.cachedData"
+
+    private func loadTodayCourses() {
+        isLoadingCourses = true
+        if let data = UserDefaults.standard.data(forKey: Self.cacheKey),
+           let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) {
+            let extracted = extractRelevantPeriods(from: schedule)
+            relevantPeriods = extracted.relevant
+            todayHasAnyClasses = extracted.todayHasAnyClasses
+        } else {
+            relevantPeriods = []
+            todayHasAnyClasses = false
+        }
+        isLoadingCourses = false
+    }
+
+    private func extractRelevantPeriods(from schedule: ClassSchedule) -> (relevant: [(period: ClassPeriod, course: CourseInfo)], todayHasAnyClasses: Bool) {
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        let mondayBased = (weekday + 5) % 7
+        guard mondayBased < Self.weekdayNames.count else { return ([], false) }
+        let todayName = Self.weekdayNames[mondayBased]
+        guard let colIndex = schedule.dayHeaders.firstIndex(of: todayName) else { return ([], false) }
+
+        let todaysAll = schedule.periods.compactMap { period -> (period: ClassPeriod, course: CourseInfo)? in
+            guard let course = period.course(for: colIndex) else { return nil }
+            return (period, course)
+        }
+
+        let now = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        let nowMinutes = (now.hour ?? 0) * 60 + (now.minute ?? 0)
+
+        let notEnded = todaysAll.filter { item in
+            guard let end = item.period.endMinutes else { return false }
+            return end > nowMinutes
+        }
+
+        var result: [(period: ClassPeriod, course: CourseInfo)] = []
+        if let current = notEnded.first(where: { $0.period.isCurrentPeriod }) {
+            result.append(current)
+        }
+        if let next = notEnded.first(where: {
+            guard let start = $0.period.startMinutes else { return false }
+            return start > nowMinutes
+        }) {
+            result.append(next)
+        }
+
+        return (result, !todaysAll.isEmpty)
+    }
+
+    // MARK: - Header Section
+
     private var headerSection: some View {
         HStack {
             NavigationLink(destination: SettingsView()) {
-                Circle()
-                    .strokeBorder(Color.primary, lineWidth: 1.5)
-                    .frame(width: 40, height: 40)
-                    .overlay(
-                        Text(appState.currentUser?.name.prefix(1).uppercased() ?? "U")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-                    )
+                HStack(spacing: Theme.Spacing.small) {
+                    NIUAvatar(appState.currentUser?.name ?? "U", size: .small)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(appState.currentUser?.name ?? "User")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(.label))
+                        Text("國立宜蘭大學")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                }
+                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
-            
+            .buttonStyle(.plain)
+
             Spacer()
 
-            HStack(spacing: Theme.Spacing.medium) {
-                NavigationLink(
-                    destination: MoodleNotificationsView(
-                        title: "M 園區通知",
-                        targetURL: HomeView.moodleNotificationURL
-                    )
-                ) {
-                    Image(systemName: "bell.badge")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundColor(.primary)
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                NavigationLink(destination: SettingsView()) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundColor(.primary)
-                }
-                .buttonStyle(PlainButtonStyle())
+            NavigationLink(
+                destination: MoodleWebPageView(
+                    title: "M 園區通知",
+                    targetURL: "https://euni.niu.edu.tw/message/output/popup/notifications.php"
+                )
+            ) {
+                iconButtonAppearance("bell.badge")
             }
+            .buttonStyle(.plain)
         }
     }
-    
+
+    private func iconButtonAppearance(_ icon: String) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(Color.accentColor)
+            .frame(width: 44, height: 44)
+            .background(Circle().fill(Color.accentColor.opacity(0.12)))
+    }
+
+    // MARK: - Welcome Section
+
     private var welcomeSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
             Text("Welcome back,")
-                .font(.system(size: 24, weight: .thin))
-                .foregroundColor(.primary.opacity(0.6))
-            
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color(.secondaryLabel))
+                .opacity(animateIn ? 1 : 0)
+                .animation(Theme.Animation.fast.delay(0.3), value: animateIn)
+
             Text(appState.currentUser?.name ?? "User")
-                .font(.system(size: 36, weight: .bold))
-                .foregroundColor(.primary)
-                .padding(.bottom, 4)
-            
-            // 學生資訊 - 緊湊排列
+                .font(.system(size: 32, weight: .bold))
+                .foregroundStyle(Color(.label))
+                .opacity(animateIn ? 1 : 0)
+                .animation(Theme.Animation.fast.delay(0.4), value: animateIn)
+
             if let user = appState.currentUser {
-                VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Theme.Spacing.medium) {
                     if let department = user.department {
-                        HStack(spacing: 6) {
-                            Image(systemName: "building.2")
-                                .font(.system(size: 12))
-                                .foregroundColor(.primary.opacity(0.5))
-                            Text(normalizedDepartment(from: department))
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundColor(.primary.opacity(0.7))
-                        }
+                        InfoChip(
+                            icon: "building.2",
+                            title: normalizedDepartment(from: department)
+                        )
                     }
-                    
-                    HStack(spacing: 12) {
-                        if let grade = user.grade {
-                            HStack(spacing: 6) {
-                                Image(systemName: "calendar")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.primary.opacity(0.5))
-                                Text(grade)
-                                    .font(.system(size: 14, weight: .regular))
-                                    .foregroundColor(.primary.opacity(0.7))
-                            }
-                        }
-                        
-                        HStack(spacing: 6) {
-                            Image(systemName: "number")
-                                .font(.system(size: 12))
-                                .foregroundColor(.primary.opacity(0.5))
-                            Text(user.username)
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundColor(.primary.opacity(0.7))
-                        }
+
+                    if let grade = user.grade {
+                        InfoChip(
+                            icon: "calendar",
+                            title: grade
+                        )
                     }
                 }
-            }
-            
-            if let loginTime = UserDefaults.standard.object(forKey: "app.user.loginTime") as? Date {
-                Text("Last login: \(loginTime, style: .relative)")
-                    .font(.system(size: 14, weight: .light))
-                    .foregroundColor(.primary.opacity(0.4))
-                    .padding(.top, 4)
+                .opacity(animateIn ? 1 : 0)
+                .animation(Theme.Animation.fast.delay(0.5), value: animateIn)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    
-	    private var featureCards: some View {
-	        VStack(spacing: Theme.Spacing.medium) {
-	            // M 園區
-	            NavigationLink(destination: MoodleView()) {
-	                HStack(spacing: Theme.Spacing.medium) {
-                    Image(systemName: "graduationcap")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(.primary)
-                        .frame(width: 50, height: 50)
-                        .background(
-                            Circle()
-                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("M 園區")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
+    // MARK: - Schedule Preview
 
-                        Text("Moodle 課程、公告與作業")
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
+    private var schedulePreview: some View {
+        VStack(spacing: Theme.Spacing.medium) {
+            HStack {
+                Text("今日課程")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Color(.label))
 
-                    Spacer()
+                Spacer()
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .light))
-                        .foregroundColor(.primary.opacity(0.3))
-	                }
-	                .padding(Theme.Spacing.medium)
-	                .background(
-	                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-	                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-	                )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-	            }
-	            .buttonStyle(PlainButtonStyle())
-
-	            // 我的課表
-	            NavigationLink(destination: ClassScheduleView()) {
-	                HStack(spacing: Theme.Spacing.medium) {
-                    Image(systemName: "tablecells")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(.primary)
-                        .frame(width: 50, height: 50)
-                        .background(
-                            Circle()
-                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("我的課表")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-
-                        Text("查看每週課程安排")
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .light))
-                        .foregroundColor(.primary.opacity(0.3))
-	                }
-	                .padding(Theme.Spacing.medium)
-	                .background(
-	                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-	                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-	                )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-	            }
-	            .buttonStyle(PlainButtonStyle())
-
-	            // 學年度行事曆
-	            NavigationLink(destination: AcademicCalendarView()) {
-	                HStack(spacing: Theme.Spacing.medium) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(.primary)
-                        .frame(width: 50, height: 50)
-                        .background(
-                            Circle()
-                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("學年度行事曆")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-                        
-                        Text("查看學期重要日程")
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .light))
-                        .foregroundColor(.primary.opacity(0.3))
+                Button("查看全部") {
+                    navigateToClassSchedule = true
                 }
-                .padding(Theme.Spacing.medium)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-	            }
-	            .buttonStyle(PlainButtonStyle())
-	            
-	            // 活動報名
-            NavigationLink(destination: EventRegistrationView()) {
-                HStack(spacing: Theme.Spacing.medium) {
-                    Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(.primary)
-                        .frame(width: 50, height: 50)
-                        .background(
-                            Circle()
-                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("活動報名")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-                        
-                        Text("查看與報名校園活動")
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .light))
-                        .foregroundColor(.primary.opacity(0.3))
-                }
-                .padding(Theme.Spacing.medium)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // 成績查詢
-            NavigationLink(destination: GradeHistoryView()) {
-                HStack(spacing: Theme.Spacing.medium) {
-                    Image(systemName: "doc.text.below.ecg")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(.primary)
-                        .frame(width: 50, height: 50)
-                        .background(
-                            Circle()
-                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("成績查詢")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-
-                        Text("期中、期末與歷年成績")
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .light))
-                        .foregroundColor(.primary.opacity(0.3))
-                }
-                .padding(Theme.Spacing.medium)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // 畢業門檻
-            NavigationLink(destination: GraduationRequirementsView()) {
-                HStack(spacing: Theme.Spacing.medium) {
-                    Image(systemName: "flag.checkered.2.crossed")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundColor(.primary)
-                        .frame(width: 50, height: 50)
-                        .background(
-                            Circle()
-                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("畢業門檻")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-
-                        Text("追蹤學分與畢業條件進度")
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .light))
-                        .foregroundColor(.primary.opacity(0.3))
-                }
-                .padding(Theme.Spacing.medium)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-        }
-    }
-
-    private func normalizedDepartment(from raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let prefixes = ["系所年級：", "系所年級:", "系所：", "系所:"]
-        for prefix in prefixes where trimmed.hasPrefix(prefix) {
-            let value = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return value.isEmpty ? trimmed : value
-        }
-        return trimmed
-    }
-}
-
-@MainActor
-private final class MoodleNotificationsViewModel: ObservableObject {
-    enum LoadState {
-        case idle
-        case loading
-        case loaded
-        case error(String)
-    }
-
-    @Published var loadState: LoadState = .idle
-    @Published var notifications: [MoodlePopupNotification] = []
-
-    private let service = MoodleService.shared
-
-    func loadNotifications(username: String, password: String, forceRefresh: Bool = false) async {
-        if notifications.isEmpty {
-            loadState = .loading
-        }
-
-        do {
-            if !service.isAuthenticated {
-                try await service.authenticate(username: username, password: password)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.accentColor)
             }
 
-            notifications = try await service.fetchPopupNotifications(limit: 50, forceRefresh: forceRefresh)
-            loadState = .loaded
-        } catch {
-            if notifications.isEmpty {
-                loadState = .error(error.localizedDescription)
-            }
-            print("[MoodleNotification] 載入通知失敗: \(error.localizedDescription)")
-        }
-    }
-
-    func setMissingCredentialsError() {
-        loadState = .error("尚未找到登入資訊，請重新登入後再試一次。")
-    }
-}
-
-private struct MoodleNotificationsView: View {
-    let title: String
-    let targetURL: String
-
-    @StateObject private var viewModel = MoodleNotificationsViewModel()
-
-    var body: some View {
-        Group {
-            if !viewModel.notifications.isEmpty {
-                notificationList
+            if relevantPeriods.isEmpty && !isLoadingCourses {
+                emptyScheduleCard
+            } else if !relevantPeriods.isEmpty {
+                relevantPeriodsList
             } else {
-                switch viewModel.loadState {
-                case .idle, .loading:
-                    loadingView
-                case .loaded:
-                    emptyView
-                case .error(let message):
-                    errorView(message)
+                loadingCard
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .animation(Theme.Animation.fast.delay(0.6), value: animateIn)
+    }
+
+    private var emptyScheduleCard: some View {
+        NIUGlassCard {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(todayHasAnyClasses ? "今天的課程都結束了" : "今天沒有安排課程")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text(todayHasAnyClasses ? "好好休息一下吧 🎉" : "可以安排自己的時間 🌤️")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(.secondaryLabel))
                 }
+                Spacer()
+                Image(systemName: todayHasAnyClasses ? "sun.max.fill" : "calendar.badge.minus")
+                    .font(.system(size: 32, weight: .ultraLight))
+                    .foregroundStyle(todayHasAnyClasses ? .orange.opacity(0.5) : .blue.opacity(0.45))
             }
-        }
-        .background(Color(.systemBackground))
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if case .idle = viewModel.loadState {
-                await loadNotifications(forceRefresh: false)
-            }
-        }
-        .refreshable {
-            await loadNotifications(forceRefresh: true)
+            .frame(maxWidth: .infinity)
         }
     }
 
-    private var notificationList: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                ForEach(viewModel.notifications) { notification in
-                    NavigationLink(destination: MoodleNotificationDetailView(notification: notification)) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(notification.title)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .lineLimit(2)
+    private var loadingCard: some View {
+        NIUGlassCard {
+            HStack {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text("載入課表...")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(.secondaryLabel))
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
 
-                                Spacer(minLength: 8)
+    private var relevantPeriodsList: some View {
+        VStack(spacing: Theme.Spacing.xsmall) {
+            ForEach(Array(relevantPeriods.enumerated()), id: \.offset) { _, item in
+                todayCourseRow(period: item.period, course: item.course)
+            }
+        }
+    }
 
-                                if !notification.isRead {
-                                    Circle()
-                                        .fill(Color.blue)
-                                        .frame(width: 8, height: 8)
-                                        .padding(.top, 5)
-                                }
-                            }
+    private func todayCourseRow(period: ClassPeriod, course: CourseInfo) -> some View {
+        let isCurrent = period.isCurrentPeriod
 
-                            Text(notification.plainMessage)
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundColor(.primary.opacity(0.75))
-                                .lineLimit(4)
+        return Button {
+            navigateToClassSchedule = true
+        } label: {
+            HStack(spacing: Theme.Spacing.small) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isCurrent ? Color.accentColor : Color(.separator))
+                    .frame(width: 3, height: 40)
 
-                            HStack(spacing: 8) {
-                                if !notification.timeText.isEmpty {
-                                    Label(notification.timeText, systemImage: "clock")
-                                        .font(.system(size: 11, weight: .regular))
-                                        .foregroundColor(.secondary)
-                                }
-
-                                if let component = notification.component,
-                                   !component.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(component)
-                                        .font(.system(size: 11, weight: .regular))
-                                        .foregroundColor(.secondary)
-                                }
-
-                                Spacer(minLength: 0)
-
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.secondary.opacity(0.7))
-                            }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        if isCurrent {
+                            Text("上課中")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color.accentColor))
+                        } else {
+                            Text("下一堂")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color(.secondaryLabel))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color(.tertiarySystemFill)))
                         }
-                        .padding(Theme.Spacing.medium)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                        )
+                        Text(period.timeRange)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(.tertiaryLabel))
                     }
-                    .buttonStyle(PlainButtonStyle())
+
+                    Text(course.name)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color(.label))
+                        .lineLimit(1)
+
+                    if let classroom = course.classroom, !classroom.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "mappin")
+                                .font(.system(size: 10))
+                            Text(classroom)
+                                .font(.system(size: 12))
+                        }
+                        .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+            .padding(.horizontal, Theme.Spacing.small)
+            .padding(.vertical, Theme.Spacing.small)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.small, style: .continuous)
+                    .fill(isCurrent ? Color.accentColor.opacity(0.06) : Color(.tertiarySystemFill))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Feature Cards
+
+    private var featureCards: some View {
+        VStack(spacing: Theme.Spacing.medium) {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: Theme.Spacing.medium),
+                GridItem(.flexible(), spacing: Theme.Spacing.medium)
+            ], spacing: Theme.Spacing.medium) {
+                FeatureCard(
+                    icon: "graduationcap.fill",
+                    title: "M 園區",
+                    subtitle: "課程、公告與作業",
+                    color: .blue,
+                    destination: MoodleView()
+                )
+
+                FeatureCard(
+                    icon: "tablecells",
+                    title: "我的課表",
+                    subtitle: "查看每週課程安排",
+                    color: .purple,
+                    destination: ClassScheduleView()
+                )
+
+                FeatureCard(
+                    icon: "calendar",
+                    title: "學年度行事曆",
+                    subtitle: "查看學期重要日程",
+                    color: .orange,
+                    destination: AcademicCalendarView()
+                )
+
+                FeatureCard(
+                    icon: "calendar.badge.plus",
+                    title: "活動報名",
+                    subtitle: "參加校園活動",
+                    color: .green,
+                    destination: EventRegistrationView()
+                )
+
+                FeatureCard(
+                    icon: "chart.bar.doc.horizontal",
+                    title: "成績查詢",
+                    subtitle: "歷年成績與 GPA",
+                    color: .orange,
+                    destination: GradeHistoryView()
+                )
+
+                FeatureCard(
+                    icon: "checkmark.seal",
+                    title: "畢業門檻",
+                    subtitle: "多元時數、英文、體適能",
+                    color: .teal,
+                    destination: GraduationThresholdView()
+                )
+            }
+            .opacity(animateIn ? 1 : 0)
+            .animation(Theme.Animation.fast.delay(0.7), value: animateIn)
+        }
+    }
+}
+
+// MARK: - Feature Card
+
+struct FeatureCard<Destination: View>: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let color: Color
+    let destination: Destination
+
+    var body: some View {
+        NavigationLink(destination: destination) {
+            VStack(spacing: Theme.Spacing.small) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.12))
+                        .frame(width: 56, height: 56)
+
+                    Image(systemName: icon)
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(color)
+                }
+
+                VStack(spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color(.label))
+
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .lineLimit(1)
                 }
             }
-            .padding(.horizontal, Theme.Spacing.medium)
-            .padding(.vertical, Theme.Spacing.small)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Spacing.medium)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
         }
+        .buttonStyle(.plain)
     }
+}
 
-    private var loadingView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            ProgressView()
-            Text("正在抓取通知…")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(.secondary)
-            Spacer()
+// MARK: - Info Chip
+
+struct InfoChip: View {
+    let icon: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .medium))
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var emptyView: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "bell.slash")
-                .font(.system(size: 34, weight: .light))
-                .foregroundColor(.secondary)
-            Text("目前沒有通知")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 34, weight: .light))
-                .foregroundColor(.secondary)
-            Text(message)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-
-            Button("重試") {
-                Task { await loadNotifications(forceRefresh: true) }
-            }
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 22)
-            .padding(.vertical, 10)
-            .background(Color.accentColor)
-            .cornerRadius(20)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func loadNotifications(forceRefresh: Bool) async {
-        _ = targetURL
-
-        guard let credentials = LoginRepository.shared.getSavedCredentials() else {
-            viewModel.setMissingCredentialsError()
-            return
-        }
-
-        await viewModel.loadNotifications(
-            username: credentials.username,
-            password: credentials.password,
-            forceRefresh: forceRefresh
+        .foregroundStyle(Color(.secondaryLabel))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color(.tertiarySystemFill))
         )
     }
 }
 
-private struct MoodleNotificationDetailView: View {
-    let notification: MoodlePopupNotification
+// MARK: - Helper Functions
 
-    @State private var mapCoordinate: CLLocationCoordinate2D?
-    @State private var mapLoading = false
-    @State private var mapErrorText: String?
-    @State private var cameraPosition: MapCameraPosition = .automatic
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(notification.title)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.primary)
-
-                if !notification.timeText.isEmpty {
-                    Label(notification.timeText, systemImage: "clock")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.secondary)
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    if let account = extractValue(for: ["您的帳號", "帳號"]) {
-                        detailRow(title: "帳號", value: account)
-                    }
-                    if let loginTime = extractValue(for: ["登入時間", "time"]) {
-                        detailRow(title: "登入時間", value: loginTime)
-                    }
-                    if let device = extractValue(for: ["登入設備", "device"]) {
-                        detailRow(title: "登入設備", value: device)
-                    }
-                    if let ip = extractedIP {
-                        detailRow(title: "來源 IP", value: ip)
-                    }
-                }
-
-                Text(displayMessageText)
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if isLoginNotification {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("登入位置")
-                                .font(.system(size: 16, weight: .semibold))
-                            Spacer()
-                            if mapLoading {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            }
-                        }
-
-                        if let mapCoordinate {
-                            Map(position: $cameraPosition) {
-                                Marker("登入位置", coordinate: mapCoordinate)
-                            }
-                            .frame(height: 220)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                        } else if let mapErrorText {
-                            Text(mapErrorText)
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("正在嘗試定位登入來源…")
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(Theme.Spacing.medium)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                    )
-                }
-            }
-            .padding(Theme.Spacing.medium)
-        }
-        .background(Color(.systemBackground))
-        .navigationTitle("通知內容")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await resolveLoginMapIfNeeded()
-        }
+private func normalizedDepartment(from raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return "" }
+    let prefixes = ["系所年級：", "系所年級:", "系所：", "系所:"]
+    for prefix in prefixes where trimmed.hasPrefix(prefix) {
+        let value = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? "" : value
     }
-
-    private var isLoginNotification: Bool {
-        let text = "\(notification.title)\n\(messageForParsing)".lowercased()
-        return text.contains("登入") || text.contains("login")
-    }
-
-    private var extractedIP: String? {
-        if let ipValue = extractValue(for: ["來源 IP", "IP"]) {
-            let candidate = ipValue
-                .components(separatedBy: .whitespacesAndNewlines)
-                .first(where: { !$0.isEmpty })?
-                .trimmingCharacters(in: CharacterSet(charactersIn: ",，。:："))
-            if let candidate, isIPv4(candidate) {
-                return candidate
-            }
-        }
-
-        let text = messageForParsing
-        guard let regex = try? NSRegularExpression(pattern: #"\b(?:\d{1,3}\.){3}\d{1,3}\b"#) else {
-            return nil
-        }
-        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, options: [], range: nsRange),
-              let range = Range(match.range, in: text) else {
-            return nil
-        }
-        return String(text[range])
-    }
-
-    private var messageForParsing: String {
-        notification.plainMessage
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-    }
-
-    private var displayMessageText: String {
-        let text = messageForParsing
-
-        if !isLoginNotification {
-            return deduplicateSentences(text)
-        }
-
-        var cleaned = text
-
-        if let account = extractValue(for: ["您的帳號", "帳號"]), !account.isEmpty {
-            cleaned = cleaned.replacingOccurrences(of: account, with: "")
-        }
-        if let loginTime = extractValue(for: ["登入時間", "time"]), !loginTime.isEmpty {
-            cleaned = cleaned.replacingOccurrences(of: loginTime, with: "")
-        }
-        if let device = extractValue(for: ["登入設備", "device"]), !device.isEmpty {
-            cleaned = cleaned.replacingOccurrences(of: device, with: "")
-        }
-        if let ip = extractedIP, !ip.isEmpty {
-            cleaned = cleaned.replacingOccurrences(of: ip, with: "")
-        }
-
-        for prefix in ["您的帳號", "帳號", "登入時間", "登入設備", "IP", "來源 IP"] {
-            cleaned = cleaned.replacingOccurrences(of: prefix, with: "")
-        }
-
-        cleaned = cleaned
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let concise = deduplicateSentences(cleaned)
-        return concise.isEmpty ? deduplicateSentences(text) : concise
-    }
-
-    private func detailRow(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
-            Text(value)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(.primary)
-        }
-    }
-
-    private func extractValue(for labels: [String]) -> String? {
-        let text = messageForParsing
-
-        if labels.contains("您的帳號") || labels.contains("帳號") {
-            if let value = extractSegment(
-                from: text,
-                starts: ["您的帳號", "帳號"],
-                ends: ["登入時間", "登入設備", "IP", "來源 IP", "如果", "您好", "嗨"]
-            ) {
-                return value
-            }
-        }
-
-        if labels.contains("登入時間") || labels.contains("time") {
-            if let value = extractSegment(
-                from: text,
-                starts: ["登入時間", "time"],
-                ends: ["登入設備", "IP", "來源 IP", "如果", "您好", "嗨"]
-            ) {
-                return value
-            }
-        }
-
-        if labels.contains("登入設備") || labels.contains("device") {
-            if let value = extractSegment(
-                from: text,
-                starts: ["登入設備", "device"],
-                ends: ["IP", "來源 IP", "如果", "您好", "嗨"]
-            ) {
-                return value
-            }
-        }
-
-        if labels.contains("來源 IP") || labels.contains("IP") {
-            if let value = extractSegment(
-                from: text,
-                starts: ["來源 IP", "IP"],
-                ends: ["如果", "您好", "嗨"]
-            ) {
-                return value
-            }
-        }
-
-        for label in labels {
-            let escaped = NSRegularExpression.escapedPattern(for: label)
-            let patterns = [
-                "\(escaped)\\s*[:：]\\s*([^\\n]+)",
-                "\(escaped)\\s*([^\\n]+)"
-            ]
-            for pattern in patterns {
-                guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
-                let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
-                guard let match = regex.firstMatch(in: text, options: [], range: nsRange),
-                      match.numberOfRanges > 1,
-                      let range = Range(match.range(at: 1), in: text) else {
-                    continue
-                }
-                let value = String(text[range]).trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ":：,，。")))
-                if !value.isEmpty { return value }
-            }
-        }
-        return nil
-    }
-
-    private func resolveLoginMapIfNeeded() async {
-        guard isLoginNotification else { return }
-        guard mapCoordinate == nil else { return }
-
-        mapLoading = true
-        defer { mapLoading = false }
-
-        if let coordinate = extractCoordinate(from: notification.plainMessage) {
-            applyMapCoordinate(coordinate)
-            return
-        }
-
-        if let ip = extractedIP,
-           let coordinate = await resolveCoordinateFromIP(ip) {
-            applyMapCoordinate(coordinate)
-            return
-        }
-
-        if let locationText = extractValue(for: ["登入地點", "登入位置", "location"]),
-           let coordinate = await geocodeLocation(locationText) {
-            applyMapCoordinate(coordinate)
-            return
-        }
-
-        mapErrorText = "此通知沒有可定位的位置資訊。"
-    }
-
-    private func applyMapCoordinate(_ coordinate: CLLocationCoordinate2D) {
-        mapCoordinate = coordinate
-        cameraPosition = .region(
-            MKCoordinateRegion(
-                center: coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-            )
-        )
-    }
-
-    private func extractCoordinate(from text: String) -> CLLocationCoordinate2D? {
-        guard let regex = try? NSRegularExpression(pattern: #"(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)"#) else {
-            return nil
-        }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, options: [], range: range),
-              match.numberOfRanges > 2,
-              let latRange = Range(match.range(at: 1), in: text),
-              let lonRange = Range(match.range(at: 2), in: text),
-              let lat = Double(text[latRange]),
-              let lon = Double(text[lonRange]),
-              (-90...90).contains(lat),
-              (-180...180).contains(lon) else {
-            return nil
-        }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
-
-    private func geocodeLocation(_ query: String) async -> CLLocationCoordinate2D? {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return nil }
-
-        guard let request = MKGeocodingRequest(addressString: trimmedQuery) else { return nil }
-        do {
-            let mapItems = try await request.mapItems
-            for mapItem in mapItems {
-                let _ = mapItem.address
-                let _ = mapItem.addressRepresentations
-                let coordinate = mapItem.location.coordinate
-                if CLLocationCoordinate2DIsValid(coordinate) {
-                    return coordinate
-                }
-            }
-            return nil
-        } catch {
-            return nil
-        }
-    }
-
-    private func resolveCoordinateFromIP(_ ip: String) async -> CLLocationCoordinate2D? {
-        guard let url = URL(string: "https://ipapi.co/\(ip)/json/") else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 8
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return nil
-            }
-
-            struct IPGeoResponse: Decodable {
-                let latitude: Double?
-                let longitude: Double?
-                let lat: Double?
-                let lon: Double?
-            }
-
-            let decoded = try JSONDecoder().decode(IPGeoResponse.self, from: data)
-            let latitude = decoded.latitude ?? decoded.lat
-            let longitude = decoded.longitude ?? decoded.lon
-            guard let latitude, let longitude else { return nil }
-            return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        } catch {
-            return nil
-        }
-    }
-
-    private func extractSegment(from text: String, starts: [String], ends: [String]) -> String? {
-        guard let start = firstMatchedRange(in: text, candidates: starts) else { return nil }
-
-        let searchStart = start.upperBound
-        let suffix = String(text[searchStart...])
-
-        var endIndexInSuffix = suffix.endIndex
-        for end in ends {
-            if let range = suffix.range(of: end, options: [.caseInsensitive]), range.lowerBound < endIndexInSuffix {
-                endIndexInSuffix = range.lowerBound
-            }
-        }
-
-        let segment = String(suffix[..<endIndexInSuffix])
-            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ":：,，。")))
-
-        return segment.isEmpty ? nil : segment
-    }
-
-    private func firstMatchedRange(in text: String, candidates: [String]) -> Range<String.Index>? {
-        var best: Range<String.Index>?
-
-        for token in candidates {
-            guard let range = text.range(of: token, options: [.caseInsensitive]) else { continue }
-            if let best, range.lowerBound >= best.lowerBound { continue }
-            best = range
-        }
-
-        return best
-    }
-
-    private func deduplicateSentences(_ text: String) -> String {
-        let normalized = text
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !normalized.isEmpty else { return "" }
-
-        let parts = normalized
-            .components(separatedBy: CharacterSet(charactersIn: "。!?！？\n"))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        var seen = Set<String>()
-        var uniqueParts: [String] = []
-
-        for part in parts {
-            let key = part.lowercased()
-            if seen.insert(key).inserted {
-                uniqueParts.append(part)
-            }
-        }
-
-        if uniqueParts.isEmpty {
-            return normalized
-        }
-
-        return uniqueParts.joined(separator: "。") + "。"
-    }
-
-    private func isIPv4(_ value: String) -> Bool {
-        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count == 4 else { return false }
-        for part in parts {
-            guard let number = Int(part), (0...255).contains(number) else {
-                return false
-            }
-        }
-        return true
-    }
+    return trimmed
 }
 
 #Preview {
-    HomeView()
-        .environmentObject(AppState())
-}
-
-private enum RequirementStatus: String {
-    case passed
-    case pending
-    case notRequired
-    case unknown
-
-    var text: String {
-        switch self {
-        case .passed: return "已達成"
-        case .pending: return "待完成"
-        case .notRequired: return "不計入"
-        case .unknown: return "未知"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .passed: return "checkmark.circle.fill"
-        case .pending: return "exclamationmark.circle.fill"
-        case .notRequired: return "minus.circle.fill"
-        case .unknown: return "questionmark.circle.fill"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .passed: return .green
-        case .pending: return .orange
-        case .notRequired: return .gray
-        case .unknown: return .primary.opacity(0.45)
-        }
-    }
-}
-
-private struct DiverseRequirementItem: Identifiable, Codable {
-    let id: String
-    let title: String
-    let currentText: String
-    let requiredText: String
-
-    var currentValue: Double? { Self.parseNumber(currentText) }
-    var requiredValue: Double? { Self.parseNumber(requiredText) }
-
-    var status: RequirementStatus {
-        if requiredText.contains("不計入") || requiredText.contains("免") {
-            return .notRequired
-        }
-        guard let currentValue, let requiredValue, requiredValue > 0 else {
-            return .unknown
-        }
-        return currentValue >= requiredValue ? .passed : .pending
-    }
-
-    var progress: Double {
-        guard let currentValue, let requiredValue, requiredValue > 0 else { return 0 }
-        return min(1, currentValue / requiredValue)
-    }
-
-    private static func parseNumber(_ text: String) -> Double? {
-        let cleaned = text.replacingOccurrences(of: ",", with: "")
-        let pattern = #"-?\d+(\.\d+)?"#
-        guard let range = cleaned.range(of: pattern, options: .regularExpression) else {
-            return nil
-        }
-        return Double(cleaned[range])
-    }
-}
-
-private struct GraduationRequirementsSnapshot: Codable {
-    let englishText: String
-    let physicalText: String
-    let creditsRequiredText: String
-    let creditsEarnedText: String
-    let diverseItems: [DiverseRequirementItem]
-    let programs: [String]
-
-    var englishStatus: RequirementStatus { Self.status(from: englishText) }
-    var physicalStatus: RequirementStatus { Self.status(from: physicalText) }
-
-    var creditsRequiredValue: Double? { Self.parseNumber(creditsRequiredText) }
-    var creditsEarnedValue: Double? { Self.parseNumber(creditsEarnedText) }
-    var creditProgress: Double {
-        guard let earned = creditsEarnedValue, let required = creditsRequiredValue, required > 0 else { return 0 }
-        return min(1, earned / required)
-    }
-
-    var pendingCount: Int {
-        var count = 0
-        if englishStatus == .pending { count += 1 }
-        if physicalStatus == .pending { count += 1 }
-        count += diverseItems.filter { $0.status == .pending }.count
-        if let earned = creditsEarnedValue, let required = creditsRequiredValue, earned < required {
-            count += 1
-        }
-        return count
-    }
-
-    private static func status(from rawText: String) -> RequirementStatus {
-        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty { return .unknown }
-        if text.contains("免") || text.contains("不計入") { return .notRequired }
-        if text.contains("未") || text.contains("不通過") || text.contains("不符") { return .pending }
-        return .passed
-    }
-
-    private static func parseNumber(_ text: String) -> Double? {
-        let cleaned = text.replacingOccurrences(of: ",", with: "")
-        let pattern = #"-?\d+(\.\d+)?"#
-        guard let range = cleaned.range(of: pattern, options: .regularExpression) else {
-            return nil
-        }
-        return Double(cleaned[range])
-    }
-}
-
-private enum GraduationWebResult {
-    case success(GraduationRequirementsSnapshot)
-    case sessionExpired
-    case failure(String)
-}
-
-private struct GraduationRawDTO: Decodable {
-    let englishText: String
-    let physicalText: String
-    let creditsRequiredText: String
-    let creditsEarnedText: String
-    let diverseValues: [String]
-    let programsText: String
-}
-
-private struct GraduationRequirementsView: View {
-    @StateObject private var vm = GraduationRequirementsViewModel()
-
-    var body: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.large) {
-                    if let snapshot = vm.snapshot {
-                        summaryHero(snapshot: snapshot)
-                        statusCards(snapshot: snapshot)
-                        diverseSection(snapshot: snapshot)
-                        programsSection(snapshot: snapshot)
-                    } else {
-                        placeholderSection
-                    }
-                }
-                .padding(.horizontal, Theme.Spacing.large)
-                .padding(.vertical, Theme.Spacing.medium)
-            }
-            .refreshable {
-                await vm.pullToRefresh()
-            }
-        }
-        .navigationTitle("畢業門檻")
-        .navigationBarTitleDisplayMode(.inline)
-        .overlay {
-            if vm.showWebView {
-                GraduationRequirementsWebView(onResult: vm.handleWebResult)
-                    .frame(width: 360, height: 640)
-                    .opacity(0)
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var placeholderSection: some View {
-        VStack(spacing: 10) {
-            if case .error(let message) = vm.state {
-                Image(systemName: "wifi.exclamationmark")
-                    .font(.system(size: 26, weight: .light))
-                    .foregroundColor(.primary.opacity(0.4))
-                Text(message)
-                    .font(.system(size: 15))
-                    .foregroundColor(.primary.opacity(0.65))
-                    .multilineTextAlignment(.center)
-                Text("請下拉重新整理")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.primary.opacity(0.45))
-            } else if vm.state == .loading {
-                Text("正在更新畢業門檻資料…")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary.opacity(0.65))
-                Text("可下拉重新整理")
-                    .font(.system(size: 13))
-                    .foregroundColor(.primary.opacity(0.45))
-            } else {
-                Text("目前尚無資料")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary.opacity(0.65))
-                Text("請下拉重新整理")
-                    .font(.system(size: 13))
-                    .foregroundColor(.primary.opacity(0.45))
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
-    }
-
-    private func summaryHero(snapshot: GraduationRequirementsSnapshot) -> some View {
-        HStack(spacing: Theme.Spacing.large) {
-            ZStack {
-                Circle()
-                    .stroke(Color.primary.opacity(0.12), lineWidth: 8)
-
-                Circle()
-                    .trim(from: 0, to: snapshot.creditProgress)
-                    .stroke(Color.primary, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-
-                VStack(spacing: 2) {
-                    Text("\(Int(snapshot.creditProgress * 100))%")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(.primary)
-                    Text("學分完成")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(.primary.opacity(0.5))
-                }
-            }
-            .frame(width: 110, height: 110)
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("畢業總覽")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.primary)
-                Text("已修 \(snapshot.creditsEarnedText) / 需修 \(snapshot.creditsRequiredText)")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.primary.opacity(0.65))
-                Text(snapshot.pendingCount == 0 ? "目前所有條件都已達成" : "還有 \(snapshot.pendingCount) 項條件待完成")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(snapshot.pendingCount == 0 ? .green : .orange)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(Theme.Spacing.large)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .fill(Color.primary.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private func statusCards(snapshot: GraduationRequirementsSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            Text("關鍵條件")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.primary.opacity(0.5))
-
-            HStack(spacing: Theme.Spacing.small) {
-                requirementCard(
-                    title: "英文能力",
-                    subtitle: snapshot.englishText.trimmedOrDash,
-                    status: snapshot.englishStatus
-                )
-                requirementCard(
-                    title: "體適能",
-                    subtitle: snapshot.physicalText.trimmedOrDash,
-                    status: snapshot.physicalStatus
-                )
-            }
-        }
-    }
-
-    private func requirementCard(title: String, subtitle: String, status: RequirementStatus) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: status.icon)
-                    .foregroundColor(status.color)
-                    .font(.system(size: 15))
-                Text(title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.primary)
-            }
-            Text(status.text)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(status.color)
-            Text(subtitle)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(.primary.opacity(0.5))
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .fill(Color.primary.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private func diverseSection(snapshot: GraduationRequirementsSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            Text("多元時數")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.primary.opacity(0.5))
-
-            VStack(spacing: Theme.Spacing.small) {
-                ForEach(snapshot.diverseItems) { item in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(item.title)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.primary)
-                            Spacer()
-                            Text("\(item.currentText) / \(item.requiredText)")
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundColor(.primary.opacity(0.55))
-                        }
-
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.08))
-                                Capsule()
-                                    .fill(Color.primary)
-                                    .frame(width: geo.size.width * item.progress)
-                            }
-                        }
-                        .frame(height: 8)
-                    }
-                }
-            }
-            .padding(Theme.Spacing.medium)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .fill(Color.primary.opacity(0.03))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            )
-        }
-    }
-
-    private func programsSection(snapshot: GraduationRequirementsSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            Text("學分學程")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.primary.opacity(0.5))
-
-            if snapshot.programs.isEmpty {
-                Text("目前沒有學分學程資料")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.primary.opacity(0.55))
-                    .padding(Theme.Spacing.medium)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
-            } else {
-                FlexibleTagList(tags: snapshot.programs)
-                    .padding(Theme.Spacing.medium)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
-            }
-        }
-    }
-}
-
-@MainActor
-private final class GraduationRequirementsViewModel: ObservableObject {
-    enum State: Equatable {
-        case idle
-        case loading
-        case loaded
-        case error(String)
-    }
-
-    @Published var state: State = .idle
-    @Published var showWebView = false
-    @Published var snapshot: GraduationRequirementsSnapshot?
-
-    private let cacheKey = "graduation.requirements.snapshot.v1"
-    private let cacheDateKey = "graduation.requirements.snapshot.date.v1"
-    private let cacheLifetime: TimeInterval = 12 * 60 * 60
-    private var sessionRefreshAttempted = false
-
-    init() {
-        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
-            snapshot = GraduationRequirementsSnapshot(
-                englishText: "已通過",
-                physicalText: "尚待完成",
-                creditsRequiredText: "128",
-                creditsEarnedText: "102",
-                diverseItems: [
-                    DiverseRequirementItem(id: "service", title: "服務", currentText: "10", requiredText: "12"),
-                    DiverseRequirementItem(id: "diverse", title: "多元", currentText: "8", requiredText: "10"),
-                    DiverseRequirementItem(id: "major", title: "專業", currentText: "6", requiredText: "6"),
-                    DiverseRequirementItem(id: "integration", title: "綜合", currentText: "4", requiredText: "4")
-                ],
-                programs: ["人工智慧學程", "跨域數位設計學程"]
-            )
-            state = .loaded
-            return
-        }
-
-        loadFromCache()
-        refresh(force: false)
-    }
-
-    func refresh(force: Bool) {
-        if !force,
-           let lastDate = UserDefaults.standard.object(forKey: cacheDateKey) as? Date,
-           Date().timeIntervalSince(lastDate) < cacheLifetime,
-           snapshot != nil {
-            state = .loaded
-            return
-        }
-        state = .loading
-        showWebView = true
-    }
-
-    func pullToRefresh() async {
-        refresh(force: true)
-        while state == .loading {
-            try? await Task.sleep(nanoseconds: 120_000_000)
-        }
-    }
-
-    func handleWebResult(_ result: GraduationWebResult) {
-        showWebView = false
-
-        switch result {
-        case .success(let data):
-            sessionRefreshAttempted = false
-            snapshot = data
-            state = .loaded
-            saveToCache(data)
-
-        case .sessionExpired:
-            if !sessionRefreshAttempted {
-                sessionRefreshAttempted = true
-                Task {
-                    let refreshed = await SSOSessionService.shared.requestRefresh()
-                    if refreshed {
-                        self.showWebView = true
-                    } else {
-                        self.state = .error("登入狀態已過期，請重新登入後再試")
-                    }
-                }
-            } else {
-                sessionRefreshAttempted = false
-                state = .error("登入狀態已過期，請重新登入後再試")
-            }
-
-        case .failure(let message):
-            if snapshot != nil {
-                state = .loaded
-            } else {
-                state = .error(message)
-            }
-        }
-    }
-
-    private func loadFromCache() {
-        guard let data = UserDefaults.standard.data(forKey: cacheKey),
-              let value = try? JSONDecoder().decode(GraduationRequirementsSnapshot.self, from: data) else {
-            return
-        }
-        snapshot = value
-        state = .loaded
-    }
-
-    private func saveToCache(_ value: GraduationRequirementsSnapshot) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        UserDefaults.standard.set(data, forKey: cacheKey)
-        UserDefaults.standard.set(Date(), forKey: cacheDateKey)
-    }
-}
-
-private struct GraduationRequirementsWebView: UIViewRepresentable {
-    let onResult: (GraduationWebResult) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onResult: onResult)
-    }
-
-    func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
-        config.defaultWebpagePreferences.allowsContentJavaScript = true
-
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
-        webView.uiDelegate = context.coordinator
-        webView.customUserAgent =
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
-            "AppleWebKit/605.1.15 (KHTML, like Gecko) " +
-            "Version/17.0 Safari/605.1.15"
-
-        context.coordinator.webView = webView
-        if let url = URL(string: "https://ccsys.niu.edu.tw/SSO/Std002.aspx") {
-            webView.load(URLRequest(url: url))
-        } else {
-            context.coordinator.finish(.failure("無法建立畢業門檻連線"))
-        }
-        return webView
-    }
-
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
-
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        weak var webView: WKWebView?
-        let onResult: (GraduationWebResult) -> Void
-
-        private var active = true
-        private var step: Step = .resolveEntryLink
-
-        private enum Step {
-            case resolveEntryLink
-            case waitForMainFrame
-            case waitForThresholdPage
-            case parse
-        }
-
-        init(onResult: @escaping (GraduationWebResult) -> Void) {
-            self.onResult = onResult
-        }
-
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard active else { return }
-            let url = webView.url?.absoluteString ?? ""
-
-            if url.contains("/MvcTeam/Account/Login") || url.contains("/Account/Login") || url.contains("Default.aspx") {
-                finish(.sessionExpired)
-                return
-            }
-
-            switch step {
-            case .resolveEntryLink:
-                if url.contains("Std002.aspx") || url.contains("StdMain.aspx") {
-                    extractAcadeEntryAndNavigate(webView: webView)
-                } else if url.contains("MainFrame.aspx") {
-                    step = .waitForThresholdPage
-                    navigateToGraduationThreshold(webView: webView)
-                }
-
-            case .waitForMainFrame:
-                if url.contains("MainFrame.aspx") {
-                    step = .waitForThresholdPage
-                    navigateToGraduationThreshold(webView: webView)
-                }
-
-            case .waitForThresholdPage:
-                if url.contains("ENRG010_01.aspx") {
-                    step = .parse
-                    pollForSnapshot(webView: webView, attempt: 0)
-                }
-
-            case .parse:
-                break
-            }
-        }
-
-        func webView(_ webView: WKWebView,
-                     didFailProvisionalNavigation navigation: WKNavigation!,
-                     withError error: Error) {
-            guard active else { return }
-            finish(.failure("網路連線失敗：\(error.localizedDescription)"))
-        }
-
-        private func extractAcadeEntryAndNavigate(webView: WKWebView) {
-            let js = """
-            (function() {
-                var el = document.getElementById('ctl00_ContentPlaceHolder1_RadListView1_ctrl0_HyperLink1');
-                return el ? (el.getAttribute('href') || '') : '';
-            })()
-            """
-            webView.evaluateJavaScript(js) { [weak self] result, _ in
-                guard let self, self.active else { return }
-                let href = (result as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                guard !href.isEmpty else {
-                    self.finish(.sessionExpired)
-                    return
-                }
-
-                let fullURL: String
-                if href.hasPrefix("http") {
-                    fullURL = href
-                } else {
-                    let clean = href.hasPrefix("./") ? String(href.dropFirst(2)) : href
-                    fullURL = "https://ccsys.niu.edu.tw/SSO/" + clean
-                }
-
-                guard let url = URL(string: fullURL) else {
-                    self.finish(.failure("無法進入教務系統"))
-                    return
-                }
-
-                self.step = .waitForMainFrame
-                webView.load(URLRequest(url: url))
-            }
-        }
-
-        private func navigateToGraduationThreshold(webView: WKWebView) {
-            guard let url = URL(string: "https://acade.niu.edu.tw/NIU/Application/ENR/ENRG0/ENRG010_01.aspx") else {
-                finish(.failure("畢業門檻頁面連結無效"))
-                return
-            }
-            var request = URLRequest(url: url)
-            request.setValue("https://acade.niu.edu.tw/NIU/Application/ENR/ENRG0/ENRG010_03.aspx", forHTTPHeaderField: "Referer")
-            webView.load(request)
-        }
-
-        private func pollForSnapshot(webView: WKWebView, attempt: Int) {
-            guard active else { return }
-            guard attempt < 120 else {
-                finish(.failure("畢業門檻資料載入逾時，請稍後再試"))
-                return
-            }
-
-            let js = """
-            (function() {
-                function clean(text) {
-                    return (text || '').replace(/\\s+/g, ' ').trim();
-                }
-
-                function pickStatus(mlValue) {
-                    var span = document.querySelector('span[ml="' + mlValue + '"]');
-                    if (!span) return '';
-                    var tr = span.closest('tr');
-                    if (!tr) return '';
-                    var div = tr.querySelector('div');
-                    return clean(div ? div.innerText : '');
-                }
-
-                var diverseText = '';
-                var diverseEl = document.getElementById('div_B');
-                if (diverseEl) {
-                    diverseText = clean(diverseEl.innerText);
-                }
-                var nums = diverseText.match(/\\d+/g) || [];
-                if (nums.length === 4) {
-                    nums = [nums[0], '不計入', nums[1], '不計入', nums[2], '不計入', nums[3], '不計入'];
-                }
-
-                var required = '';
-                var earned = '';
-                var rows = document.querySelectorAll('tr.tdWhite');
-                rows.forEach(function(r) {
-                    if (r.cells[0] && clean(r.cells[0].innerText) === '畢業最低學分數') {
-                        required = clean(r.cells[1] ? r.cells[1].innerText : '');
-                        earned = clean(r.cells[2] ? r.cells[2].innerText : '');
-                    }
-                });
-
-                var programs = '';
-                var programEl = document.getElementById('CRS_PROG');
-                if (programEl) {
-                    programs = clean(programEl.innerText);
-                }
-
-                return JSON.stringify({
-                    englishText: pickStatus('PL_外語能力'),
-                    physicalText: pickStatus('PL_體適能'),
-                    creditsRequiredText: required,
-                    creditsEarnedText: earned,
-                    diverseValues: nums,
-                    programsText: programs
-                });
-            })()
-            """
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak webView] in
-                guard let self, let webView, self.active else { return }
-                webView.evaluateJavaScript(js) { [weak self] result, _ in
-                    guard let self, self.active else { return }
-                    guard let json = result as? String, let data = json.data(using: .utf8),
-                          let dto = try? JSONDecoder().decode(GraduationRawDTO.self, from: data) else {
-                        self.pollForSnapshot(webView: webView, attempt: attempt + 1)
-                        return
-                    }
-
-                    let titles = ["服務", "多元", "專業", "綜合"]
-                    var diverseItems: [DiverseRequirementItem] = []
-                    for (index, title) in titles.enumerated() {
-                        let pairStart = index * 2
-                        guard dto.diverseValues.count > pairStart + 1 else { continue }
-                        diverseItems.append(
-                            DiverseRequirementItem(
-                                id: title,
-                                title: title,
-                                currentText: dto.diverseValues[pairStart],
-                                requiredText: dto.diverseValues[pairStart + 1]
-                            )
-                        )
-                    }
-
-                    if dto.englishText.trimmedOrDash == "-",
-                       dto.physicalText.trimmedOrDash == "-",
-                       diverseItems.isEmpty,
-                       dto.creditsRequiredText.trimmedOrDash == "-" {
-                        self.pollForSnapshot(webView: webView, attempt: attempt + 1)
-                        return
-                    }
-
-                    let programs = dto.programsText
-                        .split(whereSeparator: { $0 == "、" || $0 == "," || $0 == "\n" })
-                        .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty && $0 != "無" && $0 != "尚無資料" }
-
-                    let snapshot = GraduationRequirementsSnapshot(
-                        englishText: dto.englishText,
-                        physicalText: dto.physicalText,
-                        creditsRequiredText: dto.creditsRequiredText,
-                        creditsEarnedText: dto.creditsEarnedText,
-                        diverseItems: diverseItems,
-                        programs: programs
-                    )
-                    self.finish(.success(snapshot))
-                }
-            }
-        }
-
-        func finish(_ result: GraduationWebResult) {
-            guard active else { return }
-            active = false
-            onResult(result)
-        }
-    }
-}
-
-private struct FlexibleTagList: View {
-    let tags: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(chunked(tags, size: 2), id: \.self) { row in
-                HStack(spacing: 8) {
-                    ForEach(row, id: \.self) { tag in
-                        Text(tag)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.06))
-                            )
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
-
-    private func chunked(_ source: [String], size: Int) -> [[String]] {
-        guard size > 0 else { return [source] }
-        var result: [[String]] = []
-        var index = 0
-        while index < source.count {
-            let end = min(index + size, source.count)
-            result.append(Array(source[index..<end]))
-            index += size
-        }
-        return result
-    }
-}
-
-private extension String {
-    var trimmedOrDash: String {
-        let value = trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? "-" : value
+    NavigationStack {
+        HomeView()
+            .environmentObject(AppState())
     }
 }

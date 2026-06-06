@@ -667,6 +667,9 @@ private struct GradeHistoryWebView: UIViewRepresentable {
     let mode: GradeQueryMode
     let onResult: (GradeHistoryWebResult) -> Void
 
+    private static let modernLoginURLPrefix = "https://ccsys1.niu.edu.tw/SSO/login"
+    private static let acadeMainFrameURL = "https://acade.niu.edu.tw/NIU/MainFrame.aspx"
+
     func makeCoordinator() -> Coordinator {
         Coordinator(mode: mode, onResult: onResult)
     }
@@ -685,10 +688,22 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             "Version/17.0 Safari/605.1.15"
         context.coordinator.webView = webView
 
-        if let url = URL(string: context.coordinator.startURL) {
+        // Use the modern JWT bridge: fetch a one-shot GUID and hand it to
+        // acade's Login.aspx, which establishes the legacy ASP.NET session
+        // inside the shared WKWebsiteDataStore.
+        Task { @MainActor [weak webView] in
+            let account = SSOTokenStore.shared.account
+                ?? LoginRepository.shared.getSavedCredentials()?.username
+                ?? ""
+            guard !account.isEmpty,
+                  let guid = await SSOGUIDBridge.fetchGUID(account: account),
+                  let url = SSOGUIDBridge.acadeLoginURL(guid: guid),
+                  let webView else {
+                context.coordinator.finish(.sessionExpired)
+                return
+            }
+            context.coordinator.step = .waitForMainEntry
             webView.load(URLRequest(url: url))
-        } else {
-            context.coordinator.finish(.failure("無法建立成績查詢連結"))
         }
         return webView
     }
@@ -700,10 +715,11 @@ private struct GradeHistoryWebView: UIViewRepresentable {
         let onResult: (GradeHistoryWebResult) -> Void
         weak var webView: WKWebView?
 
-        private var step: Step = .resolveEntryLink
+        fileprivate var step: Step = .resolveEntryLink
         private var active = true
+        private var acadeMenuNavigationInFlight = false
 
-        private enum Step {
+        fileprivate enum Step {
             case resolveEntryLink
             case waitForMainEntry
             case waitForTargetPage
@@ -711,12 +727,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
         }
 
         var startURL: String {
-            switch mode {
-            case .history:
-                return "https://ccsys.niu.edu.tw/SSO/Std003.aspx"
-            case .midterm, .final:
-                return "https://ccsys.niu.edu.tw/SSO/Std002.aspx"
-            }
+            "https://ccsys.niu.edu.tw/SSO/Std002.aspx"
         }
 
         init(mode: GradeQueryMode, onResult: @escaping (GradeHistoryWebResult) -> Void) {
@@ -728,6 +739,16 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             guard active else { return }
             let url = webView.url?.absoluteString ?? ""
             print("[GradeHistory] mode=\(mode.rawValue) step=\(step) didFinish=\(url)")
+
+            if Self.isModernLoginPage(url) {
+                finish(.sessionExpired)
+                return
+            }
+
+            if Self.isAcadeTimeOut(url) {
+                finish(.sessionExpired)
+                return
+            }
 
             if url.contains("/MvcTeam/Account/Login") || url.contains("/Account/Login") {
                 finish(.sessionExpired)
@@ -763,97 +784,29 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                      didFailProvisionalNavigation navigation: WKNavigation!,
                      withError error: Error) {
             guard active else { return }
+            let nsError = error as NSError
+            if nsError.code == NSURLErrorCancelled { return }
             finish(.failure("網路連線失敗：\(error.localizedDescription)"))
         }
 
         private func handleEntryPage(webView: WKWebView, currentURL: String) {
-            switch mode {
-            case .history:
-                if currentURL.contains("Std003.aspx") || currentURL.contains("Std002.aspx") {
-                    extractCCSYSLinkAndNavigate(webView: webView)
-                } else if currentURL.contains("/MvcTeam/Act") {
-                    step = .waitForMainEntry
-                    navigateToHistoryPage(webView: webView)
-                }
-
-            case .midterm, .final:
-                if currentURL.contains("Std002.aspx") || currentURL.contains("StdMain.aspx") {
-                    extractAcadeLinkAndNavigate(webView: webView)
-                } else if currentURL.contains("MainFrame.aspx") {
-                    step = .waitForMainEntry
-                    navigateToTermPage(webView: webView)
-                }
+            if currentURL.contains("MainFrame.aspx") {
+                step = .waitForMainEntry
+                openAcadeMenuTarget(webView: webView, attempt: 0)
+            } else if isHistoryTargetURL(currentURL) || isTermTargetURL(currentURL) {
+                acadeMenuNavigationInFlight = false
+                step = .waitForTargetPage
+            } else if currentURL.contains("Std002.aspx") || currentURL.contains("StdMain.aspx") || currentURL.contains("/MvcTeam/Act") {
+                extractAcadeLinkAndNavigate(webView: webView)
             }
         }
 
         private func handleMainEntryPage(webView: WKWebView, currentURL: String) {
-            switch mode {
-            case .history:
-                if currentURL.contains("/MvcTeam/Act") {
-                    navigateToHistoryPageFromAct(webView: webView)
-                } else if currentURL.contains("/MvcTeam/Tutor/StudentCourseScore") {
-                    step = .waitForTargetPage
-                }
-            case .midterm:
-                if currentURL.contains("MainFrame.aspx") {
-                    navigateToTermPage(webView: webView)
-                } else if currentURL.contains("GRD5131_02.aspx") {
-                    step = .waitForTargetPage
-                }
-            case .final:
-                if currentURL.contains("MainFrame.aspx") {
-                    navigateToTermPage(webView: webView)
-                } else if currentURL.contains("GRD5130_02.aspx") {
-                    step = .waitForTargetPage
-                }
-            }
-        }
-
-        private func extractCCSYSLinkAndNavigate(webView: WKWebView) {
-            let js = """
-            (function() {
-                var el = document.getElementById('ctl00_ContentPlaceHolder1_RadListView1_ctrl0_HyperLink1');
-                return el ? (el.getAttribute('href') || '') : '';
-            })()
-            """
-            webView.evaluateJavaScript(js) { [weak self] result, _ in
-                guard let self, self.active else { return }
-                let href = (result as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let fallback = "https://ccsys.niu.edu.tw/MvcTeam/Act"
-                let fullURL: String
-
-                if href.isEmpty {
-                    fullURL = fallback
-                } else if href.hasPrefix("http") {
-                    fullURL = href
-                } else if href.contains("JumpTo(") {
-                    let pattern = #"['"]([^'"]+)['"]"#
-                    if let range = href.range(of: pattern, options: .regularExpression) {
-                        let raw = String(href[range]).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-                        if raw.hasPrefix("http") {
-                            fullURL = raw
-                        } else if raw.hasPrefix("/") {
-                            fullURL = "https://ccsys.niu.edu.tw" + raw
-                        } else {
-                            fullURL = "https://ccsys.niu.edu.tw/" + raw
-                        }
-                    } else {
-                        fullURL = fallback
-                    }
-                } else if href.hasPrefix("/") {
-                    fullURL = "https://ccsys.niu.edu.tw" + href
-                } else {
-                    let clean = href.hasPrefix("./") ? String(href.dropFirst(2)) : href
-                    fullURL = "https://ccsys.niu.edu.tw/SSO/" + clean
-                }
-
-                guard let url = URL(string: fullURL) else {
-                    self.finish(.failure("無法進入成績系統"))
-                    return
-                }
-
-                self.step = .waitForMainEntry
-                webView.load(URLRequest(url: url))
+            if currentURL.contains("MainFrame.aspx") {
+                openAcadeMenuTarget(webView: webView, attempt: 0)
+            } else if isHistoryTargetURL(currentURL) || isTermTargetURL(currentURL) {
+                acadeMenuNavigationInFlight = false
+                step = .waitForTargetPage
             }
         }
 
@@ -868,56 +821,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                 guard let self, self.active else { return }
                 let href = (result as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 guard !href.isEmpty else {
-                    self.finish(.sessionExpired)
-                    return
-                }
-
-                let fullURL: String
-                if href.hasPrefix("http") {
-                    fullURL = href
-                } else {
-                    let clean = href.hasPrefix("./") ? String(href.dropFirst(2)) : href
-                    fullURL = "https://ccsys.niu.edu.tw/SSO/" + clean
-                }
-
-                guard let url = URL(string: fullURL) else {
-                    self.finish(.failure("無法進入教務系統"))
-                    return
-                }
-
-                self.step = .waitForMainEntry
-                webView.load(URLRequest(url: url))
-            }
-        }
-
-        private func navigateToHistoryPage(webView: WKWebView) {
-            guard let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Tutor/StudentCourseScore") else {
-                finish(.failure("歷年成績頁面連結無效"))
-                return
-            }
-            print("[GradeHistory] navigate history -> \(url.absoluteString)")
-            step = .waitForTargetPage
-            var request = URLRequest(url: url)
-            request.setValue("https://ccsys.niu.edu.tw/MvcTeam/Act", forHTTPHeaderField: "Referer")
-            webView.load(request)
-        }
-
-        private func navigateToHistoryPageFromAct(webView: WKWebView) {
-            let js = """
-            (function() {
-                var anchors = Array.from(document.querySelectorAll('a[href]'));
-                var match = anchors.find(function(a) {
-                    var h = a.getAttribute('href') || '';
-                    return h.indexOf('StudentCourseScore') >= 0;
-                });
-                return match ? (match.getAttribute('href') || '') : '';
-            })()
-            """
-            webView.evaluateJavaScript(js) { [weak self] result, _ in
-                guard let self, self.active else { return }
-                let href = (result as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                guard !href.isEmpty else {
-                    self.navigateToHistoryPage(webView: webView)
+                    self.navigateToAcadeMainFrame(webView: webView)
                     return
                 }
 
@@ -926,45 +830,157 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                     fullURL = href
                 } else if href.hasPrefix("/") {
                     fullURL = "https://ccsys.niu.edu.tw" + href
+                } else if href.contains("JumpTo(") {
+                    let pattern = #"['"]([^'"]+)['"]"#
+                    if let range = href.range(of: pattern, options: .regularExpression) {
+                        let raw = String(href[range]).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                        if raw.hasPrefix("http") {
+                            fullURL = raw
+                        } else if raw.hasPrefix("/") {
+                            fullURL = "https://ccsys.niu.edu.tw" + raw
+                        } else {
+                            fullURL = "https://ccsys.niu.edu.tw/" + raw
+                        }
+                    } else {
+                        self.navigateToAcadeMainFrame(webView: webView)
+                        return
+                    }
                 } else {
-                    fullURL = "https://ccsys.niu.edu.tw/MvcTeam/" + href
+                    let clean = href.hasPrefix("./") ? String(href.dropFirst(2)) : href
+                    fullURL = "https://ccsys.niu.edu.tw/SSO/" + clean
                 }
-                print("[GradeHistory] Act link -> \(fullURL)")
 
                 guard let url = URL(string: fullURL) else {
-                    self.navigateToHistoryPage(webView: webView)
+                    self.navigateToAcadeMainFrame(webView: webView)
                     return
                 }
-                self.step = .waitForTargetPage
-                var request = URLRequest(url: url)
-                request.setValue("https://ccsys.niu.edu.tw/MvcTeam/Act", forHTTPHeaderField: "Referer")
-                webView.load(request)
+
+                self.step = .waitForMainEntry
+                webView.load(URLRequest(url: url))
             }
         }
 
-        private func navigateToTermPage(webView: WKWebView) {
-            let path: String
-            let referer: String
+        private func navigateToAcadeMainFrame(webView: WKWebView) {
+            guard let url = URL(string: GradeHistoryWebView.acadeMainFrameURL) else {
+                finish(.failure("無法進入教務系統"))
+                return
+            }
+            print("[GradeHistory] navigate acade mainframe -> \(url.absoluteString)")
+            acadeMenuNavigationInFlight = false
+            step = .waitForMainEntry
+            webView.load(URLRequest(url: url))
+        }
+
+        private func openAcadeMenuTarget(webView: WKWebView, attempt: Int) {
+            guard active else { return }
+            guard attempt < 30 else {
+                acadeMenuNavigationInFlight = false
+                finish(.failure("無法開啟成績查詢頁面"))
+                return
+            }
+            guard !acadeMenuNavigationInFlight || attempt > 0 else { return }
+
+            acadeMenuNavigationInFlight = true
+
+            let targetLabel: String
             switch mode {
             case .midterm:
-                path = "https://acade.niu.edu.tw/NIU/Application/GRD/GRD51/GRD5131_02.aspx"
-                referer = "https://acade.niu.edu.tw/NIU/Application/GRD/GRD51/GRD5131_.aspx?progcd=GRD5131"
+                targetLabel = "學生查詢期中成績"
             case .final:
-                path = "https://acade.niu.edu.tw/NIU/Application/GRD/GRD51/GRD5130_02.aspx"
-                referer = "https://acade.niu.edu.tw/NIU/Application/GRD/GRD51/GRD5130_.aspx?progcd=GRD5130"
+                targetLabel = "學生查詢當學期成績"
             case .history:
-                return
+                targetLabel = "學生歷年學期成績及排名查詢"
             }
 
-            guard let url = URL(string: path) else {
-                finish(.failure("期成績頁面連結無效"))
-                return
+            let js = """
+            (function() {
+                function normalize(value) {
+                    return String(value || '').replace(/\\s+/g, ' ').trim();
+                }
+
+                var menuWin = window.frames['menuFrame'];
+                if (!menuWin || !menuWin.document) return 'missing-menu-frame';
+
+                var links = Array.from(menuWin.document.querySelectorAll('a'));
+
+                function findLink(keyword) {
+                    return links.find(function(link) {
+                        return normalize(link.innerText || link.textContent).indexOf(keyword) >= 0;
+                    });
+                }
+
+                var leaf = findLink('\(targetLabel)');
+                if (leaf) {
+                    leaf.click();
+                    return 'clicked-leaf';
+                }
+
+                var scoreQuery = findLink('成績查詢作業');
+                if (scoreQuery) {
+                    scoreQuery.click();
+                    return 'clicked-score-query';
+                }
+
+                var scoreRoot = findLink('成績及計分冊');
+                if (scoreRoot) {
+                    scoreRoot.click();
+                    return 'clicked-score-root';
+                }
+
+                return 'missing-target';
+            })()
+            """
+            webView.evaluateJavaScript(js) { [weak self, weak webView] result, _ in
+                guard let self, let webView, self.active else { return }
+                let state = (result as? String) ?? "unknown"
+                print("[GradeHistory] open menu target attempt=\(attempt) state=\(state)")
+
+                if state == "clicked-leaf" {
+                    self.acadeMenuNavigationInFlight = false
+                    // Leaf clicks navigate the content iframe, not the main
+                    // frame, so WKNavigationDelegate.didFinish will not fire
+                    // again. Drive the rest of the flow by polling the iframe
+                    // contents directly.
+                    if self.step != .waitForParse {
+                        self.step = .waitForParse
+                        if self.mode == .history {
+                            self.pollForHistoryCourses(webView: webView, attempt: 0)
+                        } else {
+                            self.pollForTermScores(webView: webView, attempt: 0)
+                        }
+                    }
+                    return
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    self.openAcadeMenuTarget(webView: webView, attempt: attempt + 1)
+                }
             }
-            var request = URLRequest(url: url)
-            request.setValue(referer, forHTTPHeaderField: "Referer")
-            print("[GradeHistory] navigate term -> \(path)")
-            step = .waitForTargetPage
-            webView.load(request)
+        }
+
+        private func isTermTargetURL(_ url: String) -> Bool {
+            switch mode {
+            case .midterm:
+                return url.contains("/NIU/outside.aspx") || url.contains("GRD5131")
+            case .final:
+                return url.contains("/NIU/outside.aspx") || url.contains("GRD5130")
+            case .history:
+                return false
+            }
+        }
+
+        private func isHistoryTargetURL(_ url: String) -> Bool {
+            url.contains("/MvcTeam/Tutor/StudentCourseScore")
+        }
+
+        func webView(_ webView: WKWebView,
+                     createWebViewWith configuration: WKWebViewConfiguration,
+                     for navigationAction: WKNavigationAction,
+                     windowFeatures: WKWindowFeatures) -> WKWebView? {
+            guard navigationAction.targetFrame == nil else { return nil }
+            print("[GradeHistory] intercept popup -> \(navigationAction.request.url?.absoluteString ?? "")")
+            webView.load(navigationAction.request)
+            return nil
         }
 
         private func pollForHistoryCourses(webView: WKWebView, attempt: Int) {
@@ -980,7 +996,19 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                 let js = """
                 (function() {
                     function clean(s) {
-                        return (s || '').replace(/\\s+/g, ' ').trim();
+                        return String(s || '').replace(/\\s+/g, ' ').trim();
+                    }
+
+                    function collectDocs(win, seen, docs) {
+                        if (!win) return;
+                        try {
+                            if (seen.indexOf(win) >= 0) return;
+                            seen.push(win);
+                            if (win.document) docs.push(win.document);
+                            for (var i = 0; i < win.frames.length; i++) {
+                                collectDocs(win.frames[i], seen, docs);
+                            }
+                        } catch (error) {}
                     }
 
                     function termFromDigit(d) {
@@ -1000,8 +1028,45 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                         };
                     }
 
+                    var docs = [];
+                    collectDocs(window, [], docs);
+
+                    var targetDoc = null;
+                    for (var d = 0; d < docs.length; d++) {
+                        try {
+                            if (docs[d].querySelector('#accordion修課紀錄')) {
+                                targetDoc = docs[d];
+                                break;
+                            }
+                        } catch (error) {}
+                    }
+
+                    if (!targetDoc) {
+                        for (var d2 = 0; d2 < docs.length; d2++) {
+                            try {
+                                var bodyText = clean(docs[d2].body && docs[d2].body.innerText);
+                                if (bodyText.indexOf('歷年學業成績及排名') >= 0) {
+                                    targetDoc = docs[d2];
+                                    break;
+                                }
+                            } catch (error) {}
+                        }
+                    }
+
+                    if (!targetDoc) return '';
+
+                    var collapsed = Array.from(
+                        targetDoc.querySelectorAll('#accordion修課紀錄 [aria-expanded="false"]')
+                    );
+                    if (collapsed.length) {
+                        for (var c = 0; c < collapsed.length; c++) {
+                            try { collapsed[c].click(); } catch (error) {}
+                        }
+                        return '';
+                    }
+
                     var summaryBySem = {};
-                    var summaryRows = document.querySelectorAll('div.row table.table tr');
+                    var summaryRows = targetDoc.querySelectorAll('div.row table.table tr');
                     for (var i = 1; i < summaryRows.length; i++) {
                         var tds = summaryRows[i].querySelectorAll('td');
                         if (!tds || tds.length < 4) continue;
@@ -1014,7 +1079,11 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                     }
 
                     var records = [];
-                    var tables = document.querySelectorAll('#accordion修課紀錄 table.table.table-striped');
+                    var tables = targetDoc.querySelectorAll('#accordion修課紀錄 table.table.table-striped');
+                    if (!tables.length) {
+                        tables = targetDoc.querySelectorAll('table.table.table-striped');
+                    }
+
                     for (var t = 0; t < tables.length; t++) {
                         var rows = tables[t].querySelectorAll('tr');
                         for (var r = 1; r < rows.length; r++) {
@@ -1048,7 +1117,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                         }
                     }
 
-                    return JSON.stringify(records);
+                    return records.length ? JSON.stringify(records) : '';
                 })()
                 """
 
@@ -1158,12 +1227,32 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                 let js = """
                 (function() {
                     function clean(value) {
-                        return (value || '').replace(/\\s+/g, ' ').trim();
+                        return String(value || '').replace(/\\s+/g, ' ').trim();
                     }
-                    function text(selector) {
-                        var el = document.querySelector(selector);
-                        return clean(el ? el.innerText : '');
+
+                    function collectDocs(win, seen, docs) {
+                        if (!win) return;
+                        try {
+                            if (seen.indexOf(win) >= 0) return;
+                            seen.push(win);
+                            if (win.document) docs.push(win.document);
+                            for (var i = 0; i < win.frames.length; i++) {
+                                collectDocs(win.frames[i], seen, docs);
+                            }
+                        } catch (error) {}
                     }
+
+                    function firstText(selector) {
+                        for (var i = 0; i < docs.length; i++) {
+                            try {
+                                var el = docs[i].querySelector(selector);
+                                var value = clean(el ? el.innerText : '');
+                                if (value) return value;
+                            } catch (error) {}
+                        }
+                        return '';
+                    }
+
                     function formatRank(raw) {
                         function normalizeIntText(s) {
                             var n = parseInt(String(s || '').replace(/[^0-9]/g, ''), 10);
@@ -1184,24 +1273,45 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                         }
                         return normalizeIntText(cleaned);
                     }
+
                     function semesterTitle() {
-                        var body = clean(document.body.innerText);
-                        var match = body.match(/(\\d{2,3})\\s*學年度\\s*第?\\s*([上下暑123])\\s*學期/);
-                        if (!match) return '';
-                        var term = match[2];
-                        if (term === '1') term = '上';
-                        if (term === '2') term = '下';
-                        if (term === '3') term = '暑';
-                        return match[1] + ' 學年度第 ' + term + ' 學期';
+                        for (var i = 0; i < docs.length; i++) {
+                            try {
+                                var body = clean(docs[i].body && docs[i].body.innerText);
+                                var match = body.match(/(\\d{2,3})\\s*學年度\\s*第?\\s*([上下暑123])\\s*學期/);
+                                if (!match) continue;
+                                var term = match[2];
+                                if (term === '1') term = '上';
+                                if (term === '2') term = '下';
+                                if (term === '3') term = '暑';
+                                return match[1] + ' 學年度第 ' + term + ' 學期';
+                            } catch (error) {}
+                        }
+                        return '';
                     }
 
+                    var docs = [];
+                    collectDocs(window, [], docs);
+
+                    var targetDoc = null;
+                    for (var d = 0; d < docs.length; d++) {
+                        try {
+                            if (docs[d].querySelector('#DataGrid')) {
+                                targetDoc = docs[d];
+                                break;
+                            }
+                        } catch (error) {}
+                    }
+                    if (!targetDoc) return '';
+
                     var rows = [];
-                    for (var i = 2; ; i++) {
-                        var row = document.querySelector('#DataGrid > tbody > tr:nth-child(' + i + ')');
-                        if (!row) break;
-                        var type = clean(row.querySelector('td:nth-child(4)')?.innerText || '');
-                        var lesson = clean(row.querySelector('td:nth-child(5)')?.innerText || '');
-                        var score = clean(row.querySelector('td:nth-child(6)')?.innerText || '');
+                    var tableRows = targetDoc.querySelectorAll('#DataGrid tr');
+                    for (var i = 0; i < tableRows.length; i++) {
+                        var cells = tableRows[i].querySelectorAll('td');
+                        if (!cells || cells.length < 6) continue;
+                        var type = clean(cells[3].innerText);
+                        var lesson = clean(cells[4].innerText);
+                        var score = clean(cells[5].innerText);
                         if (!lesson) continue;
                         rows.push({
                             type: type || '未分類',
@@ -1210,12 +1320,12 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                         });
                     }
 
-                    var rankRaw = text('#QTable2 > tbody > tr:nth-child(2) > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(4)');
+                    if (!rows.length) return '';
 
                     return JSON.stringify({
                         semesterTitle: semesterTitle(),
-                        averageText: text('#Q_CRS_AVG_MARK'),
-                        rankText: formatRank(rankRaw),
+                        averageText: firstText('#Q_CRS_AVG_MARK'),
+                        rankText: formatRank(firstText('#QTable2 > tbody > tr:nth-child(2) > td:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(4)')),
                         rows: rows
                     });
                 })()
@@ -1291,6 +1401,14 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             guard let raw else { return nil }
             let cleaned = raw.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             return Double(cleaned)
+        }
+
+        private static func isModernLoginPage(_ urlString: String) -> Bool {
+            urlString.contains("ccsys1.niu.edu.tw/SSO")
+        }
+
+        private static func isAcadeTimeOut(_ urlString: String) -> Bool {
+            urlString.contains("TimeOutPage.aspx")
         }
 
         private static func mapCategory(_ courseName: String, courseType: String?) -> CourseCategory {

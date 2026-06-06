@@ -5,36 +5,71 @@ struct LoginView: View {
     @EnvironmentObject private var appState: AppState
     @FocusState private var focusedField: Field?
     @State private var showPrivacySheet = false
-    
+    @State private var animateIn = true
+
     enum Field: Hashable {
         case username, password
     }
-    
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
-                
+                // Background gradient
+                LinearGradient(
+                    colors: [
+                        Color.accentColor.opacity(0.08),
+                        Color(.systemBackground),
+                        Color(.systemBackground)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                // Decorative circles
+                Circle()
+                    .fill(Color.accentColor.opacity(0.06))
+                    .frame(width: 300, height: 300)
+                    .offset(x: -80, y: -200)
+                    .blur(radius: 60)
+
+                Circle()
+                    .fill(Color.accentColor.opacity(0.04))
+                    .frame(width: 200, height: 200)
+                    .offset(x: 120, y: 100)
+                    .blur(radius: 40)
+
                 VStack(spacing: 0) {
                     Spacer()
-                    
+
                     logoSection
-                        .padding(.bottom, 60)
-                    
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 20)
+                        .animation(Theme.Animation.slow.delay(0.1), value: animateIn)
+                        .padding(.bottom, 48)
+
                     inputSection
-                        .padding(.horizontal, Theme.Spacing.xlarge)
-                    
+                        .padding(.horizontal, Theme.Spacing.large)
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 20)
+                        .animation(Theme.Animation.slow.delay(0.2), value: animateIn)
+
                     loginButton
-                        .padding(.horizontal, Theme.Spacing.xlarge)
-                        .padding(.top, Theme.Spacing.xlarge)
-                    
+                        .padding(.horizontal, Theme.Spacing.large)
+                        .padding(.top, Theme.Spacing.large)
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 20)
+                        .animation(Theme.Animation.slow.delay(0.3), value: animateIn)
+
                     Spacer()
-                    
+
                     footerText
                         .padding(.bottom, Theme.Spacing.large)
+                        .opacity(animateIn ? 1 : 0)
+                        .animation(Theme.Animation.slow.delay(0.4), value: animateIn)
                 }
-                
-                // SSO WebView（隱藏在螢幕外）
+
+                // Hidden WebViews
                 if viewModel.ssoLoginStarted {
                     SSOLoginWebView(
                         account: viewModel.username,
@@ -43,10 +78,9 @@ struct LoginView: View {
                         viewModel.handleSSOLoginResult(result)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(x: geometry.size.width * 2, y: 0) // 隱藏在右側螢幕外
+                    .offset(x: geometry.size.width * 2, y: 0)
                 }
-                
-                // Zuvio WebView（隱藏在螢幕外）
+
                 if viewModel.zuvioLoginStarted {
                     ZuvioLoginWebView(
                         account: viewModel.username,
@@ -55,7 +89,7 @@ struct LoginView: View {
                         viewModel.handleZuvioLoginResult(success: success)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(x: geometry.size.width * 3, y: 0) // 隱藏在更右側
+                    .offset(x: geometry.size.width * 3, y: 0)
                 }
             }
         }
@@ -63,8 +97,6 @@ struct LoginView: View {
             focusedField = nil
         }
         .onAppear {
-            // Skip auto-login if the user explicitly pressed logout,
-            // so they are required to press Sign In themselves.
             if !appState.didExplicitlyLogout {
                 viewModel.autoLogin()
             }
@@ -72,7 +104,6 @@ struct LoginView: View {
         .onChange(of: viewModel.shouldProceedToHome) { _, shouldProceed in
             if shouldProceed, let result = viewModel.ssoResult {
                 if case .success(let info) = result {
-                    // 登入成功，跳轉到主頁
                     let user = User(
                         username: viewModel.username,
                         name: info.name,
@@ -94,95 +125,102 @@ struct LoginView: View {
             }
         }
     }
-    
-    // MARK: - UI Components
+
+    // MARK: - Logo Section
+
     private var logoSection: some View {
         VStack(spacing: Theme.Spacing.medium) {
-            Circle()
-                .strokeBorder(Color.primary, lineWidth: 2)
-                .frame(width: 80, height: 80)
-                .overlay(
-                    Text("NIU")
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
-                        .foregroundColor(.primary)
-                )
-            
-            Text("NIU APP")
-                .font(.system(size: 32, weight: .thin))
-                .foregroundColor(.primary)
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 96, height: 96)
+
+                Circle()
+                    .fill(Color.accentColor.opacity(0.08))
+                    .frame(width: 80, height: 80)
+
+                Text("NIU")
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.accentColor)
+            }
+
+            VStack(spacing: 4) {
+                Text("NIU APP")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(.label))
+
+                Text("宜蘭大學學生助理")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
         }
     }
-    
+
+    // MARK: - Input Section
+
     private var inputSection: some View {
         VStack(spacing: Theme.Spacing.medium) {
             Text("帳號密碼與校務系統相同")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.black.opacity(0.5))
+                .font(.system(size: 13))
+                .foregroundStyle(Color(.secondaryLabel))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            MinimalTextField(
-                text: $viewModel.username,
-                placeholder: "bXXXXXXX",
-                icon: "person"
+            NIUTextField(
+                placeholder: "學號 (bXXXXXXX)",
+                icon: "person",
+                text: $viewModel.username
             )
             .focused($focusedField, equals: .username)
             .submitLabel(.next)
             .onSubmit { focusedField = .password }
-            
-            MinimalSecureField(
+
+            NIUTextField(
+                placeholder: "密碼",
+                icon: "lock",
                 text: $viewModel.password,
-                placeholder: "Password",
-                isVisible: $viewModel.isPasswordVisible,
-                icon: "lock"
+                isSecure: true
             )
             .focused($focusedField, equals: .password)
             .submitLabel(.go)
             .onSubmit { viewModel.login() }
         }
     }
-    
+
+    // MARK: - Login Button
+
     private var loginButton: some View {
-        Button(action: {
+        NIUButton(
+            "登入",
+            icon: viewModel.isLoading ? nil : "arrow.right",
+            isLoading: viewModel.isLoading
+        ) {
             focusedField = nil
             viewModel.login()
-        }) {
-            HStack(spacing: 8) {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(0.8)
-                } else {
-                    Text("Sign In")
-                        .font(.system(size: 16, weight: .medium))
-                }
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(Color.accentColor)
-            .cornerRadius(26)
         }
         .disabled(viewModel.isLoading || !viewModel.isFormValid)
-        .opacity(viewModel.isFormValid ? 1.0 : 0.4)
+        .opacity(viewModel.isFormValid ? 1.0 : 0.5)
     }
-    
+
+    // MARK: - Footer
+
     private var footerText: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Text("本程式為非官方第三方工具，與宜蘭大學官方無關")
-                .font(.system(size: 12, weight: .light))
-                .foregroundColor(.gray)
+                .font(.system(size: 12))
+                .foregroundStyle(Color(.tertiaryLabel))
 
             Button {
                 showPrivacySheet = true
             } label: {
                 Text("隱私權聲明")
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(.gray)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.accentColor.opacity(0.7))
             }
         }
     }
-    
+
     // MARK: - Alert Builder
+
     private func makeAlert(for alert: LoginViewModel.LoginAlert) -> Alert {
         switch alert {
         case .emptyFields:
@@ -191,14 +229,12 @@ struct LoginView: View {
                 message: Text("請輸入學號和密碼"),
                 dismissButton: .default(Text("確定"))
             )
-            
         case .ssoCredentialsFailed(let message):
             return Alert(
                 title: Text("登入失敗"),
                 message: Text(message),
                 dismissButton: .default(Text("確定"))
             )
-            
         case .ssoPasswordExpiring(let message):
             return Alert(
                 title: Text("密碼即將到期"),
@@ -210,7 +246,6 @@ struct LoginView: View {
                     viewModel.openPasswordChangePage()
                 }
             )
-            
         case .ssoPasswordExpired(let message):
             return Alert(
                 title: Text("密碼已到期"),
@@ -220,7 +255,6 @@ struct LoginView: View {
                 },
                 secondaryButton: .cancel(Text("取消"))
             )
-            
         case .ssoAccountLocked(let lockTime):
             let message = lockTime != nil
                 ? "您的帳號已被鎖定\n鎖定時間：\(lockTime ?? "")"
@@ -230,28 +264,24 @@ struct LoginView: View {
                 message: Text(message),
                 dismissButton: .default(Text("確定"))
             )
-            
         case .ssoSystemError:
             return Alert(
                 title: Text("系統錯誤"),
                 message: Text("SSO 系統暫時無法使用\n請稍後再試"),
                 dismissButton: .default(Text("確定"))
             )
-            
         case .ssoGeneric(let title, let message):
             return Alert(
                 title: Text(title),
                 message: Text(message),
                 dismissButton: .default(Text("確定"))
             )
-            
         case .zuvioCredentialsFailed:
             return Alert(
                 title: Text("Zuvio 登入失敗"),
                 message: Text("無法登入 Zuvio 系統\n但您仍可使用其他功能"),
                 dismissButton: .default(Text("確定"))
             )
-            
         case .bothFailed:
             return Alert(
                 title: Text("登入失敗"),
@@ -266,6 +296,8 @@ struct LoginView: View {
     LoginView()
         .environmentObject(AppState())
 }
+
+// MARK: - Privacy Policy View
 
 private struct PrivacyPolicyView: View {
     @Environment(\.dismiss) private var dismiss
@@ -319,7 +351,7 @@ private struct PrivacyPolicyView: View {
                 }
             }
             .font(.system(size: 15))
-            .foregroundColor(.black.opacity(0.75))
+            .foregroundColor(.primary.opacity(0.75))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.large)
         }

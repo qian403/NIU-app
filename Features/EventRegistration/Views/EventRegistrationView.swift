@@ -4,36 +4,80 @@ struct EventRegistrationView: View {
     @StateObject private var viewModel = EventRegistrationViewModel()
     @StateObject private var tab1ViewModel = EventRegistration_Tab1_ViewModel()
     @StateObject private var tab2ViewModel = EventRegistration_Tab2_ViewModel()
-    
+
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-            
+            Color(.systemGroupedBackground).ignoresSafeArea()
+
             VStack(spacing: 0) {
-                // Tab 切換
-            Picker("", selection: $viewModel.selectedTab) {
-                Text("可報名活動").tag(0)
-                Text("已報名活動").tag(1)
-            }
-            .pickerStyle(.segmented)
-            .padding()
-            
-            // Tab 內容
-            TabView(selection: $viewModel.selectedTab) {
-                EventRegistration_Tab1_View(viewModel: tab1ViewModel)
-                    .tag(0)
-                
-                EventRegistration_Tab2_View(viewModel: tab2ViewModel)
-                    .tag(1)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+                // Custom tab bar
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        TabButton(
+                            title: "可報名活動",
+                            isSelected: viewModel.selectedTab == 0
+                        ) {
+                            withAnimation(Theme.Animation.fast) {
+                                viewModel.selectedTab = 0
+                            }
+                        }
+
+                        TabButton(
+                            title: "已報名活動",
+                            isSelected: viewModel.selectedTab == 1
+                        ) {
+                            withAnimation(Theme.Animation.fast) {
+                                viewModel.selectedTab = 1
+                            }
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.medium)
+                    .padding(.top, Theme.Spacing.small)
+
+                    Divider()
+                }
+                .background(Color(.systemBackground))
+
+                // Tab content
+                TabView(selection: $viewModel.selectedTab) {
+                    EventRegistration_Tab1_View(viewModel: tab1ViewModel)
+                        .tag(0)
+
+                    EventRegistration_Tab2_View(viewModel: tab2ViewModel)
+                        .tag(1)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
-        .navigationTitle("活動報名")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("活動報名")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+        }
         .onAppear {
-            // 頁面一開啟先預熱 Tab1；Tab2 改為切換進去時再自行啟動，避免背景失敗狀態被帶到前景
             tab1ViewModel.prewarmLoginIfNeeded()
         }
+    }
+}
+
+// MARK: - Tab Button
+
+struct TabButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? Color.accentColor : Color(.secondaryLabel))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.small)
+        }
+        .buttonStyle(.plain)
     }
 }
