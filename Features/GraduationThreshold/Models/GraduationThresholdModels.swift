@@ -10,6 +10,21 @@ struct GraduationData: Codable {
     let creditCourse: String
 }
 
+// MARK: - Cached Graduation Data
+
+/// Cache envelope around the scraped `GraduationData`. `GraduationData` itself
+/// is decoded directly from the scraper's JSON, so the fetch timestamp lives
+/// here rather than on the payload.
+struct CachedGraduationData: Codable {
+    let data: GraduationData
+    let fetchedAt: Date
+
+    /// Returns true if the cache is still within the 7-day TTL
+    var isCacheValid: Bool {
+        Date().timeIntervalSince(fetchedAt) < 7 * 24 * 3600
+    }
+}
+
 // MARK: - Diverse Hours Category
 
 enum DiverseHoursCategory: String, CaseIterable {
