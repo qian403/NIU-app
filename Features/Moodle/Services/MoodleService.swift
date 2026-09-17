@@ -1,6 +1,8 @@
 import Foundation
+import Security
 import WebKit
 
+@MainActor
 final class MoodleService {
     static let shared = MoodleService()
     
@@ -12,8 +14,13 @@ final class MoodleService {
     private var popupNotificationCache: [MoodlePopupNotification] = []
     private var popupNotificationCacheAt: Date?
     private let popupNotificationCacheTTL: TimeInterval = 3600
+    private let sessionStore = MoodleSessionKeychainStore()
+    private var authenticationGeneration = 0
+    private var logoutGeneration = 0
     
-    private init() {}
+    private init() {
+        restorePersistedSession()
+    }
     
     // MARK: - Token Management
     
@@ -27,6 +34,9 @@ final class MoodleService {
     }
     
     func authenticate(username: String, password: String) async throws {
+        authenticationGeneration &+= 1
+        let generation = authenticationGeneration
+
         var components = URLComponents(string: "\(baseURL)/login/token.php")
         components?.queryItems = [
             URLQueryItem(name: "username", value: username),
@@ -55,23 +65,179 @@ final class MoodleService {
         }
         
         let tokenResp = try JSONDecoder().decode(MoodleTokenResponse.self, from: data)
+
+        // Validate with the response token before publishing any shared session state.
+        // This prevents overlapping login attempts from mixing one account's token with
+        // another account's user ID or persisted username.
+        let siteInfo: MoodleSiteInfo = try await callAPI(
+            function: "core_webservice_get_site_info",
+            tokenOverride: tokenResp.token
+        )
+        try Task.checkCancellation()
+        guard generation == authenticationGeneration else {
+            throw CancellationError()
+        }
+
         self.token = tokenResp.token
         self.privateToken = tokenResp.privatetoken
-        
-        // Get user ID from site info
-        let siteInfo = try await fetchSiteInfo()
-        try Task.checkCancellation()
         self.userId = siteInfo.userid
         self.userContextId = siteInfo.usercontextid
+        persistSession(username: username)
+    }
+
+    /// Makes the mobile-token path ready before a short-lived attendance QR is scanned.
+    ///
+    /// Moodle's browser session can expire independently of its mobile Web Service token.
+    /// We therefore validate the token here and only obtain the one-time autologin key
+    /// after the QR target is known.
+    func prepareForAttendance() async throws {
+        guard let credentials = LoginRepository.shared.getSavedCredentials() else {
+            throw MoodleError.notAuthenticated
+        }
+
+        try await prepareForAttendance(
+            credentials: credentials,
+            startingLogoutGeneration: logoutGeneration,
+            sessionChangeRetries: 1
+        )
+    }
+
+    private func prepareForAttendance(
+        credentials: (username: String, password: String),
+        startingLogoutGeneration: Int,
+        sessionChangeRetries: Int
+    ) async throws {
+        try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
+
+        if token?.isEmpty != false || userId == nil || privateToken?.isEmpty != false {
+            // A previous transient validation failure only clears memory. Reload the last
+            // known session before falling back to a slower password authentication.
+            restorePersistedSession()
+        }
+
+        if token?.isEmpty == false, userId != nil, privateToken?.isEmpty == false {
+            let validatedToken = token!
+            let siteInfo: MoodleSiteInfo
+            do {
+                siteInfo = try await callAPI(
+                    function: "core_webservice_get_site_info",
+                    tokenOverride: validatedToken
+                )
+                try Task.checkCancellation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
+                if (error as? URLError)?.code == .cancelled {
+                    throw CancellationError()
+                }
+
+                guard let moodleError = error as? MoodleError,
+                      case .invalidToken = moodleError else {
+                    // Offline, timeout and server failures do not imply token revocation.
+                    // Avoid adding a slower password request during the same outage.
+                    throw error
+                }
+
+                // The server definitively rejected this token. Keep the Keychain copy until
+                // its replacement succeeds, then authenticate while no QR has been consumed.
+                clearSession(clearPersisted: false)
+                try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
+                try await authenticate(username: credentials.username, password: credentials.password)
+                try ensureAutologinIsAvailable()
+                return
+            }
+
+            // Another task replaced the session while this request was in flight. Validate
+            // that newer session instead of publishing stale site information.
+            try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
+            guard token == validatedToken else {
+                guard sessionChangeRetries > 0 else { throw MoodleError.serverError }
+                try await prepareForAttendance(
+                    credentials: credentials,
+                    startingLogoutGeneration: startingLogoutGeneration,
+                    sessionChangeRetries: sessionChangeRetries - 1
+                )
+                return
+            }
+
+            guard siteInfo.username.caseInsensitiveCompare(credentials.username) == .orderedSame else {
+                clearSession(clearPersisted: true)
+                try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
+                try await authenticate(username: credentials.username, password: credentials.password)
+                try ensureAutologinIsAvailable()
+                return
+            }
+
+            userId = siteInfo.userid
+            userContextId = siteInfo.usercontextid
+            persistSession(username: credentials.username)
+            return
+        }
+
+        try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
+        try await authenticate(username: credentials.username, password: credentials.password)
+        try ensureAutologinIsAvailable()
+    }
+
+    private func checkAttendancePreparationIsCurrent(_ startingLogoutGeneration: Int) throws {
+        try Task.checkCancellation()
+        guard startingLogoutGeneration == logoutGeneration else {
+            throw CancellationError()
+        }
     }
     
     func logout() {
+        logoutGeneration &+= 1
+        authenticationGeneration &+= 1
+        clearSession(clearPersisted: true)
+    }
+
+    private func ensureAutologinIsAvailable() throws {
+        guard privateToken?.isEmpty == false, userId != nil else {
+            throw MoodleError.autologinUnavailable
+        }
+    }
+
+    private func restorePersistedSession() {
+        guard let session = sessionStore.load(),
+              let credentials = LoginRepository.shared.getSavedCredentials(),
+              session.username.caseInsensitiveCompare(credentials.username) == .orderedSame,
+              !session.token.isEmpty
+        else {
+            sessionStore.clear()
+            return
+        }
+
+        token = session.token
+        privateToken = session.privateToken
+        userId = session.userId
+        userContextId = session.userContextId
+    }
+
+    private func persistSession(username: String) {
+        guard let token, let userId else { return }
+        sessionStore.save(
+            MoodlePersistedSession(
+                username: username,
+                token: token,
+                privateToken: privateToken,
+                userId: userId,
+                userContextId: userContextId
+            )
+        )
+    }
+
+    private func clearSession(clearPersisted: Bool) {
         token = nil
         privateToken = nil
         userId = nil
         userContextId = nil
         popupNotificationCache = []
         popupNotificationCacheAt = nil
+        if clearPersisted {
+            sessionStore.clear()
+        }
     }
     
     // MARK: - API Calls
@@ -644,8 +810,13 @@ final class MoodleService {
     /// Build a file download URL with token appended
     func fileURL(for rawURL: String) -> URL? {
         guard let token = token else { return nil }
-        let separator = rawURL.contains("?") ? "&" : "?"
-        return URL(string: "\(rawURL)\(separator)token=\(token)")
+        guard var components = URLComponents(string: rawURL) else { return nil }
+        var queryItems = components.queryItems ?? []
+        if !queryItems.contains(where: { $0.name == "token" }) {
+            queryItems.append(URLQueryItem(name: "token", value: token))
+            components.queryItems = queryItems
+        }
+        return components.url
     }
     
     /// Get an auto-login URL that will authenticate and redirect to the target page.
@@ -670,13 +841,14 @@ final class MoodleService {
     private func callAPI<T: Decodable>(
         function: String,
         params: [String: String] = [:],
-        logDecodeError: Bool = true
+        logDecodeError: Bool = true,
+        tokenOverride: String? = nil
     ) async throws -> T {
-        guard let token = token else { throw MoodleError.notAuthenticated }
+        guard let requestToken = tokenOverride ?? token else { throw MoodleError.notAuthenticated }
         
         var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
         var queryItems = [
-            URLQueryItem(name: "wstoken", value: token),
+            URLQueryItem(name: "wstoken", value: requestToken),
             URLQueryItem(name: "wsfunction", value: function),
             URLQueryItem(name: "moodlewsrestformat", value: "json")
         ]
@@ -701,6 +873,9 @@ final class MoodleService {
         // Check for Moodle error response
         if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let exception = errorDict["exception"] as? String {
+            if (errorDict["errorcode"] as? String)?.lowercased() == "invalidtoken" {
+                throw MoodleError.invalidToken
+            }
             let message = errorDict["message"] as? String ?? exception
             throw MoodleError.apiError(message)
         }
@@ -1904,24 +2079,84 @@ final class MoodleService {
 
 }
 
+private struct MoodlePersistedSession: Codable {
+    let username: String
+    let token: String
+    let privateToken: String?
+    let userId: Int
+    let userContextId: Int?
+}
+
+/// Stores Moodle mobile credentials separately from preferences and browser cookies.
+/// These values grant account access, so they must never be written to UserDefaults.
+private final class MoodleSessionKeychainStore {
+    private let account = "moodle.mobile.session"
+    private let service = "\(Bundle.main.bundleIdentifier ?? "CHIEN.NIU-APP").moodle"
+
+    func save(_ session: MoodlePersistedSession) {
+        guard let data = try? JSONEncoder().encode(session) else { return }
+        let query = baseQuery
+        let values: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        var status = SecItemUpdate(query as CFDictionary, values as CFDictionary)
+        if status == errSecItemNotFound {
+            var attributes = query
+            values.forEach { attributes[$0.key] = $0.value }
+            status = SecItemAdd(attributes as CFDictionary, nil)
+        }
+        if status != errSecSuccess {
+            print("[MoodleSession] Keychain write failed: \(status)")
+        }
+    }
+
+    func load() -> MoodlePersistedSession? {
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var item: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess, let data = item as? Data else { return nil }
+        return try? JSONDecoder().decode(MoodlePersistedSession.self, from: data)
+    }
+
+    func clear() {
+        SecItemDelete(baseQuery as CFDictionary)
+    }
+
+    private var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
+}
+
 // MARK: - Error Types
 
 enum MoodleError: LocalizedError {
     case invalidURL
     case notAuthenticated
+    case invalidToken
     case authFailed(String)
     case serverError
     case apiError(String)
     case decodeFailed(String)
+    case autologinUnavailable
     
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "無效的 URL"
         case .notAuthenticated: return "尚未登入 Moodle"
+        case .invalidToken: return "M 園區登入憑證已失效"
         case .authFailed(let msg): return "Moodle 登入失敗：\(msg)"
         case .serverError: return "伺服器錯誤"
         case .apiError(let msg): return "API 錯誤：\(msg)"
         case .decodeFailed(let msg): return "資料解析失敗：\(msg)"
+        case .autologinUnavailable: return "M 園區未提供快速登入權限，請重新登入後再試"
         }
     }
 }

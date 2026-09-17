@@ -92,6 +92,20 @@ struct ClassPeriod: Codable, Identifiable {
         splitTime()?.start ?? ""
     }
 
+    var endTimeLabel: String {
+        splitTime()?.end ?? ""
+    }
+
+    /// A normalized period label for display. The portal may return either a
+    /// complete label (for example, "第二節") or only an identifier ("2").
+    var displayPeriodLabel: String {
+        let value = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "" }
+        if value.hasSuffix("節") { return value }
+        if value.hasPrefix("第") { return "\(value)節" }
+        return "第\(value)節"
+    }
+
     /// Whether this period is currently in progress
     var isCurrentPeriod: Bool {
         let comps = Calendar.current.dateComponents([.hour, .minute], from: Date())

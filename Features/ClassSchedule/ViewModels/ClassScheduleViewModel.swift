@@ -30,7 +30,7 @@ final class ClassScheduleViewModel: ObservableObject {
     private var sessionRefreshAttempted = false
 
     private let cacheKey = "classSchedule.v2.cachedData"
-    private let appGroupIdentifier = "group.CHIEN.NIU-APP"
+    private let appGroupIdentifier = "group.dev.chien.niuapp"
 
     // MARK: - Computed helpers
 
@@ -74,14 +74,18 @@ final class ClassScheduleViewModel: ObservableObject {
         return formatter.localizedString(for: schedule.fetchedAt, relativeTo: Date())
     }
 
-    /// Today's display-tab index (index into displayDayHeaders).
-    /// Always returns a valid value (Mon–Fri are always in displayDayHeaders).
-    var todayDayIndex: Int {
+    /// Nil when today's weekday is not included in the school's schedule.
+    var actualTodayDayIndex: Int? {
         let weekday = Calendar.current.component(.weekday, from: Date())
         let mondayBased = (weekday + 5) % 7   // 0=Mon…6=Sun
         let todayName = mondayBased < Self.weekdayNames.count
             ? Self.weekdayNames[mondayBased] : "星期一"
-        return displayDayHeaders.firstIndex(of: todayName) ?? 0
+        return displayDayHeaders.firstIndex(of: todayName)
+    }
+
+    /// A valid initial tab, falling back to Monday when today is unavailable.
+    var todayDayIndex: Int {
+        actualTodayDayIndex ?? 0
     }
 
     // MARK: - Load

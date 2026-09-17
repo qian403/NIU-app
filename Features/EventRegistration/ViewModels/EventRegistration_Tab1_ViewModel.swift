@@ -647,7 +647,8 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
             guard let self = self else { return }
             
             // 先檢查是否需要登入
-            self.webView?.evaluateJavaScript("document.body.innerText") { result, error in
+            self.webView?.evaluateJavaScript("document.body.innerText") { [weak self] result, error in
+                guard let self else { return }
                 if let bodyText = result as? String {
                     // 如果頁面包含登入相關文字，說明 Session 過期
                     if bodyText.contains("登入") || bodyText.contains("帳號") {

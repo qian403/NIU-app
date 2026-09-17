@@ -15,7 +15,11 @@ final class MoodleViewModel: ObservableObject {
     @Published var coursesBySemester: [(semester: String, courses: [MoodleCourse])] = []
     @Published var selectedSemester: String?
     
-    private let service = MoodleService.shared
+    private let repository: any MoodleCourseRepositoryProtocol
+
+    init(repository: (any MoodleCourseRepositoryProtocol)? = nil) {
+        self.repository = repository ?? MoodleCourseRepository()
+    }
     
     var currentSemesterCourses: [MoodleCourse] {
         guard let selected = selectedSemester else {
@@ -35,6 +39,8 @@ final class MoodleViewModel: ObservableObject {
         let value = selectedSemester?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? nil : value
     }
+
+    var isAuthenticated: Bool { repository.isAuthenticated }
     
     func loadCourses(username: String, password: String) async {
         let isFirstLoad = coursesBySemester.isEmpty
@@ -44,11 +50,11 @@ final class MoodleViewModel: ObservableObject {
         
         do {
             // Authenticate if needed
-            if !service.isAuthenticated {
-                try await service.authenticate(username: username, password: password)
+            if !repository.isAuthenticated {
+                try await repository.authenticate(username: username, password: password)
             }
             
-            let courses = try await service.fetchCourses()
+            let courses = try await repository.fetchCourses()
             
             // Group by semester, sort semesters descending (newest first)
             // Include all courses (not just visible ones) so all semesters show up

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0582D0EB51C8CB4ADCE9A96C /* Features/EventRegistration/Views/AppliedEventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */; };
+		07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */; };
 		0E182344FA814B44AC09A91F /* academic_calendar.json in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */; };
 		0E182345FA814B44AC09A920 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */; };
 		0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */; };
@@ -38,11 +39,14 @@
 		3D5EA0A44D60577AA027C3F3 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */; };
 		533917A63E725B858C832E8F /* Features/EventRegistration/Views/EventRegistration_Tab2_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7887A6F400EF545D630B2778 /* Features/EventRegistration/Views/EventRegistration_Tab2_View.swift */; };
 		54315A98B0455F60883B0DF5 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */; };
+		54A3EFEFEAA844D3923CD159 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */; };
+		5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */; };
 		5CCC1D48EA2F687ABDFA40C4 /* Features/EventRegistration/Views/ModifyRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */; };
 		6E8CC309E88345BB93EF517E /* Shared/Components/ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427CCA3AAC41141DAB4616E5 /* Shared/Components/ToastView.swift */; };
 		79E15ABF1868BE5DC2DB8453 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF54E564E0F41D38F6569A8 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift */; };
 		79E5A654058A1E7F384DB426 /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */; };
 		A1B2C3D4E5F60718293A4B5D /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LICENSE */; };
+		A1F235FAF2EF434A85F33837 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */; };
 		A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A9F0C1D2E3F4A5B6C7D8E9E0 /* PrivacyInfo.xcprivacy */; };
 		AA01BC01AA01BC01AA01BC01 /* Features/ClassSchedule/Models/ClassScheduleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC11AA01BC11AA01BC11 /* Features/ClassSchedule/Models/ClassScheduleModels.swift */; };
 		AA01BC02AA01BC02AA01BC02 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */; };
@@ -67,21 +71,25 @@
 		BB01MD10BB01MD10BB01MD10 /* Features/Moodle/Views/MoodleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */; };
 		BB01MD11BB01MD11BB01MD11 /* Features/Moodle/Services/MoodleSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */; };
 		BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */; };
+		C0DEA001C0DEA001C0DEA001 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA002C0DEA002C0DEA002 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift */; };
+		C0DEA011C0DEA011C0DEA011 /* Features/Moodle/Repositories/MoodleRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA012C0DEA012C0DEA012 /* Features/Moodle/Repositories/MoodleRepositories.swift */; };
+		C0DEA013C0DEA013C0DEA013 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA014C0DEA014C0DEA014 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift */; };
+		C0DEA015C0DEA015C0DEA015 /* Features/Moodle/Attendance/MoodleAttendanceRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA016C0DEA016C0DEA016 /* Features/Moodle/Attendance/MoodleAttendanceRepository.swift */; };
+		C0DEA017C0DEA017C0DEA017 /* Features/Moodle/Attendance/MoodleAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA018C0DEA018C0DEA018 /* Features/Moodle/Attendance/MoodleAttendanceView.swift */; };
+		C0DEA019C0DEA019C0DEA019 /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA01AC0DEA01AC0DEA01A /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift */; };
+		C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */; };
+		C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */; };
+		C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */; };
 		C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */; };
+		D2F819E2F9104CB298DA8F5E /* NIUComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AC3551E7FD4C20863D3461 /* NIUComponents.swift */; };
 		DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */; };
+		DE1B327C5FC7444289A1258A /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */; };
 		E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E96602F196B61E6AF082552 /* SSOLoginWebView.swift */; };
 		E82C05FDB268A0B09DCA82FB /* Features/EventRegistration/Views/EventRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99CB51CCF338C6F80F84C2B4 /* Features/EventRegistration/Views/EventRegistrationView.swift */; };
 		E880B97A27A0F77D4C7CFF25 /* Features/EventRegistration/Views/EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */; };
 		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
 		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
-		A1F235FAF2EF434A85F33837 /* GraduationThresholdModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD1DDFD813A4DAA8FC29C83 /* GraduationThresholdModels.swift */; };
-		54A3EFEFEAA844D3923CD159 /* GraduationThresholdViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8385E0612A14868AF9E80B3 /* GraduationThresholdViewModel.swift */; };
-		DE1B327C5FC7444289A1258A /* GraduationThresholdWebManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0007632818F54337AC583420 /* GraduationThresholdWebManager.swift */; };
-		5980803889554F3D9D60EF5D /* GraduationThresholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F9DB7C84754D54AD782AAF /* GraduationThresholdView.swift */; };
-		07586D80DD784D0B98925264 /* DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* DiverseHoursProgressBar.swift */; };
-	
-		D2F819E2F9104CB298DA8F5E /* NIUComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AC3551E7FD4C20863D3461 /* NIUComponents.swift */; };
-	/* End PBXBuildFile section */
+/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		10D1F8872F80C57A00034946 /* PBXContainerItemProxy */ = {
@@ -108,6 +116,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
 		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		10A32D662F431B8B0009BB45 /* NIU-APP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NIU-APP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		10A32D742F431E350009BB45 /* NIUApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIUApp.swift; sourceTree = "<group>"; };
@@ -148,10 +157,12 @@
 		10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "NIU-LiveActivitiesExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		10D1F8752F80C57900034946 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		10D1F8772F80C57900034946 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/GraduationThresholdView.swift; sourceTree = "<group>"; };
 		164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Models/EventRegistrationModels.swift; sourceTree = "<group>"; };
 		1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = academic_calendar.json; sourceTree = "<group>"; };
 		1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
 		261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/ModifyRegistrationView.swift; sourceTree = "<group>"; };
+		27AC3551E7FD4C20863D3461 /* NIUComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIUComponents.swift; sourceTree = "<group>"; };
 		33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift; sourceTree = "<group>"; };
 		3CF54E564E0F41D38F6569A8 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift; sourceTree = "<group>"; };
 		427CCA3AAC41141DAB4616E5 /* Shared/Components/ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Components/ToastView.swift; sourceTree = "<group>"; };
@@ -160,6 +171,7 @@
 		7887A6F400EF545D630B2778 /* Features/EventRegistration/Views/EventRegistration_Tab2_View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistration_Tab2_View.swift; sourceTree = "<group>"; };
 		79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventDetailView.swift; sourceTree = "<group>"; };
 		87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift; sourceTree = "<group>"; };
+		8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Models/GraduationThresholdModels.swift; sourceTree = "<group>"; };
 		8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift; sourceTree = "<group>"; };
 		99CB51CCF338C6F80F84C2B4 /* Features/EventRegistration/Views/EventRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistrationView.swift; sourceTree = "<group>"; };
 		9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/CalendarEventCard.swift; sourceTree = "<group>"; };
@@ -190,19 +202,23 @@
 		BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleWebView.swift; sourceTree = "<group>"; };
 		BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Services/MoodleSessionManager.swift; sourceTree = "<group>"; };
 		BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleFileViewer.swift; sourceTree = "<group>"; };
+		C0DEA002C0DEA002C0DEA002 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleAttendanceScannerView.swift; sourceTree = "<group>"; };
+		C0DEA012C0DEA012C0DEA012 /* Features/Moodle/Repositories/MoodleRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Repositories/MoodleRepositories.swift; sourceTree = "<group>"; };
+		C0DEA014C0DEA014C0DEA014 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceModels.swift; sourceTree = "<group>"; };
+		C0DEA016C0DEA016C0DEA016 /* Features/Moodle/Attendance/MoodleAttendanceRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceRepository.swift; sourceTree = "<group>"; };
+		C0DEA018C0DEA018C0DEA018 /* Features/Moodle/Attendance/MoodleAttendanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceView.swift; sourceTree = "<group>"; };
+		C0DEA01AC0DEA01AC0DEA01A /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceViewModel.swift; sourceTree = "<group>"; };
+		C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift; sourceTree = "<group>"; };
+		C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseTabViews.swift; sourceTree = "<group>"; };
+		C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift; sourceTree = "<group>"; };
 		D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Models/AcademicCalendarModels.swift; sourceTree = "<group>"; };
+		DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift; sourceTree = "<group>"; };
 		E244B8906CF482139A4AF67C /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
 		E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift; sourceTree = "<group>"; };
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
+		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
-		8CD1DDFD813A4DAA8FC29C83 /* GraduationThresholdModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Models/GraduationThresholdModels.swift; sourceTree = "<group>"; };
-		F8385E0612A14868AF9E80B3 /* GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
-		0007632818F54337AC583420 /* GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
-		13F9DB7C84754D54AD782AAF /* GraduationThresholdView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/GraduationThresholdView.swift; sourceTree = "<group>"; };
-		DEB28B5376A046BDBB7BEF97 /* DiverseHoursProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift; sourceTree = "<group>"; };
-	
-		27AC3551E7FD4C20863D3461 /* NIUComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIUComponents.swift; sourceTree = "<group>"; };
-	/* End PBXFileReference section */
+/* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		10D1F88D2F80C57A00034946 /* Exceptions for "NIU-LiveActivities" folder in "NIU-LiveActivitiesExtension" target */ = {
@@ -363,7 +379,6 @@
 		10A32D8C2F431E350009BB45 /* Components */ = {
 			isa = PBXGroup;
 			children = (
-
 				10A32D882F431E350009BB45 /* MinimalCard.swift */,
 				10A32D892F431E350009BB45 /* MinimalSecureField.swift */,
 				10A32D8A2F431E350009BB45 /* MinimalTextField.swift */,
@@ -587,6 +602,20 @@
 				BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */,
 				BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */,
 				BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */,
+				C0DEA002C0DEA002C0DEA002 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift */,
+				C0DEA012C0DEA012C0DEA012 /* Features/Moodle/Repositories/MoodleRepositories.swift */,
+				C0DEA014C0DEA014C0DEA014 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift */,
+				C0DEA016C0DEA016C0DEA016 /* Features/Moodle/Attendance/MoodleAttendanceRepository.swift */,
+				C0DEA018C0DEA018C0DEA018 /* Features/Moodle/Attendance/MoodleAttendanceView.swift */,
+				C0DEA01AC0DEA01AC0DEA01A /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift */,
+				C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */,
+				C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */,
+				C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */,
+				8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */,
+				F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */,
+				0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */,
+				13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */,
+				DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -783,7 +812,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				
 				79E5A654058A1E7F384DB426 /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift in Sources */,
 				C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */,
 				0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */,
@@ -839,16 +867,26 @@
 				BB01MD10BB01MD10BB01MD10 /* Features/Moodle/Views/MoodleWebView.swift in Sources */,
 				BB01MD11BB01MD11BB01MD11 /* Features/Moodle/Services/MoodleSessionManager.swift in Sources */,
 				BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */,
+				C0DEA001C0DEA001C0DEA001 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift in Sources */,
+				C0DEA011C0DEA011C0DEA011 /* Features/Moodle/Repositories/MoodleRepositories.swift in Sources */,
+				C0DEA013C0DEA013C0DEA013 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift in Sources */,
+				C0DEA015C0DEA015C0DEA015 /* Features/Moodle/Attendance/MoodleAttendanceRepository.swift in Sources */,
+				C0DEA017C0DEA017C0DEA017 /* Features/Moodle/Attendance/MoodleAttendanceView.swift in Sources */,
+				C0DEA019C0DEA019C0DEA019 /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift in Sources */,
+				C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */,
+				C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */,
+				C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */,
 				10A32DBB2F431F630009BB45 /* HomeView.swift in Sources */,
 				AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */,
 				10A32DBD2F431F630009BB45 /* LoginView.swift in Sources */,
 				10A32DBE2F431F630009BB45 /* LoginViewModel.swift in Sources */,
 				D2F819E2F9104CB298DA8F5E /* NIUComponents.swift in Sources */,
-				A1F235FAF2EF434A85F33837 /* GraduationThresholdModels.swift in Sources */,
-				54A3EFEFEAA844D3923CD159 /* GraduationThresholdViewModel.swift in Sources */,
-				DE1B327C5FC7444289A1258A /* GraduationThresholdWebManager.swift in Sources */,
-				5980803889554F3D9D60EF5D /* GraduationThresholdView.swift in Sources */,
-				07586D80DD784D0B98925264 /* DiverseHoursProgressBar.swift in Sources */,);
+				A1F235FAF2EF434A85F33837 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift in Sources */,
+				54A3EFEFEAA844D3923CD159 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift in Sources */,
+				DE1B327C5FC7444289A1258A /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift in Sources */,
+				5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */,
+				07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		10D1F86F2F80C57900034946 /* Sources */ = {
@@ -905,7 +943,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -969,7 +1007,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -998,7 +1036,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -1022,7 +1060,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "CHIEN.NIU-APP";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.chienniuapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -1046,7 +1084,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -1070,7 +1108,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "CHIEN.NIU-APP";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.chienniuapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -1093,7 +1131,7 @@
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "NIU-LiveActivities";
@@ -1105,7 +1143,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "CHIEN.NIU-APP.NIU-LiveActivities";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.chienniuapp.NIU-LiveActivities";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1126,7 +1164,7 @@
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7WXW86L84Q;
+				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "NIU-LiveActivities";
@@ -1138,7 +1176,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "CHIEN.NIU-APP.NIU-LiveActivities";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.chienniuapp.NIU-LiveActivities";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;

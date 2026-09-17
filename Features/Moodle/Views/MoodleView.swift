@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MoodleView: View {
     @StateObject private var viewModel = MoodleViewModel()
-    @EnvironmentObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
     @State private var semesterRenderToken = UUID()
     
@@ -23,7 +22,7 @@ struct MoodleView: View {
                 }
             }
         }
-        .background(Color(.systemBackground))
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("M 園區")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -50,11 +49,12 @@ struct MoodleView: View {
     // MARK: - Content
     
     private var courseListContent: some View {
-        VStack(spacing: 0) {
-            semesterSection
-            
-            ScrollView {
-                LazyVStack(spacing: 12) {
+        ScrollView {
+            LazyVStack(spacing: Theme.Spacing.medium) {
+                overviewHeader
+                semesterSection
+
+                LazyVStack(spacing: Theme.Spacing.medium) {
                     ForEach(viewModel.currentSemesterCourses) { course in
                         NavigationLink(destination: MoodleCourseDetailView(course: course)) {
                             CourseCard(course: course)
@@ -64,16 +64,44 @@ struct MoodleView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.medium)
-                .padding(.vertical, Theme.Spacing.small)
             }
+            .padding(.horizontal, Theme.Spacing.medium)
+            .padding(.vertical, Theme.Spacing.small)
         }
+    }
+
+    private var overviewHeader: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "graduationcap.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 48, height: 48)
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("我的課程")
+                    .font(.system(size: 18, weight: .bold))
+                Text("\(viewModel.currentSemesterCourses.count) 門課程 · 下拉即可同步")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(Theme.Spacing.medium)
+        .glassEffect(
+            .regular,
+            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
+        )
     }
     
     private var semesterSection: some View {
         Group {
             if displaySemesters.count > 1 {
                 HStack {
+                    Text("學期")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Menu {
                         ForEach(displaySemesters, id: \.self) { semester in
@@ -95,29 +123,25 @@ struct MoodleView: View {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 12, weight: .semibold))
                         }
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
-                        )
+                        .glassEffect(.regular.interactive(), in: Capsule())
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.medium)
-                .padding(.vertical, Theme.Spacing.small)
             } else if let semester = displaySemesters.first {
                 HStack {
+                    Text("學期")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
                     Text(semester)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.accentColor))
-                    Spacer()
+                        .glassEffect(.regular, in: Capsule())
                 }
-                .padding(.horizontal, Theme.Spacing.medium)
-                .padding(.vertical, Theme.Spacing.small)
             } else {
                 HStack {
                     Text("學期載入中")
@@ -125,11 +149,9 @@ struct MoodleView: View {
                         .foregroundColor(.secondary)
                     Spacer()
                 }
-                .padding(.horizontal, Theme.Spacing.medium)
-                .padding(.vertical, Theme.Spacing.small)
             }
         }
-        .frame(minHeight: 48, alignment: .center)
+        .frame(minHeight: 44, alignment: .center)
         .id(semesterRenderToken)
     }
     
@@ -173,7 +195,7 @@ struct MoodleView: View {
     // MARK: - Helpers
     
     private func loadWithCredentials() async {
-        if MoodleService.shared.isAuthenticated {
+        if viewModel.isAuthenticated {
             await viewModel.loadCourses(username: "", password: "")
             return
         }
@@ -216,12 +238,26 @@ private struct CourseCard: View {
     let course: MoodleCourse
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Course name
-            Text(course.cleanName)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.primary)
-                .lineLimit(2)
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "book.closed.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+
+                Text(course.cleanName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 5)
+            }
             
             // Teacher & credits
             HStack(spacing: 12) {
@@ -273,20 +309,23 @@ private struct CourseCard: View {
                 }
             }
             
-            // Course ID
-            Text(course.idnumber)
-                .font(.system(size: 11, weight: .light))
-                .foregroundColor(.secondary)
+            HStack {
+                Text(course.idnumber)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                if course.hidden {
+                    Label("已隱藏", systemImage: "eye.slash")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(Theme.Spacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .fill(Color.primary.opacity(0.001))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                )
+        .glassEffect(
+            .regular.interactive(),
+            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
         )
         .contentShape(Rectangle())
     }
@@ -295,6 +334,5 @@ private struct CourseCard: View {
 #Preview {
     NavigationStack {
         MoodleView()
-            .environmentObject(AppState())
     }
 }
