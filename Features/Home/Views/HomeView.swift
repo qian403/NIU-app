@@ -36,6 +36,9 @@ struct HomeView: View {
                         schedulePreview
                             .padding(.horizontal, Theme.Spacing.large)
 
+                        quickAttendanceEntry
+                            .padding(.horizontal, Theme.Spacing.large)
+
                         featureCards
                             .padding(.horizontal, Theme.Spacing.large)
 
@@ -359,6 +362,45 @@ struct HomeView: View {
     }
 
     // MARK: - Feature Cards
+
+    private var quickAttendanceEntry: some View {
+        NavigationLink(destination: MoodleAttendanceScannerView()) {
+            HStack(spacing: Theme.Spacing.medium) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.12))
+                        .frame(width: 56, height: 56)
+
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.system(size: 27, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Moodle 快速點名")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Color(.label))
+                    Text("掃描課堂 QR Code 完成簽到")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color(.secondaryLabel))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+            .padding(Theme.Spacing.medium)
+            .glassEffect(
+                .regular.interactive(),
+                in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .opacity(animateIn ? 1 : 0)
+        .animation(Theme.Animation.fast.delay(0.65), value: animateIn)
+    }
 
     private var featureCards: some View {
         VStack(spacing: Theme.Spacing.medium) {

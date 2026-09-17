@@ -3,7 +3,7 @@ import Combine
 import WidgetKit
 
 class AcademicCalendarViewModel: ObservableObject {
-    private let appGroupIdentifier = "group.CHIEN.NIU-APP"
+    private let appGroupIdentifier = "group.dev.chien.niuapp"
     private let appGroupCalendarCacheKey = "academicCalendar.shared.cachedData"
     
     @Published var calendarData: AcademicCalendarData?

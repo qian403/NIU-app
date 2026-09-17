@@ -34,6 +34,9 @@ final class AppState: ObservableObject {
     }
 
     init() {
+        guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else {
+            return
+        }
         observeClassScheduleUpdates()
         checkAuthenticationStatus()
     }
@@ -621,7 +624,7 @@ extension Notification.Name {
 
 #if canImport(ActivityKit)
 @available(iOS 16.1, *)
-struct ClassLiveActivityAttributes: ActivityAttributes {
+struct ClassLiveActivityAttributes: nonisolated ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         let mode: String // "current" or "upcoming"
         let courseName: String
@@ -639,7 +642,7 @@ struct ClassLiveActivityAttributes: ActivityAttributes {
 final class ClassLiveActivityCoordinator {
     static let shared = ClassLiveActivityCoordinator()
     private let cacheKey = "classSchedule.v2.cachedData"
-    private let appGroupIdentifier = "group.CHIEN.NIU-APP"
+    private let appGroupIdentifier = "group.dev.chien.niuapp"
     private let stalePaddingMinutes = 20
     private var tokenObserverTask: Task<Void, Never>?
 

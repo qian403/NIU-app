@@ -156,6 +156,7 @@ struct MoodleModule: Codable, Identifiable {
         case "feedback": return "star.bubble"
         case "choice": return "checklist"
         case "attendance": return "person.text.rectangle"
+        case "irs": return "hand.raised"
         case "bigbluebuttonbn": return "video"
         case "h5pactivity": return "play.rectangle"
         default: return "square"

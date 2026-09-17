@@ -9,7 +9,7 @@ struct NIUWidgetEntry: TimelineEntry {
 }
 
 struct NIUWidgetProvider: AppIntentTimelineProvider {
-    private let appGroupIdentifier = "group.CHIEN.NIU-APP"
+    private let appGroupIdentifier = "group.dev.chien.niuapp"
     private let appGroupCalendarCacheKey = "academicCalendar.shared.cachedData"
 
     private var academicCalendarURL: URL {

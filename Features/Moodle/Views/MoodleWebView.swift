@@ -2,6 +2,20 @@ import Combine
 import SwiftUI
 import WebKit
 
+struct MoodleAttendanceWebOutcome: Equatable {
+    enum Kind: Equatable {
+        case recorded
+        case alreadyRecorded
+        case requiresAction
+        case failed
+        case unknown
+    }
+
+    let kind: Kind
+    let message: String
+    let courseModuleID: Int?
+}
+
 /// Moodle page viewer.
 ///
 /// Uses a persistent WKWebView that first navigates through the SSO EUNI
@@ -48,6 +62,11 @@ struct MoodleWebPageView: View {
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
+
+                        Button("重新載入") {
+                            webManager.retry()
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemBackground))
@@ -106,8 +125,20 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var isPageReady = false
     @Published var externalOpenURL: URL?
     @Published var errorMessage: String?
+    @Published private(set) var attendanceOutcome: MoodleAttendanceWebOutcome?
 
-    let webView: WKWebView
+    lazy var webView: WKWebView = {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .default()
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
+        let contentController = WKUserContentController()
+        config.userContentController = contentController
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = self
+        webView.allowsBackForwardNavigationGestures = true
+        return webView
+    }()
     private var targetURL: String?
     private var originalTargetURL: String?
     private var phase: Phase = .idle
@@ -115,6 +146,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private var retriedAfterLoginRedirect = false
     private var isAutologinSupported = true
     private var hasTriedSilentRefresh = false
+    private var webContentRecoveryAttempts = 0
     private var assignmentResolveAttempts = 0
     private let maxAssignmentResolveAttempts = 2
 
@@ -127,15 +159,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     override init() {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
-        config.defaultWebpagePreferences.allowsContentJavaScript = true
-        let contentController = WKUserContentController()
-        config.userContentController = contentController
-        self.webView = WKWebView(frame: .zero, configuration: config)
         super.init()
-        webView.navigationDelegate = self
-        webView.allowsBackForwardNavigationGestures = true
     }
 
     func loadWithSSO(targetURL: String) {
@@ -143,6 +167,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         hasStarted = true
         self.originalTargetURL = targetURL
         self.errorMessage = nil
+        self.attendanceOutcome = nil
         self.assignmentResolveAttempts = 0
 
         Task {
@@ -151,9 +176,52 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
+    func retry() {
+        guard let originalTargetURL else { return }
+        webView.stopLoading()
+        phase = .idle
+        hasStarted = false
+        retriedAfterLoginRedirect = false
+        hasTriedSilentRefresh = false
+        assignmentResolveAttempts = 0
+        webContentRecoveryAttempts = 0
+        targetURL = nil
+        externalOpenURL = nil
+        errorMessage = nil
+        isPageReady = false
+        loadWithSSO(targetURL: originalTargetURL)
+    }
+
+    func verifyAttendanceSubmission() {
+        guard isAttendanceQRTarget,
+              let originalTargetURL,
+              let url = URL(string: originalTargetURL)
+        else { return }
+
+        attendanceOutcome = nil
+        errorMessage = nil
+        isPageReady = false
+        phase = .loadingTarget
+        targetURL = originalTargetURL
+        externalOpenURL = url
+        webView.load(URLRequest(url: url))
+    }
+
     private var isAssignmentUploadTarget: Bool {
         let target = (originalTargetURL ?? targetURL ?? "").lowercased()
         return target.contains("/mod/assign/view.php") && target.contains("action=editsubmission")
+    }
+
+    private var isAttendanceQRTarget: Bool {
+        guard let originalTargetURL else { return false }
+        return MoodleAttendanceQRCode.validatedURL(from: originalTargetURL) != nil
+    }
+
+    private var isIRSActivityTarget: Bool {
+        guard let originalTargetURL,
+              let components = URLComponents(string: originalTargetURL) else { return false }
+        return components.host?.lowercased() == "euni.niu.edu.tw"
+            && components.path.lowercased() == "/mod/irs/view.php"
     }
     
     private func targetURLReady(_ resolvedTarget: URL) {
@@ -162,6 +230,16 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         
         // Sync cookies from HTTPCookieStorage to WKWebView (like reference project)
         syncCookies {
+            // Attendance QR tokens are short-lived, while IRS is a browser-only
+            // activity. If mobile autologin is available, both should use it
+            // immediately instead of taking an unnecessary SSO portal round trip.
+            if (self.isAttendanceQRTarget || self.isIRSActivityTarget),
+               resolvedTarget.path.lowercased().contains("/admin/tool/mobile/autologin.php") {
+                self.phase = .loadingTarget
+                self.webView.load(URLRequest(url: resolvedTarget))
+                return
+            }
+
             if !self.isAssignmentUploadTarget,
                let euniURL = SSOEUNISettings.shared.euniFullURL,
                let url = URL(string: euniURL) {
@@ -356,10 +434,199 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         isPageReady = true
     }
 
+    private struct AttendancePageNotification: Decodable {
+        let text: String
+        let className: String
+        let type: String
+    }
+
+    private struct AttendancePageSnapshot: Decodable {
+        let url: String
+        let body: String
+        let hasAttendanceForm: Bool
+        let notifications: [AttendancePageNotification]
+    }
+
+    private func inspectAttendancePage(_ webView: WKWebView) {
+        let script = """
+        (function() {
+            var nodes = document.querySelectorAll(
+                '[data-region="notification"], .alert, .notification, [role="alert"]'
+            );
+            var notifications = Array.prototype.map.call(nodes, function(node) {
+                return {
+                    text: (node.innerText || node.textContent || '').trim(),
+                    className: node.className || '',
+                    type: node.getAttribute('data-type') || node.getAttribute('role') || ''
+                };
+            }).filter(function(item) { return item.text.length > 0; });
+
+            return JSON.stringify({
+                url: window.location.href,
+                body: ((document.body && document.body.innerText) || '').slice(0, 12000),
+                hasAttendanceForm: !!document.querySelector(
+                    'form[action*="/mod/attendance/attendance.php"], input[name="sessid"]'
+                ),
+                notifications: notifications
+            });
+        })();
+        """
+
+        Task { @MainActor [weak self, weak webView] in
+            guard let self, let webView else { return }
+            guard let raw = try? await webView.evaluateJavaScript(script) as? String,
+                  let data = raw.data(using: .utf8),
+                  let snapshot = try? JSONDecoder().decode(AttendancePageSnapshot.self, from: data)
+            else {
+                self.attendanceOutcome = MoodleAttendanceWebOutcome(
+                    kind: .unknown,
+                    message: "無法判讀 M 園區回應，請開啟原始頁面確認。",
+                    courseModuleID: nil
+                )
+                return
+            }
+
+            self.attendanceOutcome = self.makeAttendanceOutcome(from: snapshot)
+        }
+    }
+
+    private func makeAttendanceOutcome(from snapshot: AttendancePageSnapshot) -> MoodleAttendanceWebOutcome {
+        let notificationText = snapshot.notifications.map(\.text).joined(separator: "\n")
+        let combinedText = "\(notificationText)\n\(snapshot.body)"
+        let normalized = combinedText.lowercased()
+        let normalizedNotificationText = notificationText.lowercased()
+        let courseModuleID = attendanceCourseModuleID(from: snapshot.url)
+        let isOriginalAttendanceEndpoint = matchesOriginalAttendanceEndpoint(snapshot.url)
+
+        let alreadyRecordedPatterns = [
+            "attendance has already been set",
+            "您的出缺席已經設置好了",
+            "your attendance has already been marked as",
+            "出席已被標記為",
+            "出席已標記為"
+        ]
+        if isOriginalAttendanceEndpoint,
+           let match = matchedPattern(in: normalized, patterns: alreadyRecordedPatterns) {
+            return MoodleAttendanceWebOutcome(
+                kind: .alreadyRecorded,
+                message: bestAttendanceMessage(notificationText, fallback: match),
+                courseModuleID: courseModuleID
+            )
+        }
+
+        let failurePatterns = [
+            "qr code has expired",
+            "qr session has expired",
+            "incorrect password",
+            "attendance has not been recorded",
+            "no valid status was available",
+            "not currently available for self-marking",
+            "not a member of the course group",
+            "outside the allowed subnet",
+            "not in the allowed range",
+            "device appears to have been used to record attendance for another student",
+            "qr code expired",
+            "沒有可用的有效狀態",
+            "學生只可以從某些特定的位置上紀錄出缺席",
+            "自我標記已被禁用",
+            "qr 碼已過期",
+            "qr code 已過期",
+            "密碼不正確",
+            "密碼錯誤",
+            "尚未開放",
+            "未開放點名",
+            "沒有可用的出席狀態",
+            "不在允許的網路範圍",
+            "不在允許的子網路",
+            "其他學生使用此裝置",
+            "未記錄出席",
+            "未紀錄出席"
+        ]
+        if let match = matchedPattern(in: normalized, patterns: failurePatterns) {
+            return MoodleAttendanceWebOutcome(
+                kind: .failed,
+                message: bestAttendanceMessage(notificationText, fallback: match),
+                courseModuleID: courseModuleID
+            )
+        }
+
+        if snapshot.hasAttendanceForm {
+            return MoodleAttendanceWebOutcome(
+                kind: .requiresAction,
+                message: "這堂課仍需要在 M 園區選擇狀態或送出表單。",
+                courseModuleID: courseModuleID
+            )
+        }
+
+        let recordedPatterns = [
+            "your attendance in this session has been recorded",
+            "attendance in this session has been recorded",
+            "您在此上課時段的出席已被記錄",
+            "您在此上課時段的出席已被紀錄"
+        ]
+        if courseModuleID != nil,
+           matchedPattern(in: normalizedNotificationText, patterns: recordedPatterns) != nil {
+            return MoodleAttendanceWebOutcome(
+                kind: .recorded,
+                message: bestAttendanceMessage(notificationText, fallback: "M 園區已接受這次點名。"),
+                courseModuleID: courseModuleID
+            )
+        }
+
+        return MoodleAttendanceWebOutcome(
+            kind: .unknown,
+            message: bestAttendanceMessage(notificationText, fallback: "M 園區沒有回傳可確認的點名結果。"),
+            courseModuleID: courseModuleID
+        )
+    }
+
+    private func matchedPattern(in text: String, patterns: [String]) -> String? {
+        patterns.first { text.contains($0) }
+    }
+
+    private func bestAttendanceMessage(_ message: String, fallback: String) -> String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return fallback }
+        return String(trimmed.prefix(280))
+    }
+
+    private func attendanceCourseModuleID(from urlString: String) -> Int? {
+        guard let components = URLComponents(string: urlString),
+              components.scheme?.lowercased() == "https",
+              components.host?.lowercased() == "euni.niu.edu.tw",
+              components.port == nil || components.port == 443,
+              components.path.lowercased() == "/mod/attendance/view.php",
+              let value = components.queryItems?.first(where: { $0.name.lowercased() == "id" })?.value
+        else { return nil }
+        return Int(value)
+    }
+
+    private func matchesOriginalAttendanceEndpoint(_ urlString: String) -> Bool {
+        guard let originalTargetURL,
+              let expected = MoodleAttendanceQRCode.validatedURL(from: originalTargetURL),
+              let actual = MoodleAttendanceQRCode.validatedURL(from: urlString),
+              let expectedComponents = URLComponents(url: expected, resolvingAgainstBaseURL: false),
+              let actualComponents = URLComponents(url: actual, resolvingAgainstBaseURL: false)
+        else { return false }
+
+        func value(named name: String, in components: URLComponents) -> String? {
+            components.queryItems?.first(where: { $0.name.lowercased() == name })?.value
+        }
+
+        return value(named: "sessid", in: expectedComponents) == value(named: "sessid", in: actualComponents)
+            && value(named: "qrpass", in: expectedComponents) == value(named: "qrpass", in: actualComponents)
+    }
+
     private func failAsNeedsRelogin() {
         phase = .done
         isPageReady = false
         errorMessage = "M 園區登入已失效，請回設定頁重新登入後再試。"
+    }
+
+    private func failTargetLoad(_ message: String) {
+        phase = .done
+        isPageReady = false
+        errorMessage = message
     }
 
     private func resolveEuniInSameWebViewForUpload(reason: String) {
@@ -442,7 +709,12 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
     func webView(_ wv: WKWebView, didFinish navigation: WKNavigation!) {
         let url = wv.url?.absoluteString ?? ""
-        print("[MoodleWeb] didFinish (\(phase)): \(url.prefix(100))")
+        if isAttendanceQRTarget {
+            // QR pass and mobile autologin keys must not appear in diagnostics.
+            print("[MoodleWeb] didFinish (\(phase)): \(wv.url?.path ?? "")")
+        } else {
+            print("[MoodleWeb] didFinish (\(phase)): \(url.prefix(100))")
+        }
 
         switch phase {
         case .resolvingEuni:
@@ -495,6 +767,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 }
             } else {
                 finishLoading()
+                if isAttendanceQRTarget {
+                    inspectAttendancePage(wv)
+                }
             }
 
         case .done:
@@ -511,6 +786,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 }
             } else {
                 isPageReady = true
+                if isAttendanceQRTarget {
+                    inspectAttendancePage(wv)
+                }
             }
 
         case .idle:
@@ -520,24 +798,61 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
     func webView(_ wv: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         print("[MoodleWeb] didFail: \(error.localizedDescription)")
+        if (error as NSError).code == NSURLErrorCancelled { return }
+        if isAttendanceQRTarget {
+            phase = .done
+            isPageReady = false
+            attendanceOutcome = MoodleAttendanceWebOutcome(
+                kind: .failed,
+                message: "無法取得 M 園區點名結果，請檢查網路後再試。",
+                courseModuleID: nil
+            )
+            return
+        }
         if phase == .ssoRedirect || phase == .resolvingEuni {
             if isAssignmentUploadTarget {
                 failAsNeedsRelogin()
             } else {
                 fallbackToTargetAfterSSOFailure()
             }
+        } else if phase == .loadingTarget || phase == .done {
+            failTargetLoad("M 園區內容載入失敗，請檢查網路後重新載入。")
         }
     }
 
     func webView(_ wv: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         print("[MoodleWeb] provisional fail: \(error.localizedDescription)")
+        if (error as NSError).code == NSURLErrorCancelled { return }
+        if isAttendanceQRTarget {
+            phase = .done
+            isPageReady = false
+            attendanceOutcome = MoodleAttendanceWebOutcome(
+                kind: .failed,
+                message: "無法連線至 M 園區，請檢查網路後再試。",
+                courseModuleID: nil
+            )
+            return
+        }
         if phase == .ssoRedirect || phase == .resolvingEuni {
             if isAssignmentUploadTarget {
                 failAsNeedsRelogin()
             } else {
                 fallbackToTargetAfterSSOFailure()
             }
+        } else if phase == .loadingTarget || phase == .done {
+            failTargetLoad("無法連線至 M 園區，請檢查網路後重新載入。")
         }
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard webContentRecoveryAttempts < 1 else {
+            failTargetLoad("M 園區頁面程序已中斷，請重新載入。")
+            return
+        }
+        webContentRecoveryAttempts += 1
+        errorMessage = nil
+        isPageReady = false
+        webView.reload()
     }
 }
 
