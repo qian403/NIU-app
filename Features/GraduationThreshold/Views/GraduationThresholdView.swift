@@ -35,15 +35,9 @@ struct GraduationThresholdView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: Theme.Spacing.small) {
-                        if vm.graduationData != nil {
-                            Button(action: vm.toggleWebView) {
-                                Image(systemName: vm.isWebVisible ? "doc.text" : "globe")
-                                    .font(.system(size: 16, weight: .light))
-                            }
-                        }
-                        Button(action: vm.refresh) {
-                            Image(systemName: "arrow.clockwise")
+                    if vm.graduationData != nil {
+                        Button(action: vm.toggleWebView) {
+                            Image(systemName: vm.isWebVisible ? "doc.text" : "globe")
                                 .font(.system(size: 16, weight: .light))
                         }
                     }
@@ -86,6 +80,7 @@ struct GraduationThresholdView: View {
                 .padding(.top, Theme.Spacing.medium)
                 .padding(.bottom, Theme.Spacing.large)
             }
+            .refreshable { await vm.refreshAndWait() }
         }
     }
 

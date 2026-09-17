@@ -16,6 +16,7 @@ final class GraduationThresholdViewModel: ObservableObject {
     @Published var showWebView = false
     @Published var isWebVisible = false
     @Published var isFetchingInBackground = false  // background refresh while showing cache
+    @Published private(set) var isRefreshing = false
 
     private var sessionRefreshAttempted = false
 
@@ -26,12 +27,26 @@ final class GraduationThresholdViewModel: ObservableObject {
     }
 
     func refresh() {
-        clearCache()
+        guard !isRefreshing, !showWebView else { return }
+        isRefreshing = true
         sessionRefreshAttempted = false
-        isFetchingInBackground = false
-        graduationData = nil
-        loadState = .loading
+        isFetchingInBackground = graduationData != nil
+        if graduationData == nil { loadState = .loading }
         showWebView = true
+    }
+
+    func refreshAndWait() async {
+        refresh()
+        let deadline = Date().addingTimeInterval(90)
+        while isRefreshing && !Task.isCancelled && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        if isRefreshing {
+            isRefreshing = false
+            isFetchingInBackground = false
+            showWebView = false
+            if graduationData == nil { loadState = .error("畢業門檻更新逾時，請稍後再試") }
+        }
     }
 
     func toggleWebView() {
@@ -44,12 +59,6 @@ final class GraduationThresholdViewModel: ObservableObject {
         if let cached = loadFromCache() {
             graduationData = cached.data
             loadState = .loaded
-            if cached.isCacheValid {
-                return  // Cache is fresh – no need to fetch
-            }
-            // Cache exists but stale – show it while refetching in background
-            isFetchingInBackground = true
-            showWebView = true
         } else {
             loadState = .loading
             showWebView = true
@@ -61,6 +70,7 @@ final class GraduationThresholdViewModel: ObservableObject {
 
         switch result {
         case .success(let data):
+            isRefreshing = false
             sessionRefreshAttempted = false
             isFetchingInBackground = false
             saveToCache(CachedGraduationData(data: data, fetchedAt: Date()))
@@ -77,6 +87,7 @@ final class GraduationThresholdViewModel: ObservableObject {
                     if refreshed {
                         self.showWebView = true
                     } else {
+                        self.isRefreshing = false
                         self.isFetchingInBackground = false
                         if self.graduationData == nil {
                             self.loadState = .error("SSO 登入失敗\n\n請在「設定」頁面重新登入後再試")
@@ -85,6 +96,7 @@ final class GraduationThresholdViewModel: ObservableObject {
                 }
             } else {
                 sessionRefreshAttempted = false
+                isRefreshing = false
                 isFetchingInBackground = false
                 if graduationData == nil {
                     loadState = .error("SSO 登入失敗\n\n請在「設定」頁面重新登入後再試")
@@ -92,6 +104,7 @@ final class GraduationThresholdViewModel: ObservableObject {
             }
 
         case .failure(let message):
+            isRefreshing = false
             sessionRefreshAttempted = false
             isFetchingInBackground = false
             if graduationData == nil {
@@ -123,7 +136,4 @@ final class GraduationThresholdViewModel: ObservableObject {
         }
     }
 
-    private func clearCache() {
-        UserDefaults.standard.removeObject(forKey: cacheKey)
-    }
 }

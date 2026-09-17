@@ -19,10 +19,6 @@ struct CachedGraduationData: Codable {
     let data: GraduationData
     let fetchedAt: Date
 
-    /// Returns true if the cache is still within the 7-day TTL
-    var isCacheValid: Bool {
-        Date().timeIntervalSince(fetchedAt) < 7 * 24 * 3600
-    }
 }
 
 // MARK: - Diverse Hours Category

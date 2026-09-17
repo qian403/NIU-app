@@ -3,13 +3,12 @@ import SwiftUI
 import Combine
 import UIKit
 
-/// Manages transparent SSO session refresh across all features.
+/// Manages SSO session refresh across all features.
 ///
 /// When a feature WebView detects that the session has expired, it calls
-/// `requestRefresh()`. This service triggers a single invisible re-login via
-/// the SSOLoginWebView embedded in RootView (using shared WKWebsiteDataStore
-/// cookies), so every subsequent feature WebView automatically benefits from
-/// the refreshed session without any visible interruption.
+/// `requestRefresh()`. This service triggers a single re-login via the
+/// SSOLoginWebView embedded in RootView (using shared WKWebsiteDataStore
+/// cookies). The school's interactive verification remains visible.
 ///
 /// Auto-refresh is disabled when the user explicitly logs out and re-enabled
 /// on the next successful login.
@@ -20,12 +19,12 @@ final class SSOSessionService: ObservableObject {
 
     // MARK: - Published state (observed by RootView)
 
-    /// When `true`, RootView should show the invisible SSOLoginWebView.
+    /// When `true`, RootView should show the SSOLoginWebView.
     @Published private(set) var showRefreshWebView = false
 
     // MARK: - Internal state
 
-    /// Credentials for the silent re-login, loaded from LoginRepository on demand.
+    /// Credentials for re-login, loaded from LoginRepository on demand.
     private(set) var refreshAccount: String = ""
     private(set) var refreshPassword: String = ""
 
@@ -38,7 +37,7 @@ final class SSOSessionService: ObservableObject {
     /// Callers waiting for the current refresh to finish.
     private var pendingContinuations: [CheckedContinuation<Bool, Never>] = []
     private var refreshTimeoutTask: Task<Void, Never>?
-    private let refreshTimeoutSeconds: UInt64 = 35
+    private let refreshTimeoutSeconds: UInt64 = 75
     private let maxRefreshAttempts = 1
     private let retryBackoffNanoseconds: UInt64 = 2_000_000_000
 
@@ -60,7 +59,7 @@ final class SSOSessionService: ObservableObject {
         autoRefreshEnabled = true
     }
 
-    /// Disables silent refresh and fails any pending refresh requests immediately.
+    /// Disables refresh and fails any pending refresh requests immediately.
     func disableAutoRefresh() {
         autoRefreshEnabled = false
         refreshTimeoutTask?.cancel()
@@ -76,8 +75,8 @@ final class SSOSessionService: ObservableObject {
 
     // MARK: - Called by feature ViewModels on session expiry
 
-    /// Silently re-authenticates using stored credentials by showing an invisible
-    /// SSOLoginWebView in RootView (which shares the default cookie store).
+    /// Re-authenticates using stored credentials in RootView's SSOLoginWebView
+    /// (which shares the default cookie store).
     ///
     /// Returns `true` if the session was successfully refreshed.
     /// Multiple concurrent callers are coalesced per attempt: only one SSO login
@@ -162,7 +161,7 @@ final class SSOSessionService: ObservableObject {
         }
     }
 
-    // MARK: - Called by the invisible SSOLoginWebView in RootView
+    // MARK: - Called by the SSOLoginWebView in RootView
 
     func handleRefreshResult(_ result: SSOLoginResult) {
         guard isRefreshing else { return }

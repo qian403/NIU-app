@@ -69,8 +69,7 @@ struct LoginView: View {
                         .animation(Theme.Animation.slow.delay(0.4), value: animateIn)
                 }
 
-                // Hidden WebViews
-                if viewModel.ssoLoginStarted {
+                if viewModel.ssoLoginStarted && !viewModel.ssoLoginCompleted {
                     SSOLoginWebView(
                         account: viewModel.username,
                         password: viewModel.password
@@ -78,19 +77,10 @@ struct LoginView: View {
                         viewModel.handleSSOLoginResult(result)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(x: geometry.size.width * 2, y: 0)
+                    .background(Color(.systemBackground))
+                    .ignoresSafeArea()
                 }
 
-                if viewModel.zuvioLoginStarted {
-                    ZuvioLoginWebView(
-                        account: viewModel.username,
-                        password: viewModel.password
-                    ) { success in
-                        viewModel.handleZuvioLoginResult(success: success)
-                    }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(x: geometry.size.width * 3, y: 0)
-                }
             }
         }
         .onTapGesture {
@@ -274,18 +264,6 @@ struct LoginView: View {
             return Alert(
                 title: Text(title),
                 message: Text(message),
-                dismissButton: .default(Text("確定"))
-            )
-        case .zuvioCredentialsFailed:
-            return Alert(
-                title: Text("Zuvio 登入失敗"),
-                message: Text("無法登入 Zuvio 系統\n但您仍可使用其他功能"),
-                dismissButton: .default(Text("確定"))
-            )
-        case .bothFailed:
-            return Alert(
-                title: Text("登入失敗"),
-                message: Text("無法連接到學校系統\n請檢查網路連線"),
                 dismissButton: .default(Text("確定"))
             )
         }

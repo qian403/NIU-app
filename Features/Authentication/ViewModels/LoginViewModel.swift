@@ -13,8 +13,6 @@ final class LoginViewModel: ObservableObject {
         case ssoAccountLocked(lockTime: String?)
         case ssoSystemError
         case ssoGeneric(title: String, message: String)
-        case zuvioCredentialsFailed
-        case bothFailed
         
         var id: String {
             switch self {
@@ -25,8 +23,6 @@ final class LoginViewModel: ObservableObject {
             case .ssoAccountLocked: return "ssoAccountLocked"
             case .ssoSystemError: return "ssoSystemError"
             case .ssoGeneric: return "ssoGeneric"
-            case .zuvioCredentialsFailed: return "zuvioCredentialsFailed"
-            case .bothFailed: return "bothFailed"
             }
         }
     }
@@ -39,14 +35,13 @@ final class LoginViewModel: ObservableObject {
     @Published var activeAlert: LoginAlert?
     
     @Published var ssoLoginStarted: Bool = false
-    @Published var zuvioLoginStarted: Bool = false
     @Published var ssoLoginCompleted: Bool = false
-    @Published var zuvioLoginCompleted: Bool = false
+    @Published var moodleLoginCompleted: Bool = false
     
     // MARK: - Private Properties
     private let loginRepository = LoginRepository.shared
+    private var moodleLoginTask: Task<Void, Never>?
     var ssoResult: SSOLoginResult?
-    private var zuvioSuccess: Bool = false
     
     // MARK: - Computed Properties
     var isFormValid: Bool {
@@ -54,7 +49,7 @@ final class LoginViewModel: ObservableObject {
     }
     
     var shouldProceedToHome: Bool {
-        ssoLoginCompleted && zuvioLoginCompleted && ssoResult != nil
+        ssoLoginCompleted && moodleLoginCompleted && ssoResult != nil
     }
     
     // MARK: - Login Functions
@@ -66,16 +61,37 @@ final class LoginViewModel: ObservableObject {
         
         isLoading = true
         ssoLoginStarted = false
-        zuvioLoginStarted = false
         ssoLoginCompleted = false
-        zuvioLoginCompleted = false
+        moodleLoginCompleted = false
         ssoResult = nil
-        zuvioSuccess = false
+        moodleLoginTask?.cancel()
+        MoodleService.shared.logout()
+
+        let loginUsername = username
+        let loginPassword = password
         
-        // 同時啟動兩個登入流程
+        // SSO 與 M 園區各自驗證；SSO 仍是 App 登入的必要條件。
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.ssoLoginStarted = true
-            self.zuvioLoginStarted = true
+            self.startMoodleLogin(username: loginUsername, password: loginPassword)
+        }
+    }
+
+    private func startMoodleLogin(username: String, password: String) {
+        moodleLoginTask = Task { [weak self] in
+            do {
+                try await MoodleService.shared.authenticate(username: username, password: password)
+                guard !Task.isCancelled else { return }
+                print("[Login] Moodle authentication succeeded")
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                print("[Login] Moodle authentication failed: \(type(of: error))")
+            }
+            self?.moodleLoginCompleted = true
+            self?.checkLoginCompletion()
+            self?.moodleLoginTask = nil
         }
     }
     
@@ -100,14 +116,8 @@ final class LoginViewModel: ObservableObject {
         checkLoginCompletion()
     }
     
-    func handleZuvioLoginResult(success: Bool) {
-        zuvioSuccess = success
-        zuvioLoginCompleted = true
-        checkLoginCompletion()
-    }
-    
     private func checkLoginCompletion() {
-        guard ssoLoginCompleted && zuvioLoginCompleted else {
+        guard ssoLoginCompleted && moodleLoginCompleted else {
             return
         }
         
@@ -121,16 +131,7 @@ final class LoginViewModel: ObservableObject {
         
         switch ssoResult {
         case .success(_):
-            // SSO 成功，檢查 Zuvio
-            if zuvioSuccess {
-                // 兩個都成功，保存憑據
-                loginRepository.saveCredentials(username: username, password: password)
-                // HomeView 會自動偵測 shouldProceedToHome
-            } else {
-                // SSO 成功但 Zuvio 失敗
-                // 仍然允許登入，因為主要是 SSO
-                loginRepository.saveCredentials(username: username, password: password)
-            }
+            loginRepository.saveCredentials(username: username, password: password)
             
         case .credentialsFailed(let message):
             // 清除已保存的錯誤憑據

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject private var scheduleViewModel = ClassScheduleViewModel()
     @State private var navigateToClassSchedule = false
     @State private var animateIn = true
 
@@ -42,6 +43,19 @@ struct HomeView: View {
                     }
                     .padding(.bottom, Theme.Spacing.large)
                 }
+                .refreshable {
+                    await scheduleViewModel.refreshAndWait()
+                    loadTodayCourses()
+                }
+
+                if scheduleViewModel.showWebView {
+                    ClassScheduleWebView { result in
+                        scheduleViewModel.handleWebResult(result)
+                    }
+                    .frame(width: 1, height: 1)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                }
             }
             .navigationBarHidden(true)
             .navigationDestination(isPresented: $navigateToClassSchedule) {
@@ -49,6 +63,12 @@ struct HomeView: View {
             }
         }
         .onAppear {
+            loadTodayCourses()
+            if scheduleViewModel.loadState == .idle {
+                scheduleViewModel.loadSchedule()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .classScheduleDidUpdate)) { _ in
             loadTodayCourses()
         }
         .onOpenURL { url in

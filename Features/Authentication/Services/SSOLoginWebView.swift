@@ -108,7 +108,13 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         private var isProcessingCaptcha = false
         private var getSSOViewState = false
         private var lastPostFailed = false
-        private let maxModernCaptchaAttempts = 4
+        private var modernLoginFinished = false
+        private var modernFormHasBeenFilled = false
+        private var modernSubmitTriggered = false
+        private var modernLoginDeadline: Date?
+        private var modernStateCheckInFlight = false
+        private var modernWebContentRecoveryCount = 0
+        private var modernPageGeneration = 0
         private let maxLegacyCaptchaAttempts = 6
         private var legacyCaptchaRetryCount = 0
         private var didFallbackToLegacyFlow = false
@@ -249,6 +255,11 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 return
             }
 
+            if urlStr.contains("ccsys1.niu.edu.tw/SSO/dashboard") {
+                checkModernLoginState(in: webView)
+                return
+            }
+
             if urlStr.contains("Default.aspx") {
                 lastPostFailed = false
                 getSSOViewState = false
@@ -285,6 +296,11 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 lastPostFailed = true
                 getSSOViewState = false
                 isProcessingCaptcha = false
+                modernStateCheckInFlight = false
+                modernFormHasBeenFilled = false
+                modernSubmitTriggered = false
+                modernLoginDeadline = nil
+                modernPageGeneration += 1
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     if let url = URL(string: ssoModernLoginURLString) {
@@ -293,13 +309,56 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 }
             } else if nsError.code == NSURLErrorTimedOut && lastPostFailed {
                 print("[SSO] 重試後仍超時，停止嘗試")
-                parent.onResult(.systemError)
+                handleModernLoginOutcome(.systemError, in: webView)
+            } else if nsError.code != NSURLErrorCancelled,
+                      !modernLoginFinished,
+                      urlStr.contains("ccsys1.niu.edu.tw/SSO") {
+                handleModernLoginOutcome(
+                    .generic("登入頁載入失敗", "無法載入校方登入頁，請確認網路後再試一次"),
+                    in: webView
+                )
             }
         }
 
         public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             let urlStr = webView.url?.absoluteString ?? ""
             print("[SSO] 載入失敗: \(urlStr) error=\(error.localizedDescription)")
+            let nsError = error as NSError
+            if nsError.code != NSURLErrorCancelled,
+               !modernLoginFinished,
+               urlStr.contains("ccsys1.niu.edu.tw/SSO") {
+                handleModernLoginOutcome(
+                    .generic("登入頁載入失敗", "校方登入頁中斷，請重新登入"),
+                    in: webView
+                )
+            }
+        }
+
+        public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            guard !modernLoginFinished else { return }
+            print("[SSO] WebContent 程序終止，嘗試恢復登入頁")
+
+            guard modernWebContentRecoveryCount < 1 else {
+                handleModernLoginOutcome(
+                    .generic("登入頁載入失敗", "校方登入頁的 WebView 已停止運作，請重新登入或改用實機再試"),
+                    in: webView
+                )
+                return
+            }
+
+            modernWebContentRecoveryCount += 1
+            isProcessingCaptcha = false
+            modernStateCheckInFlight = false
+            modernFormHasBeenFilled = false
+            modernSubmitTriggered = false
+            modernLoginDeadline = nil
+            modernPageGeneration += 1
+
+            if let url = URL(string: ssoModernLoginURLString) {
+                webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+            } else {
+                handleModernLoginOutcome(.systemError, in: webView)
+            }
         }
 
         private func eval(_ webView: WKWebView, _ js: String, _ note: String, completion: @escaping (Any?) -> Void) {
@@ -314,28 +373,11 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             return url.path.lowercased().contains("/sso/login")
         }
 
-        private struct ModernCaptchaResponse: Decodable {
-            let CaptchaId: String
-            let ImageBase64: String
-        }
-
         private struct LegacyCaptchaImagePayload: Decodable {
             let dataURL: String?
             let src: String?
             let complete: Bool
             let width: Double
-        }
-
-        private struct ModernLoginResponse: Decodable {
-            let token: String?
-            let exp: String?
-            let todo: String?
-            let warning: String?
-            let message: String?
-            let error: String?
-            let acnt: String?
-            let ou: String?
-            let success: Bool?
         }
 
         private struct AuthorizationInfoResponse: Decodable {
@@ -366,177 +408,153 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func startModernLogin(in webView: WKWebView) {
-            guard !isProcessingCaptcha else { return }
+            guard !isProcessingCaptcha, !modernLoginFinished else { return }
             isProcessingCaptcha = true
+            modernLoginDeadline = Date().addingTimeInterval(60)
             print("[SSO] 開始新版登入流程")
-
-            Task { [weak self, weak webView] in
-                guard let self, let webView else { return }
-                let outcome = await self.runModernLoginSequence()
-                await MainActor.run {
-                    self.isProcessingCaptcha = false
-                    self.handleModernLoginOutcome(outcome, in: webView)
-                }
-            }
+            checkModernLoginState(in: webView)
+            fillModernLoginForm(in: webView)
         }
 
-        private func runModernLoginSequence() async -> ModernLoginOutcome {
-            for attempt in 1...maxModernCaptchaAttempts {
-                print("[SSO] 取得新版驗證碼，嘗試 \(attempt)/\(maxModernCaptchaAttempts)")
-
-                guard let captcha = await requestFreshModernCaptcha() else {
-                    continue
-                }
-
-                guard let image = decodeCaptchaImage(base64: captcha.ImageBase64) else {
-                    continue
-                }
-
-                guard let code = await recognizeCaptchaCode(from: image), code.count == 6 else {
-                    print("[SSO] 新版 OCR 失敗")
-                    continue
-                }
-
-                print("[SSO] 新版 OCR 成功 → \(code)")
-                let response = await submitModernLogin(captchaId: captcha.CaptchaId, captchaInput: code)
-
-                switch response {
-                case .success(let token):
-                    return .success(token: token)
-                case .retryCaptcha:
-                    continue
-                case .failure(let outcome):
-                    return outcome
-                }
+        private func fillModernLoginForm(in webView: WKWebView) {
+            guard !modernLoginFinished, !modernSubmitTriggered else { return }
+            let generation = modernPageGeneration
+            guard let credentials = try? JSONSerialization.data(withJSONObject: [parent.account, parent.password]),
+                  let json = String(data: credentials, encoding: .utf8) else {
+                handleModernLoginOutcome(.systemError, in: webView)
+                return
             }
+            let shouldFill = modernFormHasBeenFilled ? "false" : "true"
 
-            return .systemError
-        }
-
-        private func requestFreshModernCaptcha() async -> ModernCaptchaResponse? {
-            guard let url = URL(string: "https://ccsys1.niu.edu.tw/SSO/API/Captcha/Generate") else {
-                return nil
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 20
-            request.httpBody = Data("{}".utf8)
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-            request.setValue("https://ccsys1.niu.edu.tw", forHTTPHeaderField: "Origin")
-            request.setValue(ssoModernLoginURLString, forHTTPHeaderField: "Referer")
-
-            do {
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                    print("[SSO] 取得新版驗證碼 HTTP 狀態異常")
-                    return nil
+            let script = """
+            (function() {
+                const [account, password] = \(json);
+                const usernameField = document.querySelector('#username');
+                const passwordField = document.querySelector('#password');
+                const form = document.querySelector('form.login-form');
+                const submit = document.querySelector('form.login-form button[type="submit"]');
+                if (!usernameField || !passwordField || !form || !submit) return 'waiting';
+                if (!window.__niuAppSubmitHooked) {
+                    window.__niuAppSubmitHooked = true;
+                    form.addEventListener('submit', () => { window.__niuAppSubmitObserved = true; });
                 }
-                let payload = try JSONDecoder().decode(ModernCaptchaResponse.self, from: data)
-                guard !payload.CaptchaId.isEmpty, !payload.ImageBase64.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    print("[SSO] 取得新版驗證碼內容為空")
-                    return nil
-                }
-                return payload
-            } catch {
-                print("[SSO] 取得新版驗證碼失敗: \(error.localizedDescription)")
-                return nil
-            }
-        }
-
-        private func decodeCaptchaImage(base64: String) -> SSOImage? {
-            let trimmed = base64.trimmingCharacters(in: .whitespacesAndNewlines)
-            let payload: String
-            if let commaIndex = trimmed.firstIndex(of: ","),
-               trimmed[..<commaIndex].contains("base64") {
-                payload = String(trimmed[trimmed.index(after: commaIndex)...])
-            } else {
-                payload = trimmed
-            }
-            guard let data = Data(base64Encoded: payload) else { return nil }
-            return SSOImage(data: data)
-        }
-
-        private func recognizeCaptchaCode(from image: SSOImage) async -> String? {
-            await withCheckedContinuation { continuation in
-                SSOCaptchaProcessor.shared.recognize(from: image) { code in
-                    continuation.resume(returning: code)
-                }
-            }
-        }
-
-        private enum ModernLoginSubmissionResult {
-            case success(token: String?)
-            case retryCaptcha
-            case failure(ModernLoginOutcome)
-        }
-
-        private func submitModernLogin(captchaId: String, captchaInput: String) async -> ModernLoginSubmissionResult {
-            guard let url = URL(string: "https://ccsys1.niu.edu.tw/SSO/API/Login") else {
-                return .failure(.systemError)
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 30
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-            request.setValue("https://ccsys1.niu.edu.tw", forHTTPHeaderField: "Origin")
-            request.setValue(ssoModernLoginURLString, forHTTPHeaderField: "Referer")
-
-            let payload: [String: String] = [
-                "ACNT": parent.account,
-                "Password": parent.password,
-                "CaptchaId": captchaId,
-                "CaptchaInput": captchaInput
-            ]
-
-            do {
-                request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-                let (data, response) = try await URLSession.shared.data(for: request)
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                let body = try? JSONDecoder().decode(ModernLoginResponse.self, from: data)
-                let message = body?.error?.nilIfEmpty ?? body?.message?.nilIfEmpty ?? body?.warning?.nilIfEmpty
-
-                if (200...299).contains(statusCode) {
-                    let todo = body?.todo?.lowercased()
-                    if todo == "changenow" || todo == "change_password" {
-                        return .failure(.passwordExpired(message ?? "密碼已到期，請先修改密碼後再登入"))
+                if (window.__niuAppSubmitObserved) return 'submitted';
+                if (\(shouldFill)) {
+                    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                    for (const [field, value] of [[usernameField, account], [passwordField, password]]) {
+                        setter.call(field, value);
+                        field.dispatchEvent(new Event('input', { bubbles: true }));
+                        field.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    if let issued = body?.token?.nilIfEmpty {
-                        SSOTokenStore.shared.save(token: issued, exp: body?.exp, account: parent.account)
+                }
+                if (!usernameField.checkValidity() || !passwordField.checkValidity()) return 'invalid_credentials';
+                if (submit.disabled) return 'waiting_verification';
+                submit.click();
+                return 'submitted';
+            })();
+            """
+
+            webView.evaluateJavaScript(script) { [weak self, weak webView] result, error in
+                guard let self, let webView,
+                      generation == self.modernPageGeneration,
+                      !self.modernLoginFinished else { return }
+                let state = result as? String
+                if state == "waiting_verification" || state == "submitted" {
+                    self.modernFormHasBeenFilled = true
+                }
+                if error != nil || state != "submitted" {
+                    if state == "invalid_credentials" {
+                        self.handleModernLoginOutcome(
+                            .credentialsFailed("帳號或密碼格式不正確"),
+                            in: webView
+                        )
+                        return
                     }
-                    return .success(token: body?.token)
+                    if let deadline = self.modernLoginDeadline, Date() >= deadline {
+                        self.handleModernLoginOutcome(
+                            .generic("登入逾時", "請完成校方登入頁的人機驗證，再重新登入"),
+                            in: webView
+                        )
+                        return
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self, weak webView] in
+                        guard let self, let webView,
+                              generation == self.modernPageGeneration else { return }
+                        self.fillModernLoginForm(in: webView)
+                    }
+                    return
                 }
-
-                guard let message else {
-                    return .failure(.systemError)
-                }
-
-                if message.contains("驗證碼") {
-                    print("[SSO] 新版登入驗證碼錯誤/過期: \(message)")
-                    return .retryCaptcha
-                }
-                if message.contains("帳號鎖定") || message.contains("已被鎖定") {
-                    return .failure(.accountLocked(nil))
-                }
-                if message.contains("密碼已到期") {
-                    return .failure(.passwordExpired(message))
-                }
-                if message.contains("帳號") || message.contains("密碼") {
-                    return .failure(.credentialsFailed(message))
-                }
-                return .failure(.generic("登入失敗", message))
-            } catch {
-                print("[SSO] 新版登入請求失敗: \(error.localizedDescription)")
-                return .failure(.systemError)
+                self.modernSubmitTriggered = true
             }
+        }
+
+        private func checkModernLoginState(in webView: WKWebView) {
+            guard isProcessingCaptcha, !modernLoginFinished, !modernStateCheckInFlight else { return }
+            let generation = modernPageGeneration
+            modernStateCheckInFlight = true
+            let script = """
+            (function() {
+                const token = sessionStorage.getItem('niu_sso_token') || '';
+                const alert = document.querySelector('.swal2-popup.swal2-show, .alert-danger, [role="alert"]');
+                return JSON.stringify({ token: token, error: alert ? alert.innerText.trim() : '' });
+            })();
+            """
+            webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
+                guard let self, let webView,
+                      generation == self.modernPageGeneration,
+                      !self.modernLoginFinished else { return }
+                self.modernStateCheckInFlight = false
+                if let json = result as? String,
+                   let data = json.data(using: .utf8),
+                   let state = try? JSONDecoder().decode(ModernPageState.self, from: data) {
+                    if !state.token.isEmpty {
+                        self.handleModernLoginOutcome(.success(token: state.token), in: webView)
+                        return
+                    }
+                    if !state.error.isEmpty {
+                        let lowercased = state.error.lowercased()
+                        if !state.error.contains("驗證") && !lowercased.contains("turnstile") {
+                            self.handleModernLoginOutcome(self.modernLoginError(state.error), in: webView)
+                            return
+                        }
+                    }
+                }
+                if let deadline = self.modernLoginDeadline, Date() >= deadline {
+                    self.handleModernLoginOutcome(.generic("登入逾時", "請確認人機驗證已完成，再重新登入"), in: webView)
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self, weak webView] in
+                    guard let self, let webView,
+                          generation == self.modernPageGeneration else { return }
+                    self.checkModernLoginState(in: webView)
+                }
+            }
+        }
+
+        private struct ModernPageState: Decodable {
+            let token: String
+            let error: String
+        }
+
+        private func modernLoginError(_ message: String) -> ModernLoginOutcome {
+            if message.contains("鎖定") { return .accountLocked(nil) }
+            if message.contains("密碼") &&
+                (message.contains("到期") || message.contains("過期") || message.contains("變更預設密碼")) {
+                return .passwordExpired(message)
+            }
+            if message.contains("帳號") || message.contains("密碼") { return .credentialsFailed(message) }
+            return .generic("登入失敗", message)
         }
 
         private func handleModernLoginOutcome(_ outcome: ModernLoginOutcome, in webView: WKWebView) {
+            guard !modernLoginFinished else { return }
+            modernLoginFinished = true
+            isProcessingCaptcha = false
             switch outcome {
             case .success(let token):
+                if let token, !token.isEmpty {
+                    SSOTokenStore.shared.save(token: token, exp: tokenExpiration(token), account: parent.account)
+                }
                 finishModernLogin(token: token, in: webView)
             case .credentialsFailed(let message):
                 parent.onResult(.credentialsFailed(message: message))
@@ -549,6 +567,18 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             case .systemError:
                 parent.onResult(.systemError)
             }
+        }
+
+        private func tokenExpiration(_ token: String) -> String? {
+            let parts = token.split(separator: ".")
+            guard parts.count > 1 else { return nil }
+            var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+")
+                                          .replacingOccurrences(of: "_", with: "/")
+            payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+            guard let data = Data(base64Encoded: payload),
+                  let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let seconds = claims["exp"] as? TimeInterval else { return nil }
+            return ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: seconds))
         }
 
         private func finishModernLogin(token: String?, in webView: WKWebView) {
@@ -899,7 +929,8 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 return nil
             }
             let base64 = String(dataURL[dataURL.index(after: commaIndex)...])
-            return decodeCaptchaImage(base64: base64)
+            guard let data = Data(base64Encoded: base64) else { return nil }
+            return SSOImage(data: data)
         }
 
         private func fetchCaptchaImageData(from src: String, relativeTo baseURL: URL?, completion: @escaping (SSOImage?) -> Void) {
