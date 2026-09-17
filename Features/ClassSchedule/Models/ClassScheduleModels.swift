@@ -110,11 +110,6 @@ struct ClassSchedule: Codable {
     let dayHeaders: [String]  // e.g. ["星期一", "星期二", ...]
     let fetchedAt: Date
 
-    /// Returns true if the cache is still within the 7-day TTL
-    var isCacheValid: Bool {
-        Date().timeIntervalSince(fetchedAt) < 7 * 24 * 3600
-    }
-
     /// Short single-character day labels (e.g. ["一","二","三","四","五"])
     var shortDayLabels: [String] {
         dayHeaders.map { header -> String in

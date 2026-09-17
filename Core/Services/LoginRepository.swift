@@ -67,7 +67,10 @@ final class LoginRepository {
 
         var attributes = query
         attributes[kSecValueData as String] = data
-        SecItemAdd(attributes as CFDictionary, nil)
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status != errSecSuccess {
+            print("[LoginRepository] Keychain write failed for \(account): \(status)")
+        }
     }
 
     private func readFromKeychain(account: String) -> String? {

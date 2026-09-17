@@ -20,6 +20,7 @@ final class ClassScheduleViewModel: ObservableObject {
     @Published var loadState: LoadState = .idle
     @Published var selectedDayIndex: Int = 0
     @Published var isFetchingInBackground = false  // background refresh while showing cache
+    @Published private(set) var isRefreshing = false
 
     // Controls whether the invisible WebView is in the hierarchy
     @Published var showWebView = false
@@ -89,14 +90,7 @@ final class ClassScheduleViewModel: ObservableObject {
         if let cached = loadFromCache() {
             schedule = cached
             selectedDayIndex = todayDayIndex
-            if cached.isCacheValid {
-                loadState = .cached
-                return  // Cache is fresh – no need to fetch
-            }
-            // Cache exists but stale – show it while fetching in background
             loadState = .cached
-            isFetchingInBackground = true
-            showWebView = true
         } else {
             loadState = .loading
             showWebView = true
@@ -104,12 +98,26 @@ final class ClassScheduleViewModel: ObservableObject {
     }
 
     func refresh() {
-        clearCache()
-        schedule = nil
-        loadState = .loading
-        isFetchingInBackground = false
+        guard !isRefreshing, !showWebView else { return }
+        isRefreshing = true
+        isFetchingInBackground = schedule != nil
+        if schedule == nil { loadState = .loading }
         sessionRefreshAttempted = false
         showWebView = true
+    }
+
+    func refreshAndWait() async {
+        refresh()
+        let deadline = Date().addingTimeInterval(90)
+        while isRefreshing && !Task.isCancelled && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        if isRefreshing {
+            isRefreshing = false
+            isFetchingInBackground = false
+            showWebView = false
+            if schedule == nil { loadState = .error("課表更新逾時，請稍後再試") }
+        }
     }
 
     // MARK: - WebView result handler
@@ -119,6 +127,7 @@ final class ClassScheduleViewModel: ObservableObject {
 
         switch result {
         case .success(let rows):
+            isRefreshing = false
             isFetchingInBackground = false
             sessionRefreshAttempted = false
             let parsed = parseTableRows(rows)
@@ -130,6 +139,7 @@ final class ClassScheduleViewModel: ObservableObject {
             loadState = .fresh
 
         case .notAvailable(let message):
+            isRefreshing = false
             isFetchingInBackground = false
             sessionRefreshAttempted = false
             if schedule == nil {
@@ -148,6 +158,7 @@ final class ClassScheduleViewModel: ObservableObject {
                         // Shared cookie store is now refreshed – retry the schedule fetch
                         showWebView = true
                     } else {
+                        isRefreshing = false
                         isFetchingInBackground = false
                         if schedule == nil {
                             loadState = .error("登入工作階段已過期，請重新登入")
@@ -158,6 +169,7 @@ final class ClassScheduleViewModel: ObservableObject {
             } else {
                 // Second expiry after a successful re-auth – give up
                 sessionRefreshAttempted = false
+                isRefreshing = false
                 isFetchingInBackground = false
                 if schedule == nil {
                     loadState = .error("登入工作階段已過期，請重新登入")
@@ -165,6 +177,7 @@ final class ClassScheduleViewModel: ObservableObject {
             }
 
         case .failure(let message):
+            isRefreshing = false
             isFetchingInBackground = false
             sessionRefreshAttempted = false
             if schedule == nil {
@@ -252,8 +265,4 @@ final class ClassScheduleViewModel: ObservableObject {
         }
     }
 
-    private func clearCache() {
-        UserDefaults.standard.removeObject(forKey: cacheKey)
-        UserDefaults(suiteName: appGroupIdentifier)?.removeObject(forKey: cacheKey)
-    }
 }

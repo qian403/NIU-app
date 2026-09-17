@@ -66,6 +66,7 @@ final class AppState: ObservableObject {
         clearAuthState()
         SSOSessionService.shared.disableAutoRefresh()
         MoodleSessionManager.shared.reset()
+        MoodleService.shared.logout()
         NotificationScheduler.shared.clearAllManagedNotifications()
         ClassLiveActivityBackgroundRefreshCoordinator.shared.cancel()
         Task { await ClassLiveActivityCoordinator.shared.endAll() }

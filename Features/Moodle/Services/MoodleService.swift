@@ -27,12 +27,26 @@ final class MoodleService {
     }
     
     func authenticate(username: String, password: String) async throws {
-        let urlString = "\(baseURL)/login/token.php?username=\(username.urlEncoded)&password=\(password.urlEncoded)&service=moodle_mobile_app"
-        guard let url = URL(string: urlString) else {
+        var components = URLComponents(string: "\(baseURL)/login/token.php")
+        components?.queryItems = [
+            URLQueryItem(name: "username", value: username),
+            URLQueryItem(name: "password", value: password),
+            URLQueryItem(name: "service", value: "moodle_mobile_app")
+        ]
+        guard let url = components?.url else {
             throw MoodleError.invalidURL
         }
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        applyMoodleMobileHeaders(to: &request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Task.checkCancellation()
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw MoodleError.serverError
+        }
         
         // Check for error first
         if let errorResp = try? JSONDecoder().decode(MoodleTokenError.self, from: data),
@@ -46,6 +60,7 @@ final class MoodleService {
         
         // Get user ID from site info
         let siteInfo = try await fetchSiteInfo()
+        try Task.checkCancellation()
         self.userId = siteInfo.userid
         self.userContextId = siteInfo.usercontextid
     }
@@ -674,6 +689,7 @@ final class MoodleService {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20
         applyMoodleMobileHeaders(to: &request)
         let (data, response) = try await URLSession.shared.data(for: request)
         

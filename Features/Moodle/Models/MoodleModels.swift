@@ -49,7 +49,7 @@ struct MoodleCourse: Codable, Identifiable {
     let courseimage: String?
     let showgrades: Bool
     let progress: Double?
-    let completed: Bool
+    let completed: Bool?
     let startdate: Int
     let enddate: Int
     let lastaccess: Int?

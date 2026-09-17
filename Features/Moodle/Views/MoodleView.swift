@@ -173,7 +173,14 @@ struct MoodleView: View {
     // MARK: - Helpers
     
     private func loadWithCredentials() async {
-        guard let creds = LoginRepository.shared.getSavedCredentials() else { return }
+        if MoodleService.shared.isAuthenticated {
+            await viewModel.loadCourses(username: "", password: "")
+            return
+        }
+        guard let creds = LoginRepository.shared.getSavedCredentials() else {
+            viewModel.loadState = .error("找不到登入資料，請登出後重新登入")
+            return
+        }
         await viewModel.loadCourses(username: creds.username, password: creds.password)
     }
 

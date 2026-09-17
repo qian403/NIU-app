@@ -67,7 +67,6 @@
 		BB01MD10BB01MD10BB01MD10 /* Features/Moodle/Views/MoodleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */; };
 		BB01MD11BB01MD11BB01MD11 /* Features/Moodle/Services/MoodleSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */; };
 		BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */; };
-		BDA95DAF8AD691661CEE2C69 /* ZuvioLoginWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA11103695A6E011620B1BC /* ZuvioLoginWebView.swift */; };
 		C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */; };
 		DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */; };
 		E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E96602F196B61E6AF082552 /* SSOLoginWebView.swift */; };
@@ -154,8 +153,6 @@
 		1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
 		261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/ModifyRegistrationView.swift; sourceTree = "<group>"; };
 		33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift; sourceTree = "<group>"; };
-		3608802AF764CF5B0574526E /* ZuvioLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZuvioLoginWebView.swift; sourceTree = "<group>"; };
-		3BC65E95B4F2687FB415E42B /* ZuvioLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZuvioLoginWebView.swift; sourceTree = "<group>"; };
 		3CF54E564E0F41D38F6569A8 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift; sourceTree = "<group>"; };
 		427CCA3AAC41141DAB4616E5 /* Shared/Components/ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Components/ToastView.swift; sourceTree = "<group>"; };
 		4FA77F7A401878E68B8284D4 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarView.swift; sourceTree = "<group>"; };
@@ -194,9 +191,7 @@
 		BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Services/MoodleSessionManager.swift; sourceTree = "<group>"; };
 		BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleFileViewer.swift; sourceTree = "<group>"; };
 		D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Models/AcademicCalendarModels.swift; sourceTree = "<group>"; };
-		DCA11103695A6E011620B1BC /* ZuvioLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZuvioLoginWebView.swift; sourceTree = "<group>"; };
 		E244B8906CF482139A4AF67C /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
-		E53FEB41DF5AA6048B71884D /* ZuvioLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZuvioLoginWebView.swift; sourceTree = "<group>"; };
 		E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift; sourceTree = "<group>"; };
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
@@ -609,7 +604,6 @@
 			isa = PBXGroup;
 			children = (
 				55E4F8FB8DF2C4FA7B8739A0 /* SSOLoginWebView.swift */,
-				E53FEB41DF5AA6048B71884D /* ZuvioLoginWebView.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -618,7 +612,6 @@
 			isa = PBXGroup;
 			children = (
 				E244B8906CF482139A4AF67C /* SSOLoginWebView.swift */,
-				3608802AF764CF5B0574526E /* ZuvioLoginWebView.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -627,7 +620,6 @@
 			isa = PBXGroup;
 			children = (
 				FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */,
-				3BC65E95B4F2687FB415E42B /* ZuvioLoginWebView.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -670,7 +662,6 @@
 			isa = PBXGroup;
 			children = (
 				9E96602F196B61E6AF082552 /* SSOLoginWebView.swift */,
-				DCA11103695A6E011620B1BC /* ZuvioLoginWebView.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -812,7 +803,6 @@
 				DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift in Sources */,
 				19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */,
 				E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */,
-				BDA95DAF8AD691661CEE2C69 /* ZuvioLoginWebView.swift in Sources */,
 				10A32DB22F431F630009BB45 /* View+Extensions.swift in Sources */,
 				10A32DB32F431F630009BB45 /* RootView.swift in Sources */,
 				10A32DCA2F4327A60009BB45 /* AppState.swift in Sources */,

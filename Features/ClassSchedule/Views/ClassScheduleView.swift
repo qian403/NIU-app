@@ -44,18 +44,13 @@ struct ClassScheduleView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 16) {
-                    // Export to calendar
-                    if vm.schedule != nil {
-                        Button {
-                            showExportSheet = true
-                        } label: {
-                            Image(systemName: "calendar.badge.plus")
-                                .font(.system(size: 16, weight: .light))
-                        }
+                if vm.schedule != nil {
+                    Button {
+                        showExportSheet = true
+                    } label: {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.system(size: 16, weight: .light))
                     }
-                    // Refresh
-                    refreshButton
                 }
             }
         }
@@ -81,21 +76,6 @@ struct ClassScheduleView: View {
                 vm.loadSchedule()
             }
         }
-    }
-
-    // MARK: - Refresh button
-
-    private var refreshButton: some View {
-        Button(action: { vm.refresh() }) {
-            if vm.isFetchingInBackground {
-                ProgressView()
-                    .scaleEffect(0.8)
-            } else {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 16, weight: .light))
-            }
-        }
-        .disabled(vm.loadState == .loading || vm.isFetchingInBackground)
     }
 
     // MARK: - Full-screen loading
@@ -186,25 +166,29 @@ struct ClassScheduleView: View {
     // MARK: - No course view
 
     private var noCourseView: some View {
-        VStack(spacing: Theme.Spacing.medium) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: Theme.Spacing.medium) {
+                Spacer(minLength: 120)
 
-            ZStack {
-                Circle()
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(width: 80, height: 80)
+                ZStack {
+                    Circle()
+                        .fill(Color(.tertiarySystemFill))
+                        .frame(width: 80, height: 80)
 
-                Image(systemName: "moon.zzz")
-                    .font(.system(size: 36, weight: .ultraLight))
-                    .foregroundStyle(Color(.tertiaryLabel))
+                    Image(systemName: "moon.zzz")
+                        .font(.system(size: 36, weight: .ultraLight))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+
+                Text("本日無課程")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+
+                Spacer(minLength: 120)
             }
-
-            Text("本日無課程")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(Color(.secondaryLabel))
-
-            Spacer()
+            .frame(maxWidth: .infinity)
         }
+        .refreshable { await vm.refreshAndWait() }
     }
 
     // MARK: - Cache info bar
@@ -353,6 +337,7 @@ struct ClassScheduleView: View {
                 }
                 .padding(.vertical, Theme.Spacing.small)
             }
+            .refreshable { await vm.refreshAndWait() }
             .onAppear {
                 if let current = schedule.periods.first(where: { $0.isCurrentPeriod }) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
