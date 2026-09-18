@@ -1,0 +1,412 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "academicYear": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 999
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "updatedAt": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "timeZone": {
+      "const": "Asia/Taipei"
+    },
+    "startDate": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "endDate": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      },
+      "minItems": 1
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minItems": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "sourceId",
+          "pages",
+          "text"
+        ]
+      },
+      "minItems": 0
+    },
+    "semesters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "number": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "startDate": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "endDate": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "classesStartDate": {
+            "type": "string",
+            "minLength": 1,
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "required": [
+          "number",
+          "startDate",
+          "endDate",
+          "classesStartDate"
+        ]
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      },
+      "minItems": 1
+    },
+    "weeks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/week"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "academicYear",
+    "revision",
+    "updatedAt",
+    "timeZone",
+    "startDate",
+    "endDate",
+    "sources",
+    "notes",
+    "semesters",
+    "events",
+    "weeks"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NIU complete academic-year calendar v1",
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "pageCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maintainer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maintainedOn": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "approvalNotes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        },
+        "updateNotes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "pages": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "minItems": 1
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "pages",
+              "text"
+            ]
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "url",
+        "sha256",
+        "pageCount",
+        "maintainer",
+        "maintainedOn",
+        "version",
+        "approvalNotes",
+        "updateNotes"
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\d{3}-[12]-\\d{3,}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startDate": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "endDate": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "category": {
+          "enum": [
+            "semester",
+            "registration",
+            "exam",
+            "holiday",
+            "deadline",
+            "activity",
+            "academic",
+            "other"
+          ]
+        },
+        "semester": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourcePage": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sourceText": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "startDate",
+        "endDate",
+        "category",
+        "semester",
+        "note",
+        "sourceId",
+        "sourcePage",
+        "sourceText"
+      ]
+    },
+    "week": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "startDate": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "endDate": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "semester": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "kind": {
+          "enum": [
+            "teaching",
+            "preparation",
+            "winter",
+            "summer"
+          ]
+        },
+        "number": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourcePage": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "startDate",
+        "endDate",
+        "semester",
+        "kind",
+        "number",
+        "label",
+        "sourceId",
+        "sourcePage"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "preparation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "number": {
+                "type": "null"
+              },
+              "label": {
+                "const": "預備週"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

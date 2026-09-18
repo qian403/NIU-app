@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "calendars": [
+    {
+      "academicYear": 114,
+      "revision": 1,
+      "path": "years/114.json",
+      "sha256": "2229ecd6b51369d76fcf5237790551ed766e6b500ffadcd7941dab3202c2ec06"
+    },
+    {
+      "academicYear": 115,
+      "revision": 1,
+      "path": "years/115.json",
+      "sha256": "859d0d76e68153489bbb062753fcedb33cd276bfb366f9e217f94823b00d2897"
+    }
+  ]
+}

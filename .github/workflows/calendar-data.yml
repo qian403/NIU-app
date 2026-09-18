@@ -1,0 +1,41 @@
+name: Validate academic calendar data
+
+on:
+  pull_request:
+    paths:
+      - 'calendar-data/**'
+      - '.github/workflows/calendar-data.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'calendar-data/**'
+      - '.github/workflows/calendar-data.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: calendar-data/requirements.txt
+      - run: python -m pip install -r calendar-data/requirements.txt
+      - name: Validate schema, dates, integrity and revisions
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -n "$BASE_REF" && ! "$BASE_REF" =~ ^0+$ ]]; then
+            python calendar-data/scripts/validate.py --base-ref "$BASE_REF"
+          else
+            python calendar-data/scripts/validate.py
+          fi
+      - run: python -m unittest discover -s calendar-data/tests -v
+      - run: python calendar-data/scripts/build_review.py --check
