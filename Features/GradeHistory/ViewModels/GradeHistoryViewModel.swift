@@ -11,11 +11,8 @@ final class GradeHistoryViewModel: ObservableObject {
         let fetchedAt: Date
         let semesters: [SemesterGrade]
     }
-
     enum LoadState: Equatable {
-        case idle
-        case loading
-        case loaded
+        case idle, loading, loaded
         case error(String)
     }
 
@@ -23,16 +20,26 @@ final class GradeHistoryViewModel: ObservableObject {
     @Published var selectedMode: GradeQueryMode = .history
     @Published var semesters: [SemesterGrade] = []
     @Published var termSnapshot: TermScoreSnapshot?
-    @Published var selectedSemesterID: String? = nil
+    @Published var selectedSemesterID: String?
     @Published var expandedSemesters: Set<String> = []
     @Published var showWebView = false
-    @Published var isModeLoading = false
+    @Published private(set) var isModeLoading = false
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var webViewID = UUID()
+    @Published private(set) var lastUpdated: Date?
+    @Published private(set) var lastRefreshError: String?
 
     private var sessionRefreshAttempted = false
+    private var operationID = UUID()
+    private var loadingMode: GradeQueryMode?
+    private var sessionRefreshTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
     private var termCache: [GradeQueryMode: CachedTermEntry] = [:]
     private var historyCache: CachedHistoryEntry?
-    private let cacheKey = "grade_history.term_cache.v1"
-    private let historyCacheKey = "grade_history.history_cache.v1"
+    private let cacheDefaults: UserDefaults
+    private let cacheKey: String?
+    private let historyCacheKey: String?
+    private let refreshTimeout: Duration
     private let autoRefreshInterval: TimeInterval = 24 * 60 * 60
 
     // MARK: - Derived data
@@ -60,14 +67,18 @@ final class GradeHistoryViewModel: ObservableObject {
 
     // MARK: - Life cycle
 
-    init() {
+    init(cacheDefaults: UserDefaults = .standard, account: String? = nil,
+         refreshTimeout: Duration = .seconds(120)) {
+        self.cacheDefaults = cacheDefaults
+        self.refreshTimeout = refreshTimeout
+        let owner = (account ?? cacheDefaults.string(forKey: "app.user.username") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        cacheKey = owner.isEmpty ? nil : "grade_history.term_cache.v2.\(owner)"
+        historyCacheKey = owner.isEmpty ? nil : "grade_history.history_cache.v2.\(owner)"
         if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
             semesters = Self.sampleData
             termSnapshot = Self.sampleTermSnapshot
             loadState = .loaded
-            if let latest = semesters.first {
-                expandedSemesters = [latest.id]
-            }
         } else {
             loadPersistedCache()
             loadGrades()
@@ -75,63 +86,25 @@ final class GradeHistoryViewModel: ObservableObject {
     }
 
     func refresh() {
-        if selectedMode == .history {
-            sessionRefreshAttempted = false
-            loadGrades(force: true)
-        } else {
-            semesters = []
-            termSnapshot = nil
-            expandedSemesters = []
-            sessionRefreshAttempted = false
-            termCache[selectedMode] = nil
-            persistCache()
-            loadGrades(force: true)
+        guard !isRefreshing else { return }
+        loadGrades(force: true)
+    }
+
+    func refreshAndWait() async {
+        refresh()
+        let operation = operationID
+        while isRefreshing && operationID == operation && !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(150))
         }
     }
 
     func selectMode(_ mode: GradeQueryMode) {
-        if selectedMode != mode {
-            selectedMode = mode
-        }
-
-        if mode == .history {
-            if let cache = historyCache {
-                if Self.hasMeaningfulHistory(cache.semesters) {
-                    semesters = cache.semesters
-                    loadState = .loaded
-                    showWebView = false
-                    if let latest = semesters.first {
-                        expandedSemesters = [latest.id]
-                    }
-                    if Date().timeIntervalSince(cache.fetchedAt) <= autoRefreshInterval {
-                        return
-                    }
-                } else {
-                    historyCache = nil
-                    UserDefaults.standard.removeObject(forKey: historyCacheKey)
-                }
-            } else {
-                semesters = []
-            }
-            loadGrades()
-            return
-        }
-
-        if let cache = termCache[mode] {
-            termSnapshot = cache.snapshot
-            loadState = .loaded
-            showWebView = false
-            if Date().timeIntervalSince(cache.fetchedAt) <= autoRefreshInterval {
-                return
-            }
-        } else {
-            termSnapshot = nil
-        }
-
+        finishOperation()
+        selectedMode = mode
+        selectedSemesterID = nil
+        expandedSemesters = []
         loadGrades()
     }
-
-    // MARK: - Expand / collapse
 
     func toggle(_ semester: SemesterGrade) {
         if expandedSemesters.contains(semester.id) {
@@ -141,151 +114,167 @@ final class GradeHistoryViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Data loading
-
-    private func loadGrades(force: Bool = false) {
-        if selectedMode == .history {
-            if let cache = historyCache,
-               !force,
-               Date().timeIntervalSince(cache.fetchedAt) <= autoRefreshInterval,
-               Self.hasMeaningfulHistory(cache.semesters) {
-                    semesters = cache.semesters
-                    loadState = .loaded
-                    showWebView = false
-                    if let latest = semesters.first {
-                        expandedSemesters = [latest.id]
-                    }
-                    return
-            }
-            let alreadyLoaded = loadState == .loaded
-            if alreadyLoaded {
-                isModeLoading = true
-            } else {
-                loadState = .loading
-            }
-            showWebView = true
-            return
-        }
-
-        if let cache = termCache[selectedMode],
-           !force,
-           Date().timeIntervalSince(cache.fetchedAt) <= autoRefreshInterval {
-            termSnapshot = cache.snapshot
-            loadState = .loaded
-            showWebView = false
-            return
-        }
-
-        let alreadyLoaded = loadState == .loaded
-        if alreadyLoaded {
-            isModeLoading = true
-        } else {
-            loadState = .loading
-        }
-        showWebView = true
-    }
-
-    func handleWebResult(_ result: GradeHistoryWebResult) {
-        showWebView = false
-        isModeLoading = false
-
-        switch result {
-        case .historySuccess(let fetchedSemesters):
-            sessionRefreshAttempted = false
-            let sorted = fetchedSemesters.sorted { lhs, rhs in
-                if lhs.year == rhs.year { return lhs.term.order > rhs.term.order }
-                return lhs.year > rhs.year
-            }
-            guard Self.hasMeaningfulHistory(sorted) else {
-                if let cache = historyCache, Self.hasMeaningfulHistory(cache.semesters) {
-                    semesters = cache.semesters
-                    loadState = .loaded
-                } else {
-                    loadState = .error("歷年成績資料格式異常，請稍後重試")
-                }
-                return
-            }
-            termSnapshot = nil
-            semesters = sorted
-            historyCache = CachedHistoryEntry(fetchedAt: Date(), semesters: semesters)
-            if let data = try? JSONEncoder().encode(historyCache) {
-                UserDefaults.standard.set(data, forKey: historyCacheKey)
-            }
-            loadState = .loaded
-            if let latest = semesters.first {
+    /// Restore even an old cache before networking, so outages never erase data.
+    private func restoreDisplayedCache() -> Bool {
+        semesters = []
+        termSnapshot = nil
+        lastUpdated = nil
+        if selectedMode == .history, let cache = historyCache,
+           Self.hasMeaningfulHistory(cache.semesters) {
+            semesters = cache.semesters
+            lastUpdated = cache.fetchedAt
+            if expandedSemesters.isEmpty, let latest = semesters.first {
                 expandedSemesters = [latest.id]
             }
+        } else if selectedMode != .history, let cache = termCache[selectedMode] {
+            termSnapshot = cache.snapshot
+            lastUpdated = cache.fetchedAt
+        }
+        return lastUpdated != nil
+    }
+
+    private func loadGrades(force: Bool = false) {
+        lastRefreshError = nil
+        let hasCache = restoreDisplayedCache()
+        loadState = hasCache ? .loaded : .loading
+        if !force, let lastUpdated, Date().timeIntervalSince(lastUpdated) <= autoRefreshInterval {
+            return
+        }
+        operationID = UUID()
+        webViewID = UUID()
+        loadingMode = selectedMode
+        sessionRefreshAttempted = false
+        isRefreshing = true
+        isModeLoading = true
+        showWebView = true
+        scheduleLoadTimeout()
+    }
+
+    /// Network loading has its own budget; interactive SSO has a separate timeout.
+    private func scheduleLoadTimeout() {
+        let operation = operationID
+        let timeout = refreshTimeout
+        timeoutTask?.cancel()
+        timeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self, self.operationID == operation, self.isRefreshing else { return }
+            self.fail("成績更新逾時，請稍後重試")
+        }
+    }
+
+    func handleWebResult(_ result: GradeHistoryWebResult, requestID: UUID) {
+        guard isRefreshing, showWebView, requestID == webViewID,
+              loadingMode == selectedMode else { return }
+        showWebView = false
+        switch result {
+        case .historySuccess(let fetched):
+            guard selectedMode == .history else { fail("成績查詢模式不符，請重試"); return }
+            let sorted = fetched.sorted {
+                $0.year == $1.year ? $0.term.order > $1.term.order : $0.year > $1.year
+            }
+            guard Self.hasMeaningfulHistory(sorted) else {
+                fail("歷年成績資料格式異常，請稍後重試")
+                return
+            }
+            semesters = sorted
+            termSnapshot = nil
+            let date = Date()
+            historyCache = CachedHistoryEntry(fetchedAt: date, semesters: sorted)
+            lastUpdated = date
+            if let key = historyCacheKey, let data = try? JSONEncoder().encode(historyCache) {
+                cacheDefaults.set(data, forKey: key)
+            }
+            if let selectedSemesterID, !sorted.contains(where: { $0.id == selectedSemesterID }) {
+                self.selectedSemesterID = nil
+            }
+            if let latest = sorted.first { expandedSemesters.insert(latest.id) }
+            finishOperation()
+            loadState = .loaded
 
         case .termSuccess(let snapshot):
-            sessionRefreshAttempted = false
+            guard snapshot.mode == selectedMode else { fail("成績查詢模式不符，請重試"); return }
             semesters = []
             termSnapshot = snapshot
-            termCache[snapshot.mode] = CachedTermEntry(fetchedAt: Date(), snapshot: snapshot)
-            persistCache()
+            let date = Date()
+            termCache[snapshot.mode] = CachedTermEntry(fetchedAt: date, snapshot: snapshot)
+            lastUpdated = date
+            persistTermCache()
+            finishOperation()
             loadState = .loaded
 
         case .sessionExpired:
-            if !sessionRefreshAttempted {
-                sessionRefreshAttempted = true
-                Task {
-                    let refreshed = await SSOSessionService.shared.requestRefresh()
-                    if refreshed {
-                        self.showWebView = true
-                    } else {
-                        self.loadState = .error("登入工作階段已過期，請重新登入")
-                    }
+            guard !sessionRefreshAttempted else {
+                fail("教務系統登入仍已逾時，請稍後重試，或到設定重新登入")
+                return
+            }
+            sessionRefreshAttempted = true
+            let operation = operationID
+            timeoutTask?.cancel()
+            timeoutTask = nil
+            sessionRefreshTask = Task { [weak self] in
+                let refreshed = await SSOSessionService.shared.requestRefresh(force: true)
+                guard !Task.isCancelled, let self, self.isRefreshing,
+                      self.operationID == operation else { return }
+                if refreshed {
+                    self.scheduleLoadTimeout()
+                    self.webViewID = UUID()
+                    self.showWebView = true
+                } else {
+                    self.fail(SSOSessionService.shared.lastFailureMessage
+                    ?? "無法更新校務登入，請稍後重試，或到設定重新登入")
                 }
-            } else {
-                sessionRefreshAttempted = false
-                loadState = .error("登入工作階段已過期，請重新登入")
             }
 
         case .failure(let message):
-            sessionRefreshAttempted = false
-            if selectedMode == .history,
-               let cache = historyCache,
-               Self.hasMeaningfulHistory(cache.semesters) {
-                semesters = cache.semesters
-                loadState = .loaded
-            } else {
-                loadState = .error(message)
-            }
+            fail(message)
         }
     }
 
+    private func finishOperation() {
+        operationID = UUID()
+        sessionRefreshTask?.cancel()
+        sessionRefreshTask = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        showWebView = false
+        isRefreshing = false
+        isModeLoading = false
+        loadingMode = nil
+        sessionRefreshAttempted = false
+    }
+
+    private func fail(_ message: String) {
+        finishOperation()
+        lastRefreshError = message
+        loadState = lastUpdated != nil ? .loaded : .error(message)
+    }
+
     private func loadPersistedCache() {
-        guard let data = UserDefaults.standard.data(forKey: cacheKey),
-              let entries = try? JSONDecoder().decode([String: CachedTermEntry].self, from: data) else {
-            if let historyData = UserDefaults.standard.data(forKey: historyCacheKey),
-               let history = try? JSONDecoder().decode(CachedHistoryEntry.self, from: historyData) {
-                historyCache = history
-            }
-            return
+        // v1 caches had no account owner; do not display another user's records.
+        if let key = cacheKey, let data = cacheDefaults.data(forKey: key),
+           let entries = try? JSONDecoder().decode([String: CachedTermEntry].self, from: data) {
+            termCache = Dictionary(uniqueKeysWithValues: entries.compactMap { key, value in
+                guard let mode = GradeQueryMode(rawValue: key), mode == value.snapshot.mode else { return nil }
+                return (mode, value)
+            })
         }
-        termCache = Dictionary(uniqueKeysWithValues: entries.compactMap { key, value in
-            guard let mode = GradeQueryMode(rawValue: key) else { return nil }
-            return (mode, value)
-        })
-        if let historyData = UserDefaults.standard.data(forKey: historyCacheKey),
-           let history = try? JSONDecoder().decode(CachedHistoryEntry.self, from: historyData) {
+        if let key = historyCacheKey, let data = cacheDefaults.data(forKey: key),
+           let history = try? JSONDecoder().decode(CachedHistoryEntry.self, from: data) {
             historyCache = history
         }
     }
 
-    private func persistCache() {
+    private func persistTermCache() {
         let encoded = Dictionary(uniqueKeysWithValues: termCache.map { ($0.key.rawValue, $0.value) })
-        guard let data = try? JSONEncoder().encode(encoded) else { return }
-        UserDefaults.standard.set(data, forKey: cacheKey)
+        guard let key = cacheKey, let data = try? JSONEncoder().encode(encoded) else { return }
+        cacheDefaults.set(data, forKey: key)
     }
 
     private static func hasMeaningfulHistory(_ semesters: [SemesterGrade]) -> Bool {
-        for sem in semesters where sem.creditsTaken >= 6 && sem.averageScore > 1 && !sem.courses.isEmpty {
-            let gradedCount = sem.courses.filter { $0.credits > 0 && $0.score > 0 }.count
-            if gradedCount >= 2 {
-                return true
-            }
+        semesters.contains { semester in
+            semester.creditsTaken >= 6 && semester.averageScore > 1 && !semester.courses.isEmpty
+                && semester.courses.filter { $0.credits > 0 && $0.score > 0 }.count >= 2
         }
-        return false
     }
 }
 

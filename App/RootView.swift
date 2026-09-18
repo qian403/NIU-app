@@ -16,12 +16,14 @@ struct RootView: View {
 
             // Session refresh may require interactive verification on the school's page.
             if sessionService.showRefreshWebView {
+                let refreshID = sessionService.refreshID
                 SSOLoginWebView(
                     account: sessionService.refreshAccount,
                     password: sessionService.refreshPassword
                 ) { result in
-                    SSOSessionService.shared.handleRefreshResult(result)
+                    SSOSessionService.shared.handleRefreshResult(result, requestID: refreshID)
                 }
+                .id(refreshID)
                 .background(Color(.systemBackground))
                 .ignoresSafeArea()
                 .zIndex(1)

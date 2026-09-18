@@ -31,6 +31,9 @@ enum SSOGUIDBridge {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
             guard status == 200 else {
                 print("[SSOGUIDBridge] /SSO/API/GUID status=\(status)")
+                if status == 401 {
+                    SSOTokenStore.shared.clear(ifMatching: token)
+                }
                 return nil
             }
             struct Payload: Decodable { let guid: String? }
@@ -48,4 +51,20 @@ enum SSOGUIDBridge {
     static func acadeLoginURL(guid: String) -> URL? {
         URL(string: "https://acade.niu.edu.tw/NIU/Login.aspx?GUID=\(guid)")
     }
+    /// A GUID-bearing Login.aspx can finish before its redirect; it is not yet a failed login.
+    static func isSessionExpiredURL(_ url: URL) -> Bool {
+        let host = url.host?.lowercased() ?? ""
+        guard ["acade.niu.edu.tw", "ccsys.niu.edu.tw", "ccsys1.niu.edu.tw"].contains(host) else { return false }
+        let path = url.path.lowercased()
+        if host == "ccsys1.niu.edu.tw", path == "/sso" || path.hasPrefix("/sso/") {
+            return true
+        }
+        return path.hasSuffix("/timeoutpage.aspx")
+            || path.hasSuffix("/default.aspx")
+            || (path.hasSuffix("/login.aspx") && !(URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.contains { $0.name.caseInsensitiveCompare("guid") == .orderedSame && !($0.value ?? "").isEmpty } ?? false))
+            || path.hasSuffix("/account/login")
+    }
+
+
 }

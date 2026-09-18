@@ -166,15 +166,11 @@ struct HomeView: View {
 
             Spacer()
 
-            NavigationLink(
-                destination: MoodleWebPageView(
-                    title: "M 園區通知",
-                    targetURL: "https://euni.niu.edu.tw/message/output/popup/notifications.php"
-                )
-            ) {
-                iconButtonAppearance("bell.badge")
+            NavigationLink(destination: SettingsView()) {
+                iconButtonAppearance("gearshape")
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("設定")
         }
     }
 
@@ -422,6 +418,14 @@ struct HomeView: View {
                     subtitle: "查看每週課程安排",
                     color: .purple,
                     destination: ClassScheduleView()
+                )
+
+                FeatureCard(
+                    icon: "qrcode",
+                    title: "圖書館通行碼",
+                    subtitle: "門禁 QR Code 與借書條碼",
+                    color: .indigo,
+                    destination: LibraryCodeView()
                 )
 
                 FeatureCard(

@@ -7,6 +7,7 @@ struct MoodleAttendanceWebOutcome: Equatable {
         case recorded
         case alreadyRecorded
         case requiresAction
+        case expired
         case failed
         case unknown
     }
@@ -14,6 +15,15 @@ struct MoodleAttendanceWebOutcome: Equatable {
     let kind: Kind
     let message: String
     let courseModuleID: Int?
+
+    var opensWebResponseAutomatically: Bool { kind == .requiresAction }
+
+    var isTerminal: Bool {
+        switch kind {
+        case .recorded, .alreadyRecorded, .expired, .failed: return true
+        case .requiresAction, .unknown: return false
+        }
+    }
 }
 
 /// Moodle page viewer.
@@ -148,6 +158,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private var hasTriedSilentRefresh = false
     private var webContentRecoveryAttempts = 0
     private var assignmentResolveAttempts = 0
+    private var attendanceNavigationGeneration = 0
     private let maxAssignmentResolveAttempts = 2
 
     private enum Phase {
@@ -445,13 +456,15 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         let body: String
         let hasAttendanceForm: Bool
         let notifications: [AttendancePageNotification]
+        let errorCodes: [String]
     }
 
     private func inspectAttendancePage(_ webView: WKWebView) {
+        let generation = attendanceNavigationGeneration
         let script = """
         (function() {
             var nodes = document.querySelectorAll(
-                '[data-region="notification"], .alert, .notification, [role="alert"]'
+                '[data-region="notification"], .alert, .notification, [role="alert"], .errorbox, .errormessage, [data-rel="fatalerror"]'
             );
             var notifications = Array.prototype.map.call(nodes, function(node) {
                 return {
@@ -461,20 +474,37 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 };
             }).filter(function(item) { return item.text.length > 0; });
 
+            var main = document.querySelector('#region-main') || document.body;
+            var errorCodes = Array.prototype.map.call(document.querySelectorAll('a[href]'), function(link) {
+                // Moodle error-help links carry stable identifiers across languages.
+                var parts = new URL(link.href, window.location.href).pathname.split('/').filter(Boolean);
+                var index = parts.indexOf('error');
+                return index >= 0 && ['attendance', 'mod_attendance'].indexOf(parts[index + 1]) >= 0
+                    ? parts[index + 2] || '' : '';
+            }).filter(Boolean);
+            var hasAttendanceForm = Array.prototype.some.call(document.querySelectorAll('form'), function(form) {
+                var action = new URL(form.action || window.location.href, window.location.href);
+                return action.pathname === '/mod/attendance/attendance.php'
+                    && !!form.querySelector('input[name="sessid"]')
+                    && !!form.querySelector('input[name="status"], select[name="status"], input[name="studentpassword"]')
+                    && !!form.querySelector('button[type="submit"], input[type="submit"]');
+            });
             return JSON.stringify({
                 url: window.location.href,
-                body: ((document.body && document.body.innerText) || '').slice(0, 12000),
-                hasAttendanceForm: !!document.querySelector(
-                    'form[action*="/mod/attendance/attendance.php"], input[name="sessid"]'
-                ),
-                notifications: notifications
+                body: ((main && main.innerText) || '').slice(0, 12000),
+                hasAttendanceForm: hasAttendanceForm,
+                notifications: notifications,
+                errorCodes: errorCodes
             });
         })();
         """
 
         Task { @MainActor [weak self, weak webView] in
             guard let self, let webView else { return }
-            guard let raw = try? await webView.evaluateJavaScript(script) as? String,
+            let raw = try? await webView.evaluateJavaScript(script) as? String
+            guard generation == self.attendanceNavigationGeneration,
+                  self.attendanceOutcome?.isTerminal != true else { return }
+            guard let raw,
                   let data = raw.data(using: .utf8),
                   let snapshot = try? JSONDecoder().decode(AttendancePageSnapshot.self, from: data)
             else {
@@ -486,7 +516,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 return
             }
 
-            self.attendanceOutcome = self.makeAttendanceOutcome(from: snapshot)
+            let outcome = self.makeAttendanceOutcome(from: snapshot)
+            print("[MoodleAttendance] result=\(outcome.kind) path=\(URL(string: snapshot.url)?.path ?? "")")
+            self.attendanceOutcome = outcome
         }
     }
 
@@ -497,6 +529,27 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         let normalizedNotificationText = notificationText.lowercased()
         let courseModuleID = attendanceCourseModuleID(from: snapshot.url)
         let isOriginalAttendanceEndpoint = matchesOriginalAttendanceEndpoint(snapshot.url)
+
+        guard let responseURL = URL(string: snapshot.url),
+              responseURL.scheme == "https", responseURL.host == "euni.niu.edu.tw" else {
+            return MoodleAttendanceWebOutcome(kind: .unknown,
+                message: "未取得 M 園區的點名回應，請重新掃描或查看原始回應。", courseModuleID: nil)
+        }
+
+        let expiredPatterns = [
+            "qr code has expired", "qr session has expired", "qr code expired",
+            "qr 碼已過期", "qr碼已過期", "qr code 已過期", "qrcode已過期",
+            "qr代碼已過期", "qr 代碼已過期", "二維碼已過期", "二维码已过期"
+        ]
+        let compactText = normalized.filter { !$0.isWhitespace }
+        if snapshot.errorCodes.contains(where: { ["qr_pass_wrong", "qr_cookie_error"].contains($0) })
+            || expiredPatterns.contains(where: { compactText.contains($0.filter { !$0.isWhitespace }) }) {
+            return MoodleAttendanceWebOutcome(
+                kind: .expired,
+                message: "這個 QR Code 已過期，這次未完成點名。請對準老師目前顯示的最新 QR Code 重新掃描。",
+                courseModuleID: courseModuleID
+            )
+        }
 
         let alreadyRecordedPatterns = [
             "attendance has already been set",
@@ -514,9 +567,18 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             )
         }
 
+        // A correctable form (for example, a mistyped attendance password) is
+        // not a terminal failure. Expired QR codes above still require a new scan.
+        if snapshot.hasAttendanceForm {
+            return MoodleAttendanceWebOutcome(
+                kind: .requiresAction,
+                message: bestAttendanceMessage(notificationText,
+                    fallback: "這堂課仍需要在 M 園區選擇狀態或送出表單。"),
+                courseModuleID: courseModuleID
+            )
+        }
+
         let failurePatterns = [
-            "qr code has expired",
-            "qr session has expired",
             "incorrect password",
             "attendance has not been recorded",
             "no valid status was available",
@@ -525,12 +587,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             "outside the allowed subnet",
             "not in the allowed range",
             "device appears to have been used to record attendance for another student",
-            "qr code expired",
             "沒有可用的有效狀態",
             "學生只可以從某些特定的位置上紀錄出缺席",
             "自我標記已被禁用",
-            "qr 碼已過期",
-            "qr code 已過期",
             "密碼不正確",
             "密碼錯誤",
             "尚未開放",
@@ -546,14 +605,6 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             return MoodleAttendanceWebOutcome(
                 kind: .failed,
                 message: bestAttendanceMessage(notificationText, fallback: match),
-                courseModuleID: courseModuleID
-            )
-        }
-
-        if snapshot.hasAttendanceForm {
-            return MoodleAttendanceWebOutcome(
-                kind: .requiresAction,
-                message: "這堂課仍需要在 M 園區選擇狀態或送出表單。",
                 courseModuleID: courseModuleID
             )
         }
@@ -575,7 +626,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
         return MoodleAttendanceWebOutcome(
             kind: .unknown,
-            message: bestAttendanceMessage(notificationText, fallback: "M 園區沒有回傳可確認的點名結果。"),
+            message: "M 園區沒有回傳可確認的點名結果，可能是 QR Code 已失效或頁面已跳轉。請重新掃描最新的 QR Code，或查看原始回應。",
             courseModuleID: courseModuleID
         )
     }
@@ -707,7 +758,13 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
     // MARK: - WKNavigationDelegate
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        attendanceNavigationGeneration &+= 1
+    }
+
     func webView(_ wv: WKWebView, didFinish navigation: WKNavigation!) {
+        // A later school redirect must not replace a result or resubmit its QR.
+        guard !isAttendanceQRTarget || attendanceOutcome?.isTerminal != true else { return }
         let url = wv.url?.absoluteString ?? ""
         if isAttendanceQRTarget {
             // QR pass and mobile autologin keys must not appear in diagnostics.
@@ -797,7 +854,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func webView(_ wv: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        print("[MoodleWeb] didFail: \(error.localizedDescription)")
+        guard !isAttendanceQRTarget || attendanceOutcome?.isTerminal != true else { return }
+        print("[MoodleWeb] didFail code=\((error as NSError).code)")
         if (error as NSError).code == NSURLErrorCancelled { return }
         if isAttendanceQRTarget {
             phase = .done
@@ -821,7 +879,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func webView(_ wv: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        print("[MoodleWeb] provisional fail: \(error.localizedDescription)")
+        guard !isAttendanceQRTarget || attendanceOutcome?.isTerminal != true else { return }
+        print("[MoodleWeb] provisional fail code=\((error as NSError).code)")
         if (error as NSError).code == NSURLErrorCancelled { return }
         if isAttendanceQRTarget {
             phase = .done
@@ -845,6 +904,12 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        if isAttendanceQRTarget {
+            // Reloading a submission may reuse an expired code or submit it again.
+            guard attendanceOutcome?.isTerminal != true else { return }
+            failTargetLoad("點名頁面已中斷，無法確認結果。請返回掃描最新的 QR Code。")
+            return
+        }
         guard webContentRecoveryAttempts < 1 else {
             failTargetLoad("M 園區頁面程序已中斷，請重新載入。")
             return
