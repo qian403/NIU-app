@@ -84,6 +84,7 @@ struct CalendarEventCard: View {
         case .semester: return .purple
         case .activity: return .cyan
         case .deadline: return .pink
+        case .academic: return .indigo
         }
     }
     
@@ -91,6 +92,8 @@ struct CalendarEventCard: View {
     
     private func monthString(from date: Date) -> String {
         let formatter = DateFormatter()
+        formatter.calendar = CampusCalendarDate.calendar
+        formatter.timeZone = CampusCalendarDate.calendar.timeZone
         formatter.dateFormat = "M月"
         formatter.locale = Locale(identifier: "zh_TW")
         return formatter.string(from: date)
@@ -98,6 +101,8 @@ struct CalendarEventCard: View {
     
     private func weekdayString(from date: Date) -> String {
         let formatter = DateFormatter()
+        formatter.calendar = CampusCalendarDate.calendar
+        formatter.timeZone = CampusCalendarDate.calendar.timeZone
         formatter.dateFormat = "E"
         formatter.locale = Locale(identifier: "zh_TW")
         return formatter.string(from: date)
@@ -105,6 +110,8 @@ struct CalendarEventCard: View {
 
     private func dayString(from date: Date) -> String {
         let formatter = DateFormatter()
+        formatter.calendar = CampusCalendarDate.calendar
+        formatter.timeZone = CampusCalendarDate.calendar.timeZone
         formatter.dateFormat = "dd"
         return formatter.string(from: date)
     }
@@ -133,6 +140,15 @@ struct CalendarEventDetailSheet: View {
                     // 描述
                     if let description = event.description, !description.isEmpty {
                         descriptionSection(description)
+                    }
+                    if let sourceText = event.sourceText {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("校方原文").font(.subheadline).foregroundStyle(.secondary)
+                            Text(sourceText)
+                            if let url = event.sourceURL {
+                                Link("查看校方行事曆 PDF", destination: url)
+                            }
+                        }
                     }
                 }
                 .padding()
@@ -240,11 +256,14 @@ struct CalendarEventDetailSheet: View {
         case .semester: return .purple
         case .activity: return .cyan
         case .deadline: return .pink
+        case .academic: return .indigo
         }
     }
     
     private func fullDateString(from date: Date) -> String {
         let formatter = DateFormatter()
+        formatter.calendar = CampusCalendarDate.calendar
+        formatter.timeZone = CampusCalendarDate.calendar.timeZone
         formatter.dateFormat = "yyyy年MM月dd日"
         formatter.locale = Locale(identifier: "zh_TW")
         return formatter.string(from: date)

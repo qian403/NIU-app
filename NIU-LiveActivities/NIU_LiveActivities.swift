@@ -1,8 +1,6 @@
 import WidgetKit
 import SwiftUI
 
-private let bundledAcademicCalendarURL = Bundle.main.url(forResource: "academic_calendar", withExtension: "json")
-
 struct NIUWidgetEntry: TimelineEntry {
     let date: Date
     fileprivate let payload: WidgetPayload
@@ -11,17 +9,6 @@ struct NIUWidgetEntry: TimelineEntry {
 
 struct NIUWidgetProvider: AppIntentTimelineProvider {
     private let appGroupIdentifier = "group.dev.chien.niuapp"
-    private let appGroupCalendarCacheKey = "academicCalendar.shared.cachedData"
-
-    private var academicCalendarURL: URL {
-        let calendar = Calendar.current
-        let now = Date()
-        let gregorianYear = calendar.component(.year, from: now)
-        let month = calendar.component(.month, from: now)
-        let academicYear = month >= 8 ? gregorianYear - 1911 : gregorianYear - 1912
-        return URL(string: "https://tools.chien.dev/data/niu/academic-calendar/\(academicYear).json")!
-    }
-
     func placeholder(in context: Context) -> NIUWidgetEntry {
         NIUWidgetEntry(
             date: Date(),
@@ -39,6 +26,19 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
 
     func timeline(for contentType: WidgetContentType, tapAction: WidgetTapAction) async -> Timeline<NIUWidgetEntry> {
         let now = Date()
+        if contentType == .academicCalendar {
+            let year = CampusCalendarDate.academicYear(at: now)
+            let result = await AcademicCalendarStore.shared.refresh(year: year, now: now)
+            let tomorrow = CampusCalendarDate.tomorrow(after: now)
+            let nextYear = CampusCalendarDate.academicYear(at: tomorrow)
+            let nextResult = nextYear == year ? result : await AcademicCalendarStore.shared.refresh(year: nextYear, now: now)
+            // The midnight entry changes dates/years even if iOS delays the requested refresh.
+            let entries = [
+                NIUWidgetEntry(date: now, payload: .calendar(calendarSummary(result: result, now: now)), tapAction: tapAction),
+                NIUWidgetEntry(date: tomorrow, payload: .calendar(calendarSummary(result: nextResult, now: tomorrow)), tapAction: tapAction)
+            ]
+            return Timeline(entries: entries, policy: .after(min(now.addingTimeInterval(1800), tomorrow)))
+        }
         guard contentType == .classSchedule else {
             let entry = await entry(for: contentType, tapAction: tapAction, at: now)
             return Timeline(entries: [entry], policy: .after(now.addingTimeInterval(1800)))
@@ -74,7 +74,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         case .classSchedule:
             return .todaySchedule(loadTodayScheduleSummary(now: date))
         case .academicCalendar:
-            return .calendar(await loadCalendarSummary())
+            return .calendar(await loadCalendarSummary(now: date))
         case .weeklyTimetable:
             return .weeklyTimetable(loadWeekSummary())
         }
@@ -241,71 +241,34 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         )
     }
 
-    private func loadCalendarSummary() async -> CalendarSummary {
-        let events = await loadAcademicCalendarEvents()
-        guard !events.isEmpty else {
-            return CalendarSummary(
-                state: "資料異常",
-                title: "資料讀取失敗",
-                subtitle: "請稍後再試",
-                entries: []
-            )
-        }
-
-        let calendar = Calendar.current
-        let now = Date()
-        let startOfToday = calendar.startOfDay(for: now)
-        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
-        let todayEvents = events.filter { event in
-            guard let start = event.start else { return false }
-            return start >= startOfToday && start < endOfToday
-        }
-
-        if let current = events.first(where: { event in
-            guard let start = event.start, let end = event.end else { return false }
-            return start <= now && now <= end
-        }) {
-            let entries = Array(events.filter { event in
-                guard let start = event.start, let end = event.end else { return false }
-                return start <= now && now <= end
-            }.prefix(3)).map(makeCalendarItem)
-            return CalendarSummary(
-                state: current.isMultiDay ? "進行中" : "今日事件",
-                title: current.title,
-                subtitle: displayDateRange(for: current),
-                entries: entries
-            )
-        }
-
-        if let today = todayEvents.first {
-            return CalendarSummary(
-                state: "今日事件",
-                title: today.title,
-                subtitle: displayDateRange(for: today),
-                entries: Array(todayEvents.prefix(3)).map(makeCalendarItem)
-            )
-        }
-
-        if let next = events.first(where: { ($0.start ?? .distantFuture) >= startOfToday }) {
-            let upcoming = Array(events.filter { ($0.start ?? .distantFuture) >= startOfToday }.prefix(3)).map(makeCalendarItem)
-            let state = calendar.isDate(next.start ?? now, inSameDayAs: now) ? "今日事件" : "下一個事件"
-            return CalendarSummary(
-                state: state,
-                title: next.title,
-                subtitle: displayDateRange(for: next),
-                entries: upcoming
-            )
-        }
-
-        return CalendarSummary(
-            state: "今日無事",
-            title: "今天沒有事件",
-            subtitle: "打開完整行事曆查看更多日程",
-            entries: []
-        )
+    private func loadCalendarSummary(now: Date) async -> CalendarSummary {
+        let result = await AcademicCalendarStore.shared.refresh(year: CampusCalendarDate.academicYear(at: now), now: now)
+        return calendarSummary(result: result, now: now)
     }
 
-    private func makeCalendarItem(from event: WidgetCalendarEvent) -> CalendarItem {
+    private func calendarSummary(result: CampusCalendarResult, now: Date) -> CalendarSummary {
+        guard let document = result.document else {
+            return CalendarSummary(state: "\(result.year) 學年度", title: result.isNotPublished ? "行事曆尚未公布" : "尚未取得行事曆",
+                                   subtitle: result.notice ?? "開啟 App 更新", entries: [])
+        }
+        let today = CampusCalendarDate.dayKey(now)
+        let events = document.events.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+        let active = events.filter { $0.contains(now) }.sorted {
+            if ($0.startDate == today) != ($1.startDate == today) { return $0.startDate == today }
+            return ($0.startDate, $0.id) < ($1.startDate, $1.id)
+        }
+        let upcoming = events.filter { $0.startDate > today }
+        let visible = active.isEmpty ? upcoming : active
+        let state = result.notice != nil ? "已儲存資料" : "\(result.year) 學年度"
+        if let event = visible.first {
+            return CalendarSummary(state: state, title: event.title,
+                                   subtitle: displayDateRange(for: event),
+                                   entries: Array(visible.prefix(3)).map(makeCalendarItem))
+        }
+        return CalendarSummary(state: state, title: "目前沒有後續事件", subtitle: "開啟 App 查看完整行事曆", entries: [])
+    }
+
+    private func makeCalendarItem(from event: CampusCalendarEvent) -> CalendarItem {
         CalendarItem(
             dayText: dayLabel(for: event.start),
             monthText: monthLabel(for: event.start),
@@ -323,64 +286,16 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         return schedule
     }
 
-    private func loadAcademicCalendarEvents() async -> [WidgetCalendarEvent] {
-        if let cached = loadSharedAcademicCalendarEvents(), !cached.isEmpty {
-            return cached.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
-        }
-        if let remote = await loadRemoteAcademicCalendarEvents(), !remote.isEmpty {
-            return remote.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
-        }
-        if let local = loadBundledAcademicCalendarEvents(), !local.isEmpty {
-            return local.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
-        }
-        return []
-    }
-
-    private func loadSharedAcademicCalendarEvents() -> [WidgetCalendarEvent]? {
-        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
-        guard let data = defaults.data(forKey: appGroupCalendarCacheKey) else {
-            return nil
-        }
-
-        if let decoded = try? JSONDecoder().decode(WidgetRemoteAcademicCalendar.self, from: data) {
-            return decoded.pages.flatMap { $0.events }
-        }
-
-        if let decoded = try? JSONDecoder().decode(WidgetBundledAcademicCalendar.self, from: data) {
-            return decoded.calendars.flatMap(\.events)
-        }
-
-        return nil
-    }
-
-    private func loadRemoteAcademicCalendarEvents() async -> [WidgetCalendarEvent]? {
-        do {
-            let (data, _) = try await URLSession.shared.data(from: academicCalendarURL)
-            let decoded = try JSONDecoder().decode(WidgetRemoteAcademicCalendar.self, from: data)
-            return decoded.pages.flatMap { $0.events }
-        } catch {
-            return nil
-        }
-    }
-
-    private func loadBundledAcademicCalendarEvents() -> [WidgetCalendarEvent]? {
-        guard let url = bundledAcademicCalendarURL,
-              let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(WidgetBundledAcademicCalendar.self, from: data) else {
-            return nil
-        }
-
-        return decoded.calendars.flatMap(\.events)
-    }
-
-    private func displayDateRange(for event: WidgetCalendarEvent) -> String {
+    private func displayDateRange(for event: CampusCalendarEvent) -> String {
         guard let start = event.start else { return "" }
         let formatter = DateFormatter()
+        formatter.calendar = CampusCalendarDate.calendar
+        formatter.timeZone = CampusCalendarDate.calendar.timeZone
         formatter.locale = Locale(identifier: "zh_TW")
         formatter.dateFormat = "M/d"
 
         let startLabel = formatter.string(from: start)
-        guard let end = event.end, !Calendar.current.isDate(start, inSameDayAs: end) else {
+        guard let end = event.end, !CampusCalendarDate.calendar.isDate(start, inSameDayAs: end) else {
             return startLabel
         }
         return "\(startLabel) - \(formatter.string(from: end))"
@@ -388,12 +303,12 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
 
     private func dayLabel(for date: Date?) -> String {
         guard let date else { return "--" }
-        return String(Calendar.current.component(.day, from: date))
+        return String(CampusCalendarDate.calendar.component(.day, from: date))
     }
 
     private func monthLabel(for date: Date?) -> String {
         guard let date else { return "" }
-        return "\(Calendar.current.component(.month, from: date))月"
+        return "\(CampusCalendarDate.calendar.component(.month, from: date))月"
     }
 
     private func weekdayIndex(from dayHeader: String) -> Int? {
@@ -1511,70 +1426,6 @@ private struct WidgetCourseInfo: Decodable {
     let name: String
     let classroom: String?
     let teacher: String?
-}
-
-private struct WidgetRemoteAcademicCalendar: Decodable {
-    let pages: [WidgetRemoteAcademicCalendarPage]
-}
-
-private struct WidgetBundledAcademicCalendar: Decodable {
-    let calendars: [WidgetBundledSemester]
-}
-
-private struct WidgetBundledSemester: Decodable {
-    let events: [WidgetCalendarEvent]
-}
-
-private struct WidgetRemoteAcademicCalendarPage: Decodable {
-    let events: [WidgetCalendarEvent]
-}
-
-private struct WidgetCalendarEvent: Decodable {
-    let title: String
-    let startDate: String
-    let endDate: String?
-
-    enum CodingKeys: String, CodingKey {
-        case title
-        case startDate
-        case endDate
-        case description
-        case start_date
-        case end_date
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        title = (try? container.decode(String.self, forKey: .title))
-            ?? (try? container.decode(String.self, forKey: .description))
-            ?? "未命名事件"
-        startDate = (try? container.decode(String.self, forKey: .startDate))
-            ?? (try? container.decode(String.self, forKey: .start_date))
-            ?? "1970-01-01"
-        endDate = (try? container.decodeIfPresent(String.self, forKey: .endDate))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .end_date))
-    }
-
-    var start: Date? {
-        Self.formatter.date(from: startDate)
-    }
-
-    var end: Date? {
-        Self.formatter.date(from: endDate ?? startDate)
-    }
-
-    var isMultiDay: Bool {
-        endDate != nil && endDate != startDate
-    }
-
-    private static let formatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
 }
 
 private extension String {
