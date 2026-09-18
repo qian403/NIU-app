@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct LibraryCodeView: View {
     @EnvironmentObject private var appState: AppState
@@ -11,6 +12,7 @@ struct LibraryCodeView: View {
     @State private var refreshID = 0
     @State private var displayedRequest: RequestIdentity?
     @State private var service = LibraryCodeService()
+    @State private var isVisible = false
 
     private struct RequestIdentity: Equatable {
         let account: String
@@ -50,17 +52,23 @@ struct LibraryCodeView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                codeContent
-                    .frame(maxWidth: .infinity, minHeight: 280)
-                    .padding(20)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+                // Keep the same footprint for the image, loading and error states.
+                Color.white
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        codeContent
+                            .padding(20)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
                     .privacySensitive()
 
-                if let updatedAt, displayedRequest == requestIdentity, image != nil {
-                    Text("最後更新：\(updatedAt.formatted(date: .omitted, time: .standard))")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                Text("最後更新：\(updatedAt?.formatted(date: .omitted, time: .standard) ?? "—")")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .opacity(showsUpdateTime ? 1 : 0)
+                    .accessibilityHidden(!showsUpdateTime)
 
                 Button {
                     refreshID += 1
@@ -82,13 +90,26 @@ struct LibraryCodeView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(.systemGroupedBackground))
+        .background {
+            LibraryCodeBrightnessView(isActive: isVisible && scenePhase == .active)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        }
         .navigationTitle("圖書館通行碼")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .task(id: requestIdentity) {
             await displayCodes(for: requestIdentity)
         }
-        .onDisappear { clearCode() }
+        .onAppear { isVisible = true }
+        .onDisappear {
+            isVisible = false
+            clearCode()
+        }
+    }
+
+    private var showsUpdateTime: Bool {
+        updatedAt != nil && displayedRequest == requestIdentity && image != nil
     }
 
     @ViewBuilder
@@ -175,5 +196,53 @@ struct LibraryCodeView: View {
         errorMessage = nil
         isLoading = false
         displayedRequest = nil
+    }
+}
+
+/// Owns a temporary brightness override for the screen displaying this page.
+private struct LibraryCodeBrightnessView: UIViewRepresentable {
+    let isActive: Bool
+
+    func makeUIView(context: Context) -> BrightnessView { BrightnessView() }
+
+    func updateUIView(_ uiView: BrightnessView, context: Context) {
+        uiView.isActive = isActive
+        uiView.updateBrightness()
+    }
+
+    static func dismantleUIView(_ uiView: BrightnessView, coordinator: ()) {
+        uiView.isActive = false
+        uiView.restoreBrightness()
+    }
+
+    final class BrightnessView: UIView {
+        var isActive = false
+        private var savedBrightness: CGFloat?
+        private var adjustedScreen: UIScreen?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            updateBrightness()
+        }
+
+        func updateBrightness() {
+            guard isActive, let screen = window?.windowScene?.screen else {
+                restoreBrightness()
+                return
+            }
+            guard adjustedScreen !== screen else { return }
+            restoreBrightness()
+            savedBrightness = screen.brightness
+            adjustedScreen = screen
+            screen.brightness = 1
+        }
+
+        func restoreBrightness() {
+            if let adjustedScreen, let savedBrightness {
+                adjustedScreen.brightness = savedBrightness
+            }
+            adjustedScreen = nil
+            savedBrightness = nil
+        }
     }
 }
