@@ -95,7 +95,6 @@ final class AppState: ObservableObject {
                 MoodleSessionManager.shared.fetchEUNILink()
             }
             Task { await refreshNotificationSchedules() }
-            Task { await refreshClassLiveActivitiesIfNeeded() }
             Task { await refreshProfileIfNeeded() }
         }
     }
@@ -210,7 +209,7 @@ final class AppState: ObservableObject {
     }
 
     func applicationDidBecomeActive() async {
-        await refreshClassLiveActivitiesIfNeeded(forceRebuild: true)
+        await refreshClassLiveActivitiesIfNeeded()
         ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
     }
 
@@ -228,7 +227,6 @@ final class AppState: ObservableObject {
             guard let self else { return }
             Task {
                 await self.refreshNotificationSchedules()
-                await self.refreshClassLiveActivitiesIfNeeded()
                 await self.uploadScheduleToBackend()
             }
         }

@@ -91,8 +91,11 @@ struct MoodleWebPageView: View {
             externalOpenURL: webManager.externalOpenURL
         ))
         .onAppear {
-            webManager.loadWithSSO(targetURL: targetURL)
+            if !targetURL.contains("pluginfile.php") {
+                webManager.loadWithSSO(targetURL: targetURL)
+            }
         }
+        .onDisappear { webManager.cancel() }
     }
 }
 
@@ -137,7 +140,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var errorMessage: String?
     @Published private(set) var attendanceOutcome: MoodleAttendanceWebOutcome?
 
-    lazy var webView: WKWebView = {
+    private var storedWebView: WKWebView?
+    var webView: WKWebView {
+        if let storedWebView { return storedWebView }
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -147,12 +152,15 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        storedWebView = webView
         return webView
-    }()
+    }
     private var targetURL: String?
     private var originalTargetURL: String?
     private var phase: Phase = .idle
     private var hasStarted = false
+    private var loadingTask: Task<Void, Never>?
+    private var loadGeneration = 0
     private var retriedAfterLoginRedirect = false
     private var isAutologinSupported = true
     private var hasTriedSilentRefresh = false
@@ -176,20 +184,39 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     func loadWithSSO(targetURL: String) {
         guard !hasStarted else { return }
         hasStarted = true
+        storedWebView?.navigationDelegate = self
+        isPageReady = false
         self.originalTargetURL = targetURL
         self.errorMessage = nil
         self.attendanceOutcome = nil
         self.assignmentResolveAttempts = 0
 
-        Task {
+        let generation = loadGeneration
+        loadingTask = Task { [weak self] in
+            guard let self else { return }
             let resolved = await resolveTargetURL(from: targetURL)
+            guard !Task.isCancelled, generation == loadGeneration else { return }
             targetURLReady(resolved)
         }
     }
 
+    func cancel() {
+        loadGeneration &+= 1
+        attendanceNavigationGeneration &+= 1
+        loadingTask?.cancel()
+        loadingTask = nil
+        storedWebView?.stopLoading()
+        storedWebView?.navigationDelegate = nil
+        hasStarted = false
+        phase = .idle
+        retriedAfterLoginRedirect = false
+        hasTriedSilentRefresh = false
+        webContentRecoveryAttempts = 0
+    }
+
     func retry() {
         guard let originalTargetURL else { return }
-        webView.stopLoading()
+        cancel()
         phase = .idle
         hasStarted = false
         retriedAfterLoginRedirect = false
@@ -240,7 +267,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         self.externalOpenURL = resolvedTarget
         
         // Sync cookies from HTTPCookieStorage to WKWebView (like reference project)
-        syncCookies {
+        let generation = loadGeneration
+        syncCookies { [weak self] in
+            guard let self, self.hasStarted, generation == self.loadGeneration else { return }
             // Attendance QR tokens are short-lived, while IRS is a browser-only
             // activity. If mobile autologin is available, both should use it
             // immediately instead of taking an unnecessary SSO portal round trip.
@@ -305,6 +334,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     private func extractEUNIRedirectPath(from webView: WKWebView, attempt: Int = 0) {
+        guard hasStarted, webView === storedWebView else { return }
+        let generation = loadGeneration
         let js = """
         (function() {
             var ids = [
@@ -363,8 +394,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         })();
         """
 
-        webView.evaluateJavaScript(js) { [weak self] result, _ in
-            guard let self else { return }
+        webView.evaluateJavaScript(js) { [weak self, weak webView] result, _ in
+            guard let self, let webView, self.hasStarted,
+                  generation == self.loadGeneration else { return }
             let rawJSON = (result as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             var resolved = ""
 
@@ -375,7 +407,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 let bodyLen = obj["bodyLen"] as? Int ?? 0
 
                 if resolved.isEmpty && attempt < 8 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak webView] in
+                        guard let self, let webView, generation == self.loadGeneration else { return }
                         self.extractEUNIRedirectPath(from: webView, attempt: attempt + 1)
                     }
                     return
@@ -412,8 +445,12 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private func retryUsingAutologin() {
         guard !retriedAfterLoginRedirect, let originalTargetURL else { return }
         retriedAfterLoginRedirect = true
-        Task {
+        loadingTask?.cancel()
+        let generation = loadGeneration
+        loadingTask = Task { [weak self] in
+            guard let self else { return }
             let resolved = await resolveTargetURL(from: originalTargetURL)
+            guard !Task.isCancelled, generation == loadGeneration else { return }
             self.targetURL = resolved.absoluteString
             self.externalOpenURL = resolved
             self.phase = .loadingTarget
@@ -711,20 +748,24 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         isPageReady = false
         print("[MoodleWeb] Silent refresh requested: \(reason)")
 
-        Task {
+        loadingTask?.cancel()
+        let generation = loadGeneration
+        loadingTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
             let refreshed = await SSOSessionService.shared.requestRefresh()
-            if refreshed, let target = originalTargetURL {
+            guard !Task.isCancelled, let self, generation == self.loadGeneration else { return }
+            if refreshed, let target = self.originalTargetURL {
                 print("[MoodleWeb] Silent refresh success, retry target")
                 SSOEUNISettings.shared.clear()
-                phase = .idle
-                hasStarted = false
-                retriedAfterLoginRedirect = false
-                targetURL = nil
-                externalOpenURL = nil
-                loadWithSSO(targetURL: target)
+                self.phase = .idle
+                self.hasStarted = false
+                self.retriedAfterLoginRedirect = false
+                self.targetURL = nil
+                self.externalOpenURL = nil
+                self.loadWithSSO(targetURL: target)
             } else {
                 print("[MoodleWeb] Silent refresh failed")
-                failAsNeedsRelogin()
+                self.failAsNeedsRelogin()
             }
         }
     }
@@ -763,6 +804,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func webView(_ wv: WKWebView, didFinish navigation: WKNavigation!) {
+        guard hasStarted, wv === storedWebView else { return }
         // A later school redirect must not replace a result or resubmit its QR.
         guard !isAttendanceQRTarget || attendanceOutcome?.isTerminal != true else { return }
         let url = wv.url?.absoluteString ?? ""
@@ -950,6 +992,10 @@ private struct TokenFileWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: ()) {
+        uiView.stopLoading()
+    }
 
     private func rewrittenURL() -> URL? {
         guard let token = MoodleService.shared.currentToken else {

@@ -65,6 +65,7 @@ struct MoodleAttendanceScannerView: View {
             prepareAttendanceAccess()
         }
         .onDisappear {
+            scanner.onCode = nil
             isVisible = false
             validationTask?.cancel()
             preparationGeneration &+= 1
@@ -530,6 +531,7 @@ private struct MoodleAttendanceSubmissionView: View {
                 webManager.loadWithSSO(targetURL: attendanceURL.absoluteString)
             }
         }
+        .onDisappear { webManager.cancel() }
         .onChange(of: webManager.attendanceOutcome) { _, newValue in
             guard let newValue else { return }
             if newValue.kind == .expired { onQRCodeExpired() }
@@ -946,6 +948,9 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
 
     override init() {
         super.init()
+        #if DEBUG
+        NSLog("[AttendanceCamera] scanner allocated")
+        #endif
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(sessionInterruptionEnded),
@@ -962,6 +967,9 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        #if DEBUG
+        NSLog("[AttendanceCamera] scanner released")
+        #endif
     }
 
     func start() {

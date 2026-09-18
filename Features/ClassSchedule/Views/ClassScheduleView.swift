@@ -73,10 +73,11 @@ struct ClassScheduleView: View {
             }
         }
         .onAppear {
-            if vm.loadState == .idle {
+            if vm.loadState == .idle || (vm.schedule == nil && !vm.showWebView) {
                 vm.loadSchedule()
             }
         }
+        .onDisappear { vm.cancelLoading() }
     }
 
     // MARK: - Full-screen loading

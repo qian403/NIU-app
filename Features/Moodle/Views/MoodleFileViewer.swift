@@ -10,7 +10,8 @@ struct MoodleFileViewer: View {
     let fileURL: URL
 
     @State private var localFileURL: URL?
-    @State private var isLoading = true
+    @State private var downloadAttempt = 0
+    @State private var downloadDirectory: URL?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -29,7 +30,7 @@ struct MoodleFileViewer: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
-                    Button("重試") { download() }
+                    Button("重試") { downloadAttempt += 1 }
                         .font(.system(size: 14, weight: .medium))
                         .padding(.top, 4)
                     Spacer()
@@ -56,41 +57,45 @@ struct MoodleFileViewer: View {
                 }
             }
         }
-        .onAppear { download() }
-    }
-
-    private func download() {
-        isLoading = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let (tempURL, response) = try await URLSession.shared.download(from: fileURL)
-                let httpResponse = response as? HTTPURLResponse
-                guard httpResponse == nil || (200...299).contains(httpResponse!.statusCode) else {
-                    throw URLError(.badServerResponse)
-                }
-
-                // Move to a named file so QuickLook can identify the type
-                let dir = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("MoodleFiles", isDirectory: true)
-                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                let dest = dir.appendingPathComponent(fileName)
-                try? FileManager.default.removeItem(at: dest)
-                try FileManager.default.moveItem(at: tempURL, to: dest)
-
-                await MainActor.run {
-                    localFileURL = dest
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "下載失敗：\(error.localizedDescription)"
-                    isLoading = false
-                }
-            }
+        .task(id: downloadAttempt) { await download() }
+        .onDisappear {
+            if let downloadDirectory { try? FileManager.default.removeItem(at: downloadDirectory) }
+            downloadDirectory = nil
+            localFileURL = nil
         }
     }
+
+    private func download() async {
+        guard localFileURL == nil else { return }
+        errorMessage = nil
+        do {
+            let (tempURL, response) = try await URLSession.shared.download(from: fileURL)
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            try Task.checkCancellation()
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                throw URLError(.badServerResponse)
+            }
+            // Each viewer owns its files; identical attachment names cannot collide.
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("MoodleFiles", isDirectory: true)
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            do {
+                let name = URL(fileURLWithPath: fileName).lastPathComponent
+                let dest = dir.appendingPathComponent(name.isEmpty ? "attachment" : name)
+                try FileManager.default.moveItem(at: tempURL, to: dest)
+                downloadDirectory = dir
+                localFileURL = dest
+            } catch {
+                try? FileManager.default.removeItem(at: dir)
+                throw error
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            errorMessage = "下載失敗：\(error.localizedDescription)"
+        }
+    }
+
 }
 
 // MARK: - QuickLook wrapper

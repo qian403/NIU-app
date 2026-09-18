@@ -43,32 +43,25 @@ struct ClassScheduleWebView: UIViewRepresentable {
         //   2. Load acade.niu.edu.tw/NIU/Login.aspx?GUID=<guid> which redirects
         //      to MainFrame.aspx and establishes the legacy ASP.NET session
         //   3. WKNavigationDelegate then drives the rest of the flow
-        Task { @MainActor [weak wv] in
-            let account = SSOTokenStore.shared.account
-                ?? LoginRepository.shared.getSavedCredentials()?.username
-                ?? ""
-            guard !account.isEmpty,
-                  let guid = await SSOGUIDBridge.fetchGUID(account: account),
-                  let url = SSOGUIDBridge.acadeLoginURL(guid: guid),
-                  let webView = wv else {
-                context.coordinator.finish(.sessionExpired)
-                return
-            }
-            webView.load(URLRequest(url: url))
-        }
+        context.coordinator.startBridge()
         return wv
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancel()
+    }
+
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
 
-        let onResult: (ClassScheduleWebResult) -> Void
+        var onResult: ((ClassScheduleWebResult) -> Void)?
         weak var webView: WKWebView?
 
         private var step: Step = .waitForMainFrame
+        private var bridgeTask: Task<Void, Never>?
         private var active = true   // set false after we call onResult once
 
         private enum Step {
@@ -80,6 +73,31 @@ struct ClassScheduleWebView: UIViewRepresentable {
 
         init(onResult: @escaping (ClassScheduleWebResult) -> Void) {
             self.onResult = onResult
+        }
+
+        func startBridge() {
+            bridgeTask = Task { @MainActor [weak self] in
+                let account = SSOTokenStore.shared.account
+                    ?? LoginRepository.shared.getSavedCredentials()?.username ?? ""
+                let guid = account.isEmpty ? nil : await SSOGUIDBridge.fetchGUID(account: account)
+                guard !Task.isCancelled, let self, self.active,
+                      let webView = self.webView else { return }
+                guard let guid, let url = SSOGUIDBridge.acadeLoginURL(guid: guid) else {
+                    self.finish(.sessionExpired)
+                    return
+                }
+                webView.load(URLRequest(url: url))
+            }
+        }
+
+        func cancel() {
+            active = false
+            bridgeTask?.cancel()
+            bridgeTask = nil
+            webView?.stopLoading()
+            webView?.navigationDelegate = nil
+            webView?.uiDelegate = nil
+            onResult = nil
         }
 
         // MARK: WKNavigationDelegate
@@ -266,7 +284,8 @@ struct ClassScheduleWebView: UIViewRepresentable {
             guard active else { return }
             active = false
             DispatchQueue.main.async {
-                self.onResult(result)
+                self.onResult?(result)
+                self.onResult = nil
             }
         }
     }
