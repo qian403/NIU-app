@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @StateObject private var appState = AppState()
+    @StateObject private var router = CampusRouter.shared
     @ObservedObject private var sessionService = SSOSessionService.shared
     @AppStorage("app.appearance.mode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @Environment(\.scenePhase) private var scenePhase
@@ -30,6 +31,11 @@ struct RootView: View {
             }
         }
         .environmentObject(appState)
+        .environmentObject(router)
+        .onOpenURL { url in
+            guard let destination = CampusDestination(url: url) else { return }
+            router.open(destination)
+        }
         .preferredColorScheme(currentAppearanceMode.colorScheme)
         .onChange(of: scenePhase) { _, newValue in
             switch newValue {

@@ -8,6 +8,25 @@
 import WidgetKit
 import AppIntents
 
+enum WidgetTapAction: String, AppEnum {
+    case showContent
+    case attendance
+    case library
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation { "點按動作" }
+    static var caseDisplayRepresentations: [Self: DisplayRepresentation] {
+        [.showContent: "開啟課表或行事曆", .attendance: "快速點名", .library: "圖書館 QR Code"]
+    }
+
+    var destination: CampusDestination? {
+        switch self {
+        case .showContent: nil
+        case .attendance: .attendance
+        case .library: .library
+        }
+    }
+}
+
 enum WidgetContentType: String, AppEnum {
     case classSchedule
     case academicCalendar
@@ -48,6 +67,9 @@ struct ConfigurationAppIntent: WidgetConfigurationIntent {
 
     @Parameter(title: "顯示內容", default: .classSchedule)
     var contentType: WidgetContentType
+
+    @Parameter(title: "點按開啟", default: .showContent)
+    var tapAction: WidgetTapAction
 }
 
 struct CompactConfigurationAppIntent: WidgetConfigurationIntent {
@@ -56,6 +78,9 @@ struct CompactConfigurationAppIntent: WidgetConfigurationIntent {
 
     @Parameter(title: "顯示內容", default: .classSchedule)
     var contentType: CompactWidgetContentType
+
+    @Parameter(title: "點按開啟", default: .showContent)
+    var tapAction: WidgetTapAction
 }
 
 extension CompactWidgetContentType {

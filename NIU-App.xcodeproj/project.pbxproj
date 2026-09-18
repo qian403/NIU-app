@@ -81,6 +81,9 @@
 		C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */; };
 		C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */; };
 		C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */; };
+		D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C002D031C002D031C002 /* LibraryCodeService.swift */; };
+		D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C004D031C004D031C004 /* LibraryCodeView.swift */; };
+		D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */; };
 		D2F819E2F9104CB298DA8F5E /* NIUComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AC3551E7FD4C20863D3461 /* NIUComponents.swift */; };
 		DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */; };
 		DE1B327C5FC7444289A1258A /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */; };
@@ -89,8 +92,6 @@
 		E880B97A27A0F77D4C7CFF25 /* Features/EventRegistration/Views/EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */; };
 		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
 		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
-		D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C002D031C002D031C002 /* LibraryCodeService.swift */; };
-		D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C004D031C004D031C004 /* LibraryCodeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -213,6 +214,9 @@
 		C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift; sourceTree = "<group>"; };
 		C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseTabViews.swift; sourceTree = "<group>"; };
 		C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift; sourceTree = "<group>"; };
+		D031C002D031C002D031C002 /* LibraryCodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeService.swift; sourceTree = "<group>"; };
+		D031C004D031C004D031C004 /* LibraryCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeView.swift; sourceTree = "<group>"; };
+		D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/CampusNavigation.swift"; sourceTree = SOURCE_ROOT; };
 		D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Models/AcademicCalendarModels.swift; sourceTree = "<group>"; };
 		DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift; sourceTree = "<group>"; };
 		E244B8906CF482139A4AF67C /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
@@ -220,8 +224,6 @@
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
 		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
-		D031C002D031C002D031C002 /* LibraryCodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeService.swift; sourceTree = "<group>"; };
-		D031C004D031C004D031C004 /* LibraryCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -273,6 +275,7 @@
 				10A32DA62F431F630009BB45 /* Resources */,
 				10A32DB02F431F630009BB45 /* Shared */,
 				10D1F8792F80C57900034946 /* NIU-LiveActivities */,
+				D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */,
 				10D1F8742F80C57900034946 /* Frameworks */,
 				10A32D672F431B8B0009BB45 /* Products */,
 				10A32DC92F4327A60009BB45 /* Core */,
@@ -857,6 +860,7 @@
 				10A32DB52F431F630009BB45 /* MinimalToast.swift in Sources */,
 				10A32DB62F431F630009BB45 /* MinimalTextField.swift in Sources */,
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,
+				D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */,
 				10A32DB82F431F630009BB45 /* MinimalCard.swift in Sources */,
 				10A32DB92F431F630009BB45 /* Theme.swift in Sources */,
 				10A32DBA2F431F630009BB45 /* MinimalSecureField.swift in Sources */,

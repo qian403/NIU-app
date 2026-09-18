@@ -2,8 +2,10 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var router: CampusRouter
     @StateObject private var scheduleViewModel = ClassScheduleViewModel()
-    @State private var navigateToClassSchedule = false
+    @State private var navigationPath: [CampusDestination] = []
+    @State private var navigationID = UUID()
     @State private var animateIn = true
 
     // Today's courses state
@@ -12,7 +14,7 @@ struct HomeView: View {
     @State private var isLoadingCourses = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ZStack {
                 LinearGradient(
                     colors: [
@@ -61,9 +63,22 @@ struct HomeView: View {
                 }
             }
             .navigationBarHidden(true)
-            .navigationDestination(isPresented: $navigateToClassSchedule) {
-                ClassScheduleView()
+            .navigationDestination(for: CampusDestination.self) { destination in
+                switch destination {
+                case .classSchedule: ClassScheduleView()
+                case .academicCalendar: AcademicCalendarView()
+                case .attendance: MoodleAttendanceScannerView()
+                case .library: LibraryCodeView()
+                }
             }
+        }
+        .id(navigationID)
+        .task(id: router.pendingRequest?.id) {
+            guard let request = router.pendingRequest else { return }
+            // Reset any previously pushed detail before opening the requested screen.
+            navigationPath = [request.destination]
+            navigationID = request.id
+            router.pendingRequest = nil
         }
         .onAppear {
             loadTodayCourses()
@@ -74,21 +89,9 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: .classScheduleDidUpdate)) { _ in
             loadTodayCourses()
         }
-        .onOpenURL { url in
-            guard shouldOpenClassSchedule(from: url) else { return }
-            navigateToClassSchedule = true
-        }
         .task {
             await appState.refreshProfileIfNeeded()
         }
-    }
-
-    private func shouldOpenClassSchedule(from url: URL) -> Bool {
-        let scheme = url.scheme?.lowercased()
-        let host = url.host?.lowercased()
-        let path = url.path.lowercased()
-        guard scheme == "niuapp" else { return false }
-        return host == "class-schedule" || path == "/class-schedule"
     }
 
     // MARK: - Load Today's Courses
@@ -233,7 +236,7 @@ struct HomeView: View {
                 Spacer()
 
                 Button("查看全部") {
-                    navigateToClassSchedule = true
+                    navigationPath.append(.classSchedule)
                 }
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.accentColor)
@@ -296,7 +299,7 @@ struct HomeView: View {
         let isCurrent = period.isCurrentPeriod
 
         return Button {
-            navigateToClassSchedule = true
+            navigationPath.append(.classSchedule)
         } label: {
             HStack(spacing: Theme.Spacing.small) {
                 RoundedRectangle(cornerRadius: 2)
@@ -550,5 +553,6 @@ private func normalizedDepartment(from raw: String) -> String {
     NavigationStack {
         HomeView()
             .environmentObject(AppState())
+            .environmentObject(CampusRouter.shared)
     }
 }
