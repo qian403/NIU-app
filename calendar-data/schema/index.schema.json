@@ -1,0 +1,50 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "calendars": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "academicYear": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 999
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^years/\\d{3}\\.json$"
+          },
+          "sha256": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "academicYear",
+          "revision",
+          "path",
+          "sha256"
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "calendars"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NIU academic-calendar index v1"
+}
