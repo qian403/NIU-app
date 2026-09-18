@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AcademicCalendarView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel = AcademicCalendarViewModel()
     @State private var presentedEvent: PresentedEvent?
     @State private var searchText = ""
@@ -11,19 +12,27 @@ struct AcademicCalendarView: View {
         NavigationStack {
             ZStack {
                 Theme.Colors.background.ignoresSafeArea()
-                if viewModel.isLoading {
-                    loadingView
-                } else if let errorMessage = viewModel.errorMessage {
-                    errorView(message: errorMessage)
-                } else {
-                    mainContent
-                }
+                mainContent
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                // 優先從公開 URL 載入，失敗再 fallback（Firebase/本地）
-                viewModel.loadFromConfiguredSources()
+            .task(id: viewModel.currentSemester) {
+                await viewModel.reload()
+            }
+            .task {
+                // Keep a visible calendar current across midnight, including January and August.
+                viewModel.handleDateChange() // task(id:) loads a changed year.
+                while !Task.isCancelled {
+                    let delay = max(1, CampusCalendarDate.tomorrow(after: Date()).timeIntervalSinceNow)
+                    do { try await Task.sleep(for: .seconds(delay)) } catch { break }
+                    guard !Task.isCancelled else { break }
+                    if !viewModel.handleDateChange() { await viewModel.reload() }
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    Task { if !viewModel.handleDateChange() { await viewModel.reload() } }
+                }
             }
             .sheet(item: $presentedEvent) { item in
                 CalendarEventDetailSheet(event: item.event)
@@ -73,9 +82,16 @@ struct AcademicCalendarView: View {
                                 }
                             }
 
-                            if displayedMonths.isEmpty {
-                                emptyResultView
+                            if displayedMonths.isEmpty { emptyResultView }
+                            VStack(spacing: 6) {
+                                if viewModel.isLoading { ProgressView() }
+                                Text(viewModel.sourceLabel)
+                                Text("下拉可更新行事曆")
                             }
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
                         } header: {
                             stickyControlsHeader
                         }
@@ -86,10 +102,28 @@ struct AcademicCalendarView: View {
                     scrollMinY = value
                 }
                 .refreshable {
-                    viewModel.loadFromConfiguredSources()
+                    await viewModel.reload(force: true)
                 }
             } else {
-                emptyStateView
+                ScrollView {
+                    VStack(spacing: 16) {
+                        if viewModel.isLoading {
+                            ProgressView("載入行事曆中…")
+                        } else {
+                            Image(systemName: "calendar.badge.exclamationmark").font(.largeTitle)
+                            Text(viewModel.statusMessage ?? "尚未取得此學年度資料")
+                                .multilineTextAlignment(.center)
+                            if viewModel.isNotPublished {
+                                Text("可切換學年度查看已公布資料")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Button("重新整理") { Task { await viewModel.reload(force: true) } }
+                        }
+                    }
+                    .padding(32)
+                    .frame(maxWidth: .infinity)
+                }
+                .refreshable { await viewModel.reload(force: true) }
             }
         }
     }
@@ -148,7 +182,7 @@ struct AcademicCalendarView: View {
     }
 
     private var shouldShowYearPicker: Bool {
-        (viewModel.calendarData?.calendars.count ?? 0) > 1
+        viewModel.availableYears.count > 1
     }
     
     // MARK: - Components
@@ -184,17 +218,13 @@ struct AcademicCalendarView: View {
     
     private var semesterPicker: some View {
         Menu {
-            if let calendars = viewModel.calendarData?.calendars {
-                ForEach(calendars, id: \.semester) { calendar in
-                    Button(action: {
-                        viewModel.switchSemester(to: calendar.semester)
-                    }) {
-                        HStack {
-                            Text(calendar.semester)
-                            if calendar.semester == viewModel.currentSemester {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+            ForEach(viewModel.availableYears, id: \.self) { year in
+                Button {
+                    viewModel.switchSemester(to: String(year))
+                } label: {
+                    HStack {
+                        Text("\(year) 學年度")
+                        if String(year) == viewModel.currentSemester { Image(systemName: "checkmark") }
                     }
                 }
             }
@@ -314,8 +344,7 @@ struct AcademicCalendarView: View {
             if events.isEmpty {
                 EmptyView()
             } else {
-                // Use index as identity to avoid missing rows when upstream data has duplicate `event.id`.
-                ForEach(Array(events.enumerated()), id: \.offset) { _, event in
+                ForEach(events) { event in
                     CalendarEventCard(event: event) {
                         presentedEvent = PresentedEvent(event: event)
                     }
@@ -324,54 +353,6 @@ struct AcademicCalendarView: View {
         }
     }
     
-    private var loadingView: some View {
-        VStack(spacing: Theme.Spacing.medium) {
-            ProgressView()
-            Text("載入行事曆中...")
-                .font(.system(size: 14, weight: .light))
-                .foregroundColor(.gray)
-        }
-    }
-    
-    private func errorView(message: String) -> some View {
-        VStack(spacing: Theme.Spacing.medium) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48, weight: .light))
-                .foregroundColor(.orange)
-            
-            Text(message)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundColor(Theme.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button(action: {
-                viewModel.loadFromLocalFile()
-            }) {
-                Text("使用本地資料")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(.systemBackground))
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Theme.Colors.primary)
-                    .cornerRadius(8)
-            }
-        }
-    }
-    
-    private var emptyStateView: some View {
-        VStack(spacing: Theme.Spacing.medium) {
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 48, weight: .light))
-                .foregroundColor(.gray)
-            
-            Text("目前沒有行事曆資料")
-                .font(.system(size: 16, weight: .regular))
-                .foregroundColor(.gray)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var emptyResultView: some View {
         VStack(spacing: Theme.Spacing.small) {
             Image(systemName: "line.3.horizontal.decrease.circle")
@@ -410,8 +391,7 @@ struct AcademicCalendarView: View {
 
         if let selectedMonth = viewModel.selectedMonth {
             events = events.filter {
-                guard let start = $0.start else { return false }
-                return Calendar.current.component(.month, from: start) == selectedMonth
+                $0.months.contains(selectedMonth)
             }
         }
 
@@ -419,19 +399,20 @@ struct AcademicCalendarView: View {
     }
 
     private var eventsByDisplayedMonth: [Int: [CalendarEvent]] {
-        Dictionary(grouping: filteredEvents) { event in
-            guard let start = event.start else { return 0 }
-            return Calendar.current.component(.month, from: start)
+        var grouped: [Int: [CalendarEvent]] = [:]
+        for event in filteredEvents {
+            for month in event.months { grouped[month, default: []].append(event) }
         }
+        return grouped
     }
 
     private var displayedMonths: [Int] {
-        eventsByDisplayedMonth.keys.filter { $0 > 0 }.sorted()
+        CampusCalendarDate.monthOrder.filter { eventsByDisplayedMonth[$0] != nil }
     }
 
     private var filteredUpcomingEvents: [CalendarEvent] {
-        let now = Date()
-        let thirtyDaysLater = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? now
+        let now = CampusCalendarDate.calendar.startOfDay(for: Date())
+        let thirtyDaysLater = CampusCalendarDate.calendar.date(byAdding: .day, value: 30, to: now) ?? now
         return filteredEvents.filter {
             guard let start = $0.start else { return false }
             return start >= now && start <= thirtyDaysLater

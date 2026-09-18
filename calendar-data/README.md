@@ -26,9 +26,9 @@ https://raw.githubusercontent.com/qian403/NIU-app/main/calendar-data/years/114.j
 https://raw.githubusercontent.com/qian403/NIU-app/main/calendar-data/years/115.json
 ```
 
-`index.json` 列出可用學年度、revision、相對 path 與年度檔案的 SHA-256（檔案原始 UTF-8 bytes，包含結尾換行）。App 應先讀索引，再決定是否抓取年度檔。這些網址需在本次資料合併／推送後才存在。
+`index.json` 列出可用學年度、revision、相對 path 與年度檔案的 SHA-256（檔案原始 UTF-8 bytes，包含結尾換行）。App 應先讀索引，再決定是否抓取年度檔。資料已發布於上述 GitHub Raw 網址。
 
-目前 App 與 Widget 尚使用舊資料來源及格式；本次建立 v1 資料契約，不直接替換舊 URL。切換前必須一併實作新格式解析、快取與日期規則。
+App 與 Widget 的新版程式共用 `AcademicCalendarStore`，讀取此 v1 資料契約。完整行為及離線快照更新方式見 [App 接入說明](../docs/calendar-client.md)；已發布的舊 TestFlight build 不會自動獲得這次程式修改。
 
 ## v1 契約
 
@@ -117,4 +117,4 @@ python3 calendar-data/scripts/build_review.py --check
 6. 快取需依 academicYear/schemaVersion/revision 區分；Widget 不可只因快取非空就永久跳過更新。iOS 背景更新由系統排程，不能保證即時。
 7. 不支援的 schemaVersion 不覆蓋現有可讀快取，提示需要更新 App。
 
-目前尚未實作 App／Widget 接入或 ICS 輸出，這些規則是下一階段的共用契約。
+App／Widget 新版程式已接入；ICS 輸出尚未實作。GitHub 日程資料更新不需重新發行 App，資料格式不相容修改則須同步更新程式。

@@ -440,17 +440,20 @@ private final class NotificationScheduler {
     }
 
     private func scheduleAcademicCalendarEvents() async {
-        guard let url = Bundle.main.url(forResource: "academic_calendar", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let parsed = try? JSONDecoder().decode(AcademicCalendarData.self, from: data) else {
-            return
-        }
-
-        let semester = currentAcademicSemester()
-        let calendar = parsed.calendar(for: semester) ?? parsed.calendars.first
-        let events = calendar?.events ?? []
         let now = Date()
-        let upperBound = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? now
+        let year = CampusCalendarDate.academicYear(at: now)
+        let result = await AcademicCalendarStore.shared.refresh(year: year, now: now)
+        guard !Task.isCancelled, let document = result.document else { return }
+        var events = document.events.map { CalendarEvent($0, document: document) }
+        let upperBound = CampusCalendarDate.calendar.date(byAdding: .day, value: 30, to: now) ?? now
+        let upperYear = CampusCalendarDate.academicYear(at: upperBound)
+        if upperYear != year {
+            let next = await AcademicCalendarStore.shared.refresh(year: upperYear, now: now)
+            guard !Task.isCancelled else { return }
+            if let nextDocument = next.document {
+                events += nextDocument.events.map { CalendarEvent($0, document: nextDocument) }
+            }
+        }
 
         let candidates = events
             .filter { event in
@@ -463,8 +466,10 @@ private final class NotificationScheduler {
             .prefix(20)
 
         for event in candidates {
+            guard !Task.isCancelled else { return }
             guard let start = event.start else { continue }
-            let fireDate = Calendar.current.date(byAdding: .day, value: -1, to: start) ?? start
+            let previousDay = CampusCalendarDate.calendar.date(byAdding: .day, value: -1, to: start) ?? start
+            let fireDate = CampusCalendarDate.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: previousDay) ?? previousDay
             guard fireDate > now else { continue }
             await addNotification(
                 identifier: "\(calendarPrefix)\(event.id)",

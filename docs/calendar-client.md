@@ -1,0 +1,48 @@
+# App／Widget 行事曆接入
+
+新版讀取目前 NIU-app 的 `calendar-data/index.json`，App、Widget 與行事曆提醒共用 `NIU-LiveActivities/AcademicCalendarStore.swift`。舊 Firebase／tools.chien.dev 路徑及無年度識別的 `academicCalendar.shared.cachedData` 不再被讀取。舊版快取不會被當成新年度資料。
+
+## 日期與換年
+
+- 以 Gregorian、Asia/Taipei 處理民用日期，不依裝置時區或裝置曆法改變。
+- 2026-12-31 → 2027-01-01：仍為 115 學年度；月份更新為 1 月。
+- 2027-07-31 → 2027-08-01：切換 116 學年度。
+- 預設年度由台北當天日期決定，不直接選最大已公布年度；使用者可手動查看提前公布的下一年或過去年度。
+- App 可見期間於台北午夜檢查日期，回到前景也檢查。使用者主動選的歷史年度不被強制跳走。
+- Widget 提供台北午夜的下一筆 timeline entry。7/31 預先準備 8/1 對應年度或「尚未公布」狀態，避免舊年度資料沿用。一般要求每 30 分鐘刷新 timeline，網路目錄最多自動快取 6 小時；真正執行時間由 iOS 決定。
+- 年度切換不沿用前一年度內容。可確認遠端目錄無該年時顯示「尚未公布」；網路失敗且無對應離線資料則顯示「無法取得」，不冒稱未公布。
+- 所有事件迄日都包含當天。跨月事件出現在所涵蓋的各月份，月份依 8～12、1～7 排列。
+- 「期中預警」「教學評量」沿用結構化分類，不再因標題含「期中／期末」就判為考試。
+- 行事曆提醒的 30 天範圍跨過 8/1 時，同時讀取下一學年度（若已公布），不把未公布年度替換成其他年份。
+
+## 驗證、快取與更新
+
+App Group 的 `AcademicCalendar-v1` 存放公開日程（不含個資），若 App Group 無法使用則退回該程序的 caches directory。App 和 Widget 都打包 `Resources/AcademicCalendar/` 以提供第一次離線啟動的 114／115 年度資料。
+
+網路讀取依序驗證 HTTP 200、支援的 schemaVersion、索引路徑/年度/revision、年度檔 SHA-256、民用日期、學期邊界、事件 ID 唯一性、來源頁碼與完整週次區間。離線資料讀回時同樣驗證，損壞快取不會遮蔽正確內建資料。發行端完整 Schema 由 `calendar-data/scripts/validate.py` 負責。
+
+- 年度快照以年度/revision/hash 命名並原子寫入，選擇最高有效 revision。完整取代事件清單，撤除事件不會因只追加而殘留。
+- 目錄以內容 hash 分檔，依「已發布年度不可移除、revision 不倒退」契約合併。App／Widget 同時更新，延遲的舊目錄或年度檔回應都不能隱藏已確認的新年度。
+- 自動更新目錄最多快取 6 小時，跨學年度時強制重新確認；下拉重新整理跳過此間隔。
+- 索引／年度檔暫時不同步、檔案不合規或新 schemaVersion 時保留同年度有效資料並顯示提示，不清成空白。
+- 新格式快取獨立於舊 key，不遷移不明年份的舊日程。校方公共年度資料無須隨學生登出刪除。
+
+## 維護
+
+單純修訂日程或新增學年度：按照 `calendar-data/README.md` 更新與發布。現有新版 App／Widget 將由索引發現新年度，不必為每次換年重新上架。
+
+App 發行前若要更新內建的離線快照：
+
+```sh
+python3 scripts/sync-calendar-bundle.py
+python3 scripts/check-calendar-client.py
+python3 scripts/check-widgets.py
+```
+
+離線快照不要求隨每筆 GitHub 資料更新，下載過的新版快取會優先於舊內建資料。全新安裝、斷網且內建檔不含新年度時，只能明確提示缺少資料，不能保證離線取得尚未下載的年度。
+
+## 本次驗證
+
+`check-calendar-client.py` 編譯實際共用 Swift 模型／store、App ViewModel 與 Widget 呈現方法，使用隔離暫存目錄與合成網路回應，不接觸學生帳號。涵蓋：台北 1/1 與 8/1、裝置位於洛杉磯、閏日、跨月與區間最後一天、提前公布年度、手動歷史選擇、未公布和離線的區分、持久化重讀、快取更新間隔、強制更新、撤回事件、hash／格式拒絕、兩個 store 競爭時延遲索引及延遲年度檔。
+
+舊 TestFlight 1.0（1）不包含這次程式更新，需另行建置及上傳新 build 才能分發。
