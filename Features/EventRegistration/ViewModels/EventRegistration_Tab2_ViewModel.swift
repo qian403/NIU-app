@@ -42,6 +42,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     private let maxLoginAttempts = 2
     private let loginRequesterID = UUID().uuidString
     private var hasInitialized = false
+    private var loadGeneration = 0
+    private var loadingCancelled = false
     private var isSubmittingLogin = false
     private var loginSubmitTimestamp: Date?
     private var loginFieldRetryCount = 0
@@ -208,6 +210,9 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     }
 
     func startLogin() {
+        loadGeneration &+= 1
+        loadingCancelled = false
+        hasInitialized = true
         isOverlayVisible = true
         overlayText = "載入中"
         loginAttemptCount = 0
@@ -216,6 +221,9 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     }
 
     func loadEventList() {
+        loadGeneration &+= 1
+        loadingCancelled = false
+        hasInitialized = true
         isOverlayVisible = true
         overlayText = "載入中"
         loginAttemptCount = 0
@@ -234,6 +242,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     }
 
     private func scheduleLoginRecoveryIfNeeded() {
+        guard !loadingCancelled else { return }
+        let generation = loadGeneration
         guard isSubmittingLogin else { return }
         loginRecoveryWorkItem?.cancel()
 
@@ -246,7 +256,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
 
         let waitTime = max(0.2, loginSubmitCooldown - elapsed + 0.1)
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
+            guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
             self.loginRecoveryWorkItem = nil
             guard self.isSubmittingLogin else { return }
             guard let currentURL = self.webView?.url?.absoluteString,
@@ -270,6 +280,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     }
 
     private func loadCanonicalLoginPage() {
+        guard !loadingCancelled else { return }
         if let loginURL = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Account/Login?ReturnUrl=%2FMvcTeam%2FAct%2FApplyMe") {
             webView?.load(URLRequest(url: loginURL))
         }
@@ -283,25 +294,60 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     // 手動刷新
     @MainActor
     func manualRefresh() async {
+        guard !Task.isCancelled else { return }
         EventRegistrationWebViewManager.shared.resetLoginState()
         loadEventList()
-        
-        // 等待刷新完成
+        let generation = loadGeneration
+
+        let deadline = ContinuousClock.now.advanced(by: .seconds(45))
         while isOverlayVisible {
-            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 秒
+            do {
+                try Task.checkCancellation()
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                if generation == loadGeneration { cancelLoading() }
+                return
+            }
+            guard generation == loadGeneration else { return }
+            if ContinuousClock.now >= deadline {
+                failLoading("更新逾時，請稍後重新整理")
+                return
+            }
         }
     }
     
+    func cancelLoading() {
+        loadingCancelled = true
+        loadGeneration &+= 1
+        EventRegistrationWebViewManager.shared.cancelLogin(requesterID: loginRequesterID)
+        resetLoginProgress()
+        webView?.stopLoading()
+        isOverlayVisible = false
+        hasInitialized = false
+    }
+
+    private func failLoading(_ message: String) {
+        cancelLoading()
+        toastMessage = message
+        showToast = true
+    }
+
     private func refresh() {
+        guard !loadingCancelled else { return }
+        let generation = loadGeneration
         // 延遲確保頁面完全載入
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.executeRefresh(retryCount: 0)
+            guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
+            self.executeRefresh(retryCount: 0)
         }
     }
     
     private func executeRefresh(retryCount: Int) {
+        guard !loadingCancelled else { return }
+        let generation = loadGeneration
+        guard isOverlayVisible else { return }
         webView?.evaluateJavaScript(jsGetData) { [weak self] result, error in
-            guard let self = self else { return }
+            guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
             
             if let error = error {
                 print("[EventRegistration Tab2] JavaScript 執行錯誤: \(error)")
@@ -309,11 +355,13 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                 // 重試最多 3 次
                 if retryCount < 3 {
                     print("[EventRegistration Tab2] 重試 (\(retryCount + 1)/3)")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                        guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
                         self.executeRefresh(retryCount: retryCount + 1)
                     }
                 } else {
                     Task { @MainActor in
+                        guard !self.loadingCancelled, generation == self.loadGeneration else { return }
                         self.isOverlayVisible = false
                         self.toastMessage = "載入活動失敗，請重新整理"
                         self.showToast = true
@@ -334,7 +382,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                         // 如果沒有活動資料且重試次數未達上限，重試
                         if jsonArray.isEmpty && retryCount < 3 {
                             print("[EventRegistration Tab2] 沒有活動資料，重試 (\(retryCount + 1)/3)")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                                guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
                                 self.executeRefresh(retryCount: retryCount + 1)
                             }
                             return
@@ -379,6 +428,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                         }
                         
                         Task { @MainActor in
+                            guard !self.loadingCancelled, generation == self.loadGeneration else { return }
                             self.events = decodedEvents
                             self.showPage()
                         }
@@ -402,17 +452,29 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
             self.viewModel = viewModel
         }
         
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
+            viewModel?.failLoading("無法載入活動，請檢查網路後重新整理")
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            self.webView(webView, didFail: navigation, withError: error)
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard let viewModel = viewModel else { return }
+            guard let viewModel, !viewModel.loadingCancelled else { return }
+            let generation = viewModel.loadGeneration
             guard let url = webView.url?.absoluteString else { return }
             
             Task { @MainActor in
+                guard !viewModel.loadingCancelled, generation == viewModel.loadGeneration else { return }
                 viewModel.handlePageFinished(url: url)
             }
         }
     }
     
     private func handlePageFinished(url: String) {
+        guard !loadingCancelled else { return }
         print("[EventRegistration Tab2] 頁面載入完成: \(url)")
 
         if url.contains("/MvcTeam/Account/Login") {
@@ -441,12 +503,15 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     }
 
     private func checkLoginError() {
+        guard !loadingCancelled else { return }
+        let generation = loadGeneration
         webView?.evaluateJavaScript("document.body.innerText") { [weak self] result, error in
-            guard let self = self else { return }
+            guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
 
             if let bodyText = result as? String {
                 if bodyText.contains("帳號或密碼錯誤") || bodyText.contains("登入失敗") {
                     Task { @MainActor in
+                        guard !self.loadingCancelled, generation == self.loadGeneration else { return }
                         self.isSubmittingLogin = false
                         self.isOverlayVisible = false
                         self.toastMessage = "帳號或密碼錯誤"
@@ -458,6 +523,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
 
             if self.loginAttemptCount >= self.maxLoginAttempts {
                 Task { @MainActor in
+                    guard !self.loadingCancelled, generation == self.loadGeneration else { return }
                     self.isSubmittingLogin = false
                     self.isOverlayVisible = false
                     self.toastMessage = "登入失敗，請檢查帳號密碼"
@@ -468,13 +534,13 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
 
             EventRegistrationWebViewManager.shared.requestLogin(requesterID: self.loginRequesterID) { [weak self] in
                 Task { @MainActor in
-                    guard let self = self else { return }
+                    guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
                     self.loginAttemptCount += 1
                     self.performEventSystemLogin()
                 }
             } waitCompletion: { [weak self] in
                 Task { @MainActor in
-                    guard let self = self else { return }
+                    guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
                     print("[EventRegistration Tab2] 其他 tab 已完成登入，重新加載頁面")
                     self.loginAttemptCount = 0
                     self.resetLoginProgress()
@@ -485,6 +551,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     }
 
     private func performEventSystemLogin() {
+        guard !loadingCancelled else { return }
+        let generation = loadGeneration
         guard !isSubmittingLogin else {
             print("[EventRegistration Tab2] 登入提交進行中，略過重複提交")
             return
@@ -504,7 +572,7 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
         loginSubmitTimestamp = Date()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
+            guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
 
             let loginScript = """
             (function() {
@@ -578,8 +646,9 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
             })();
             """
 
-            self.webView?.evaluateJavaScript(loginScript) { result, error in
+            self.webView?.evaluateJavaScript(loginScript) { [weak self] result, error in
                 Task { @MainActor in
+                    guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
                     if let resultString = result as? String {
                         print("[EventRegistration Tab2] 登入提交結果: \(resultString)")
 
@@ -616,7 +685,8 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
                                     print("[EventRegistration Tab2] 登入欄位未就緒詳情: \(value)")
                                 }
                                 print("[EventRegistration Tab2] 登入欄位未就緒，等待重試 (\(self.loginFieldRetryCount)/\(self.maxLoginFieldRetries))")
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                                    guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
                                     self.performEventSystemLogin()
                                 }
                             } else if self.loginPageReloadCount < self.maxLoginPageReloads {

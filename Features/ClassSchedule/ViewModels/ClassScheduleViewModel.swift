@@ -28,6 +28,8 @@ final class ClassScheduleViewModel: ObservableObject {
     /// Guard to prevent infinite retry loops if re-auth succeeds but schedule
     /// fetch still fails due to a server-side issue.
     private var sessionRefreshAttempted = false
+    private var loadGeneration = 0
+    private var sessionRefreshTask: Task<Void, Never>?
 
     private let cacheKey = "classSchedule.v2.cachedData"
     private let appGroupIdentifier = "group.dev.chien.niuapp"
@@ -101,8 +103,19 @@ final class ClassScheduleViewModel: ObservableObject {
         }
     }
 
+    func cancelLoading() {
+        loadGeneration &+= 1
+        sessionRefreshTask?.cancel()
+        sessionRefreshTask = nil
+        showWebView = false
+        isRefreshing = false
+        isFetchingInBackground = false
+        sessionRefreshAttempted = false
+    }
+
     func refresh() {
         guard !isRefreshing, !showWebView else { return }
+        loadGeneration &+= 1
         isRefreshing = true
         isFetchingInBackground = schedule != nil
         if schedule == nil { loadState = .loading }
@@ -112,15 +125,14 @@ final class ClassScheduleViewModel: ObservableObject {
 
     func refreshAndWait() async {
         refresh()
+        let generation = loadGeneration
         let deadline = Date().addingTimeInterval(90)
-        while isRefreshing && !Task.isCancelled && Date() < deadline {
+        while generation == loadGeneration && isRefreshing && !Task.isCancelled && Date() < deadline {
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
-        if isRefreshing {
-            isRefreshing = false
-            isFetchingInBackground = false
-            showWebView = false
-            if schedule == nil { loadState = .error("課表更新逾時，請稍後再試") }
+        if generation == loadGeneration && isRefreshing {
+            cancelLoading()
+            if !Task.isCancelled, schedule == nil { loadState = .error("課表更新逾時，請稍後再試") }
         }
     }
 
@@ -156,16 +168,19 @@ final class ClassScheduleViewModel: ObservableObject {
             // (or the loading spinner if there is no cache yet).
             if !sessionRefreshAttempted {
                 sessionRefreshAttempted = true
-                Task {
+                sessionRefreshTask?.cancel()
+                sessionRefreshTask = Task { [weak self] in
+                    guard !Task.isCancelled else { return }
                     let refreshed = await SSOSessionService.shared.requestRefresh()
+                    guard !Task.isCancelled, let self else { return }
                     if refreshed {
                         // Shared cookie store is now refreshed – retry the schedule fetch
-                        showWebView = true
+                        self.showWebView = true
                     } else {
-                        isRefreshing = false
-                        isFetchingInBackground = false
-                        if schedule == nil {
-                            loadState = .error("登入工作階段已過期，請重新登入")
+                        self.isRefreshing = false
+                        self.isFetchingInBackground = false
+                        if self.schedule == nil {
+                            self.loadState = .error("登入工作階段已過期，請重新登入")
                         }
                         // If cached data exists, keep showing it silently
                     }

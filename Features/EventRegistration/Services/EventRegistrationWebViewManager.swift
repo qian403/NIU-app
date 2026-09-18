@@ -10,7 +10,7 @@ final class EventRegistrationWebViewManager {
     // 登入狀態管理
     private var isLoggingIn = false
     private var activeLoginRequesterID: String?
-    private var loginCompletionHandlers: [() -> Void] = []
+    private var loginCompletionHandlers: [String: () -> Void] = [:]
     
     private init() {
         // 使用 default data store 確保與系統共享 Cookie
@@ -37,7 +37,7 @@ final class EventRegistrationWebViewManager {
 
             // 已經有其他 Tab 在登入，等待完成後執行 waitCompletion
             print("[EventRegistration] 已有其他 tab 在登入，等待完成 requester=\(requesterID), active=\(activeLoginRequesterID ?? "nil")")
-            loginCompletionHandlers.append(waitCompletion)
+            loginCompletionHandlers[requesterID] = waitCompletion
         } else {
             // 開始登入
             print("[EventRegistration] 開始執行登入 requester=\(requesterID)")
@@ -59,7 +59,7 @@ final class EventRegistrationWebViewManager {
         print("[EventRegistration] 登入完成，通知其他等待的 tab")
         isLoggingIn = false
         activeLoginRequesterID = nil
-        let handlers = loginCompletionHandlers
+        let handlers = Array(loginCompletionHandlers.values)
         loginCompletionHandlers.removeAll()
         
         // 稍微延遲讓 Cookie 寫入完成，避免不必要的等待
@@ -69,6 +69,14 @@ final class EventRegistrationWebViewManager {
         }
     }
     
+    /// Remove this page's waiter and release ownership if its navigation was cancelled.
+    func cancelLogin(requesterID: String) {
+        loginCompletionHandlers.removeValue(forKey: requesterID)
+        if activeLoginRequesterID == requesterID {
+            notifyLoginCompleted()
+        }
+    }
+
     /// 重置登入狀態（用於用戶手動刷新）
     func resetLoginState() {
         isLoggingIn = false

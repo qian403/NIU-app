@@ -59,6 +59,11 @@ struct EventRegistrationView: View {
         }
         .onAppear {
             tab1ViewModel.prewarmLoginIfNeeded()
+            if viewModel.selectedTab == 1 { tab2ViewModel.prewarmLoginIfNeeded() }
+        }
+        .onDisappear {
+            tab1ViewModel.cancelLoading()
+            tab2ViewModel.cancelLoading()
         }
     }
 }

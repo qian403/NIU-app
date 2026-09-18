@@ -7,7 +7,7 @@ public typealias CaptchaImage = UIImage
 #endif
 import Vision
 
-public final class SSOCaptchaProcessor {
+public nonisolated final class SSOCaptchaProcessor: Sendable {
     public static let shared = SSOCaptchaProcessor()
     private init() {}
 
@@ -20,11 +20,13 @@ public final class SSOCaptchaProcessor {
         }
     }
 
+    @concurrent
     public func recognize(from image: CaptchaImage) async -> String? {
         let variants = buildRecognitionVariants(from: image)
         var bestCandidate: OCRCandidate?
 
         for variant in variants {
+            guard !Task.isCancelled else { return nil }
             guard let candidate = await recognizeVariant(variant) else { continue }
             if bestCandidate == nil || candidate.score > (bestCandidate?.score ?? Int.min) {
                 bestCandidate = candidate
