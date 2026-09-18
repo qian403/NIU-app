@@ -6,28 +6,40 @@ struct GradeHistoryView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+            VStack(spacing: 0) {
+                modeSection
+                    .padding(.horizontal, Theme.Spacing.large)
+                    .padding(.vertical, Theme.Spacing.medium)
+                ZStack {
+                    Color(.systemBackground).ignoresSafeArea()
 
-                switch vm.loadState {
-                case .idle, .loading:
-                    ProgressView(loadingText)
-                        .progressViewStyle(.circular)
-                        .tint(.primary)
-                        .foregroundColor(.primary.opacity(0.6))
+                    switch vm.loadState {
+                    case .idle, .loading:
+                        ProgressView(loadingText)
+                            .progressViewStyle(.circular)
+                            .tint(.primary)
+                            .foregroundColor(.primary.opacity(0.6))
 
-                case .error(let message):
-                    errorView(message: message)
+                    case .error(let message):
+                        errorView(message: message)
 
-                case .loaded:
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: Theme.Spacing.large) {
-                            modeSection
-                            contentHeader
-                            contentSection
+                    case .loaded:
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.large) {
+                                contentHeader
+                                contentSection
+                                AcademicRefreshFooter(
+                                    lastUpdated: vm.lastUpdated,
+                                    isRefreshing: vm.isRefreshing,
+                                    errorMessage: vm.lastRefreshError,
+                                    onRetry: vm.refresh
+                                )
+                            }
+                            .padding(.horizontal, Theme.Spacing.large)
+                            .padding(.vertical, Theme.Spacing.medium)
                         }
-                        .padding(.horizontal, Theme.Spacing.large)
-                        .padding(.vertical, Theme.Spacing.medium)
+                        .scrollBounceBehavior(.always, axes: .vertical)
+                        .refreshable { await vm.refreshAndWait() }
                     }
                 }
             }
@@ -50,7 +62,10 @@ struct GradeHistoryView: View {
         }
         .overlay {
             if vm.showWebView {
-                GradeHistoryWebView(mode: vm.selectedMode, onResult: vm.handleWebResult)
+                GradeHistoryWebView(mode: vm.selectedMode) { [requestID = vm.webViewID] result in
+                    vm.handleWebResult(result, requestID: requestID)
+                }
+                    .id(vm.webViewID)
                     .frame(width: 360, height: 640)
                     .opacity(0)
                     .allowsHitTesting(false)
@@ -678,6 +693,19 @@ private struct GradeHistoryWebView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        // MenuRedirect.aspx opens the history SSO page with window.open after
+        // navigation. iOS blocks it without this setting (macOS permits it).
+        // The UI delegate loads that request in this same WebView.
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        // Notify Swift for every frame, including cross-origin MvcTeam pages.
+        // JavaScript in MainFrame cannot inspect a cross-origin frame's DOM.
+        config.userContentController.add(context.coordinator, name: "gradeFrame")
+        config.userContentController.addUserScript(WKUserScript(source: """
+            window.webkit.messageHandlers.gradeFrame.postMessage({
+                history: !!document.querySelector('#accordion修課紀錄'),
+                term: !!document.querySelector('#DataGrid')
+            });
+            """, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -688,36 +716,29 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             "Version/17.0 Safari/605.1.15"
         context.coordinator.webView = webView
 
-        // Use the modern JWT bridge: fetch a one-shot GUID and hand it to
-        // acade's Login.aspx, which establishes the legacy ASP.NET session
-        // inside the shared WKWebsiteDataStore.
-        Task { @MainActor [weak webView] in
-            let account = SSOTokenStore.shared.account
-                ?? LoginRepository.shared.getSavedCredentials()?.username
-                ?? ""
-            guard !account.isEmpty,
-                  let guid = await SSOGUIDBridge.fetchGUID(account: account),
-                  let url = SSOGUIDBridge.acadeLoginURL(guid: guid),
-                  let webView else {
-                context.coordinator.finish(.sessionExpired)
-                return
-            }
-            context.coordinator.step = .waitForMainEntry
-            webView.load(URLRequest(url: url))
-        }
+        context.coordinator.start(webView: webView)
         return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancel()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         let mode: GradeQueryMode
         let onResult: (GradeHistoryWebResult) -> Void
         weak var webView: WKWebView?
 
         fileprivate var step: Step = .resolveEntryLink
         private var active = true
+        private var cancelled = false
         private var acadeMenuNavigationInFlight = false
+        private var contentFrame: WKFrameInfo?
+        private var bridgeTask: Task<Void, Never>?
+        private var timeoutTask: Task<Void, Never>?
 
         fileprivate enum Step {
             case resolveEntryLink
@@ -735,27 +756,83 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             self.onResult = onResult
         }
 
+        func start(webView: WKWebView) {
+            timeoutTask = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(65)) } catch { return }
+                self?.finish(.failure("成績頁面載入逾時，請稍後重試"))
+            }
+            bridgeTask = Task { [weak self, weak webView] in
+                let account = SSOTokenStore.shared.account
+                    ?? LoginRepository.shared.getSavedCredentials()?.username ?? ""
+                let guid = account.isEmpty ? nil : await SSOGUIDBridge.fetchGUID(account: account)
+                guard !Task.isCancelled, let self, self.active, let webView else { return }
+                guard let guid, let url = SSOGUIDBridge.acadeLoginURL(guid: guid) else {
+                    self.finish(.sessionExpired)
+                    return
+                }
+                self.step = .waitForMainEntry
+                webView.load(URLRequest(url: url))
+            }
+        }
+
+        func cancel() {
+            active = false
+            cancelled = true
+            bridgeTask?.cancel()
+            timeoutTask?.cancel()
+            contentFrame = nil
+            webView?.configuration.userContentController.removeScriptMessageHandler(forName: "gradeFrame")
+            webView?.navigationDelegate = nil
+            webView?.uiDelegate = nil
+            webView?.stopLoading()
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard active, message.name == "gradeFrame", let webView,
+                  let url = message.frameInfo.request.url,
+                  ["acade.niu.edu.tw", "ccsys.niu.edu.tw", "ccsys1.niu.edu.tw"].contains(url.host?.lowercased() ?? "") else { return }
+            if SSOGUIDBridge.isSessionExpiredURL(url) {
+                finish(.sessionExpired)
+                return
+            }
+            let markers = message.body as? [String: Bool] ?? [:]
+            let isTarget = mode == .history
+                ? (isHistoryTargetURL(url.absoluteString) || markers["history"] == true)
+                // The portal homepage also has a DataGrid; that alone is not a grade page.
+                : isTermTargetURL(url.absoluteString)
+            guard isTarget else { return }
+            contentFrame = message.frameInfo
+            print("[GradeHistory] target frame host=\(url.host ?? "") path=\(url.path)")
+            beginParsing(webView: webView)
+        }
+
+        private func beginParsing(webView: WKWebView) {
+            guard active, step != .waitForParse else { return }
+            acadeMenuNavigationInFlight = false
+            step = .waitForParse
+            if mode == .history {
+                pollForHistoryCourses(webView: webView, attempt: 0)
+            } else {
+                pollForTermScores(webView: webView, attempt: 0)
+            }
+        }
+
+        private func evaluateContentJavaScript(_ script: String, webView: WKWebView,
+                                                completion: @escaping (Any?, Error?) -> Void) {
+            webView.evaluateJavaScript(script, in: contentFrame, in: .page) { result in
+                switch result {
+                case .success(let value): completion(value, nil)
+                case .failure(let error): completion(nil, error)
+                }
+            }
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard active else { return }
             let url = webView.url?.absoluteString ?? ""
-            print("[GradeHistory] mode=\(mode.rawValue) step=\(step) didFinish=\(url)")
+            print("[GradeHistory] mode=\(mode.rawValue) step=\(step) path=\(webView.url?.path ?? "")")
 
-            if Self.isModernLoginPage(url) {
-                finish(.sessionExpired)
-                return
-            }
-
-            if Self.isAcadeTimeOut(url) {
-                finish(.sessionExpired)
-                return
-            }
-
-            if url.contains("/MvcTeam/Account/Login") || url.contains("/Account/Login") {
-                finish(.sessionExpired)
-                return
-            }
-
-            if url.contains("Default.aspx") {
+            if let current = webView.url, SSOGUIDBridge.isSessionExpiredURL(current) {
                 finish(.sessionExpired)
                 return
             }
@@ -768,11 +845,8 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                 handleMainEntryPage(webView: webView, currentURL: url)
 
             case .waitForTargetPage:
-                step = .waitForParse
-                if mode == .history {
-                    pollForHistoryCourses(webView: webView, attempt: 0)
-                } else {
-                    pollForTermScores(webView: webView, attempt: 0)
+                if (mode == .history && isHistoryTargetURL(url)) || isTermTargetURL(url) {
+                    beginParsing(webView: webView)
                 }
 
             case .waitForParse:
@@ -786,7 +860,16 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             guard active else { return }
             let nsError = error as NSError
             if nsError.code == NSURLErrorCancelled { return }
-            finish(.failure("網路連線失敗：\(error.localizedDescription)"))
+            finish(.failure("成績查詢連線失敗，請檢查網路後重試"))
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
+            finish(.failure("成績查詢連線失敗，請檢查網路後重試"))
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            finish(.failure("成績網頁已中斷，請重試"))
         }
 
         private func handleEntryPage(webView: WKWebView, currentURL: String) {
@@ -794,8 +877,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                 step = .waitForMainEntry
                 openAcadeMenuTarget(webView: webView, attempt: 0)
             } else if isHistoryTargetURL(currentURL) || isTermTargetURL(currentURL) {
-                acadeMenuNavigationInFlight = false
-                step = .waitForTargetPage
+                beginParsing(webView: webView)
             } else if currentURL.contains("Std002.aspx") || currentURL.contains("StdMain.aspx") || currentURL.contains("/MvcTeam/Act") {
                 extractAcadeLinkAndNavigate(webView: webView)
             }
@@ -805,8 +887,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             if currentURL.contains("MainFrame.aspx") {
                 openAcadeMenuTarget(webView: webView, attempt: 0)
             } else if isHistoryTargetURL(currentURL) || isTermTargetURL(currentURL) {
-                acadeMenuNavigationInFlight = false
-                step = .waitForTargetPage
+                beginParsing(webView: webView)
             }
         }
 
@@ -937,18 +1018,9 @@ private struct GradeHistoryWebView: UIViewRepresentable {
 
                 if state == "clicked-leaf" {
                     self.acadeMenuNavigationInFlight = false
-                    // Leaf clicks navigate the content iframe, not the main
-                    // frame, so WKNavigationDelegate.didFinish will not fire
-                    // again. Drive the rest of the flow by polling the iframe
-                    // contents directly.
-                    if self.step != .waitForParse {
-                        self.step = .waitForParse
-                        if self.mode == .history {
-                            self.pollForHistoryCourses(webView: webView, attempt: 0)
-                        } else {
-                            self.pollForTermScores(webView: webView, attempt: 0)
-                        }
-                    }
+                    // Wait for the destination's frame message. The previous portal
+                    // may still contain a DataGrid while the target is navigating.
+                    if self.step != .waitForParse { self.step = .waitForTargetPage }
                     return
                 }
 
@@ -961,9 +1033,9 @@ private struct GradeHistoryWebView: UIViewRepresentable {
         private func isTermTargetURL(_ url: String) -> Bool {
             switch mode {
             case .midterm:
-                return url.contains("/NIU/outside.aspx") || url.contains("GRD5131")
+                return url.contains("GRD5131")
             case .final:
-                return url.contains("/NIU/outside.aspx") || url.contains("GRD5130")
+                return url.contains("GRD5130")
             case .history:
                 return false
             }
@@ -977,8 +1049,9 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                      createWebViewWith configuration: WKWebViewConfiguration,
                      for navigationAction: WKNavigationAction,
                      windowFeatures: WKWindowFeatures) -> WKWebView? {
-            guard navigationAction.targetFrame == nil else { return nil }
-            print("[GradeHistory] intercept popup -> \(navigationAction.request.url?.absoluteString ?? "")")
+            guard active, navigationAction.targetFrame == nil else { return nil }
+            print("[GradeHistory] intercept popup path=\(navigationAction.request.url?.path ?? "")")
+            contentFrame = nil
             webView.load(navigationAction.request)
             return nil
         }
@@ -1044,7 +1117,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                     if (!targetDoc) {
                         for (var d2 = 0; d2 < docs.length; d2++) {
                             try {
-                                var bodyText = clean(docs[d2].body && docs[d2].body.innerText);
+                                var bodyText = clean(docs[d2].body && docs[d2].body.textContent);
                                 if (bodyText.indexOf('歷年學業成績及排名') >= 0) {
                                     targetDoc = docs[d2];
                                     break;
@@ -1055,26 +1128,18 @@ private struct GradeHistoryWebView: UIViewRepresentable {
 
                     if (!targetDoc) return '';
 
-                    var collapsed = Array.from(
-                        targetDoc.querySelectorAll('#accordion修課紀錄 [aria-expanded="false"]')
-                    );
-                    if (collapsed.length) {
-                        for (var c = 0; c < collapsed.length; c++) {
-                            try { collapsed[c].click(); } catch (error) {}
-                        }
-                        return '';
-                    }
-
+                    // The school's accordion is mutually exclusive. All rows already
+                    // exist in the DOM, so read hidden panels without clicking them.
                     var summaryBySem = {};
                     var summaryRows = targetDoc.querySelectorAll('div.row table.table tr');
                     for (var i = 1; i < summaryRows.length; i++) {
                         var tds = summaryRows[i].querySelectorAll('td');
                         if (!tds || tds.length < 4) continue;
-                        var sem = parseSemRaw(tds[0].innerText);
+                        var sem = parseSemRaw(tds[0].textContent);
                         if (!sem) continue;
                         summaryBySem[sem.key] = {
-                            classRank: clean(tds[2].innerText),
-                            averageText: clean(tds[3].innerText)
+                            classRank: clean(tds[2].textContent),
+                            averageText: clean(tds[3].textContent)
                         };
                     }
 
@@ -1090,15 +1155,15 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                             var cells = rows[r].querySelectorAll('td');
                             if (!cells || cells.length < 5) continue;
 
-                            var semRaw = clean(cells[0].innerText);
+                            var semRaw = clean(cells[0].textContent);
                             var sem = parseSemRaw(semRaw);
                             if (!sem) continue;
 
-                            var courseType = clean(cells[1].innerText);
-                            var creditsRaw = clean(cells[2].innerText);
+                            var courseType = clean(cells[1].textContent);
+                            var creditsRaw = clean(cells[2].textContent);
                             var credits = parseFloat(creditsRaw);
-                            var name = clean(cells[3].innerText);
-                            var scoreText = clean(cells[4].innerText);
+                            var name = clean(cells[3].textContent);
+                            var scoreText = clean(cells[4].textContent);
                             if (!name || !scoreText) continue;
 
                             var summary = summaryBySem[sem.key] || {};
@@ -1121,7 +1186,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                 })()
                 """
 
-                webView.evaluateJavaScript(js) { [weak self] result, _ in
+                self.evaluateContentJavaScript(js, webView: webView) { [weak self] result, _ in
                     guard let self, self.active else { return }
                     guard let json = result as? String, let data = json.data(using: .utf8) else {
                         self.pollForHistoryCourses(webView: webView, attempt: attempt + 1)
@@ -1200,10 +1265,6 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                     }
 
                     print("[GradeHistory] history parse raw=\(courseRows.count) normalized=\(normalizedRows.count) semesters=\(semesters.count)")
-                    if semesters.isEmpty {
-                        let sample = courseRows.prefix(5).map { "\($0.year.map(String.init) ?? "nil")-\($0.term ?? "nil")|\($0.name)|\($0.scoreText)|\($0.credits)" }
-                        print("[GradeHistory] history sample=\(sample.joined(separator: " || "))")
-                    }
 
                     if semesters.isEmpty {
                         self.finish(.failure("目前查無可解析的歷年成績資料"))
@@ -1331,7 +1392,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                 })()
                 """
 
-                webView.evaluateJavaScript(js) { [weak self] result, _ in
+                self.evaluateContentJavaScript(js, webView: webView) { [weak self] result, _ in
                     guard let self, self.active else { return }
                     guard let json = result as? String, let data = json.data(using: .utf8),
                           let dto = try? JSONDecoder().decode(TermScoreSnapshotDTO.self, from: data) else {
@@ -1424,7 +1485,11 @@ private struct GradeHistoryWebView: UIViewRepresentable {
         func finish(_ result: GradeHistoryWebResult) {
             guard active else { return }
             active = false
-            DispatchQueue.main.async {
+            bridgeTask?.cancel()
+            timeoutTask?.cancel()
+            webView?.stopLoading()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.cancelled else { return }
                 self.onResult(result)
             }
         }

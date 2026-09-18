@@ -12,14 +12,19 @@ enum GraduationThresholdWebResult {
 
 // MARK: - Web View Manager
 
+@MainActor
 final class GraduationThresholdWebManager: NSObject, ObservableObject {
     @Published var currentURL: String = ""
     @Published var isLoading = false
 
     var onResult: ((GraduationThresholdWebResult) -> Void)?
 
-    private var webView: WKWebView?
+    private weak var webView: WKWebView?
     private var navigationStep = 0
+    private var active = true
+    private var cancelled = false
+    private var bridgeTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
 
     private let getInfoJS = """
         (function() {
@@ -27,7 +32,9 @@ final class GraduationThresholdWebManager: NSObject, ObservableObject {
             document.querySelectorAll('input.btn').forEach(btn => btn.style.display = 'none');
 
             // 多元時數 (8 numbers)
-            var diverseText = document.getElementById('div_B').innerText;
+            var diverseElement = document.getElementById('div_B');
+            if (!diverseElement) return null;
+            var diverseText = diverseElement.innerText;
             var diverseMatches = diverseText.match(/\\d+/g) || [];
             if (diverseMatches.length === 4) {
                 diverseMatches = [
@@ -85,41 +92,71 @@ final class GraduationThresholdWebManager: NSObject, ObservableObject {
     }
 
     private func loadInitialPage() {
-        // Direct URL to academic system main frame
-        guard let url = URL(string: "https://acade.niu.edu.tw/NIU/MainFrame.aspx") else { return }
-        webView?.load(URLRequest(url: url))
         isLoading = true
+        timeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(40)) } catch { return }
+            self?.finish(.failure("畢業門檻載入逾時，請檢查網路後重試"))
+        }
+        // A modern SSO login alone does not establish the legacy acade cookie.
+        // Exchange a fresh GUID on every attempt, including after re-login.
+        bridgeTask = Task { [weak self] in
+            let account = SSOTokenStore.shared.account
+                ?? LoginRepository.shared.getSavedCredentials()?.username
+                ?? ""
+            let guid = account.isEmpty ? nil : await SSOGUIDBridge.fetchGUID(account: account)
+            guard !Task.isCancelled, let self, self.active else { return }
+            guard let guid, let url = SSOGUIDBridge.acadeLoginURL(guid: guid) else {
+                self.finish(.sessionExpired)
+                return
+            }
+            self.webView?.load(URLRequest(url: url))
+        }
+    }
+
+    func cancel() {
+        cancelled = true
+        active = false
+        bridgeTask?.cancel()
+        timeoutTask?.cancel()
+        webView?.navigationDelegate = nil
+        webView?.stopLoading()
+        onResult = nil
+    }
+
+    private func finish(_ result: GraduationThresholdWebResult) {
+        guard active else { return }
+        active = false
+        isLoading = false
+        bridgeTask?.cancel()
+        timeoutTask?.cancel()
+        webView?.stopLoading()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.cancelled else { return }
+            self.onResult?(result)
+        }
     }
 
     private func extractData() {
         webView?.evaluateJavaScript(getInfoJS) { [weak self] result, error in
-            guard let self = self else { return }
+            guard let self, self.active else { return }
 
             if let error = error {
-                print("[GraduationThreshold] JS error: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.onResult?(.failure("資料擷取失敗，請稍後重試"))
-                }
+                print("[GraduationThreshold] JS error code=\((error as NSError).code)")
+                self.finish(.failure("資料擷取失敗，請稍後重試"))
                 return
             }
 
             guard let jsonString = result as? String,
                   let data = jsonString.data(using: .utf8) else {
-                DispatchQueue.main.async {
-                    self.onResult?(.failure("資料格式異常，請稍後重試"))
-                }
+                self.finish(.failure("找不到畢業門檻資料，請稍後重試"))
                 return
             }
 
             let decoder = JSONDecoder()
             if let obj = try? decoder.decode(GraduationData.self, from: data) {
-                DispatchQueue.main.async {
-                    self.onResult?(.success(obj))
-                }
+                self.finish(.success(obj))
             } else {
-                DispatchQueue.main.async {
-                    self.onResult?(.failure("資料解析失敗，請稍後重試"))
-                }
+                self.finish(.failure("資料解析失敗，請稍後重試"))
             }
         }
     }
@@ -127,22 +164,21 @@ final class GraduationThresholdWebManager: NSObject, ObservableObject {
 
 extension GraduationThresholdWebManager: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard active, let url = webView.url else { return }
         isLoading = false
-        currentURL = webView.url?.absoluteString ?? ""
+        // Never log the one-shot GUID from the login URL.
+        currentURL = "\(url.host ?? "")\(url.path)"
         print("[GraduationThreshold] Loaded: \(currentURL)")
 
         // Detect session expired - redirect to login page
-        if currentURL.contains("/Account/Login") ||
-           currentURL.contains("Default.aspx") {
+        if SSOGUIDBridge.isSessionExpiredURL(url) {
             print("[GraduationThreshold] Session expired, redirecting to login")
-            DispatchQueue.main.async {
-                self.onResult?(.sessionExpired)
-            }
+            finish(.sessionExpired)
             return
         }
 
         // Handle Std002.aspx - redirect to MainFrame
-        if currentURL.contains("Std002.aspx") {
+        if url.path.lowercased().hasSuffix("/std002.aspx") {
             print("[GraduationThreshold] Std002.aspx reached, navigating to MainFrame...")
             if let url = URL(string: "https://acade.niu.edu.tw/NIU/MainFrame.aspx") {
                 webView.load(URLRequest(url: url))
@@ -151,44 +187,45 @@ extension GraduationThresholdWebManager: WKNavigationDelegate {
             return
         }
 
-        switch currentURL {
-        case "https://acade.niu.edu.tw/NIU/MainFrame.aspx":
+        guard url.host?.lowercased() == "acade.niu.edu.tw" else { return }
+        switch url.path.lowercased() {
+        case "/niu/mainframe.aspx" where navigationStep == 0:
             navigationStep = 1
             var request = URLRequest(url: URL(string: "https://acade.niu.edu.tw/NIU/Application/ENR/ENRG0/ENRG010_01.aspx")!)
             request.setValue("https://acade.niu.edu.tw/NIU/Application/ENR/ENRG0/ENRG010_03.aspx", forHTTPHeaderField: "Referer")
             webView.load(request)
             isLoading = true
 
-        case "https://acade.niu.edu.tw/NIU/Application/ENR/ENRG0/ENRG010_01.aspx":
+        case "/niu/application/enr/enrg0/enrg010_01.aspx" where navigationStep < 2:
             navigationStep = 2
             extractData()
 
         default:
-            // After Std002.aspx, SSO should redirect to MainFrame
-            // If we got Std002.aspx but no further redirect, check if session expired
-            if navigationStep == 0 && currentURL.contains("Std002.aspx") {
-                print("[GraduationThreshold] Std002.aspx reached, waiting for redirect...")
-            }
             break
         }
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        guard active else { return }
         isLoading = true
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        isLoading = false
-        let nsError = error as NSError
-        if nsError.code == NSURLErrorCancelled { return }
-        print("[GraduationThreshold] Load error: \(error.localizedDescription)")
+        handleNavigationError(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        isLoading = false
-        let nsError = error as NSError
-        if nsError.code == NSURLErrorCancelled { return }
-        print("[GraduationThreshold] Provisional load error: \(error.localizedDescription)")
+        handleNavigationError(error)
+    }
+
+    private func handleNavigationError(_ error: Error) {
+        let error = error as NSError
+        guard error.domain != NSURLErrorDomain || error.code != NSURLErrorCancelled else { return }
+        finish(.failure("畢業門檻連線失敗，請檢查網路後重試"))
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        finish(.failure("畢業門檻網頁已中斷，請重試"))
     }
 }
 
@@ -204,6 +241,10 @@ struct GraduationThresholdWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: GraduationThresholdWebManager) {
+        coordinator.cancel()
+    }
 
     func makeCoordinator() -> GraduationThresholdWebManager {
         GraduationThresholdWebManager()

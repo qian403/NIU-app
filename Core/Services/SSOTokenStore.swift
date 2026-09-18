@@ -33,6 +33,16 @@ final class SSOTokenStore {
         }
     }
 
+    /// A delayed 401 from an old request must not erase a newer login.
+    func clear(ifMatching rejectedToken: String) {
+        queue.sync {
+            guard UserDefaults.standard.string(forKey: tokenKey) == rejectedToken else { return }
+            UserDefaults.standard.removeObject(forKey: tokenKey)
+            UserDefaults.standard.removeObject(forKey: expKey)
+            UserDefaults.standard.removeObject(forKey: accountKey)
+        }
+    }
+
     var token: String? {
         UserDefaults.standard.string(forKey: tokenKey)?.nilIfEmpty
     }

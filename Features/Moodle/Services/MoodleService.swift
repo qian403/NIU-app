@@ -37,17 +37,26 @@ final class MoodleService {
         authenticationGeneration &+= 1
         let generation = authenticationGeneration
 
-        var components = URLComponents(string: "\(baseURL)/login/token.php")
-        components?.queryItems = [
+        guard let url = URL(string: "\(baseURL)/login/token.php") else {
+            throw MoodleError.invalidURL
+        }
+        var form = URLComponents()
+        form.queryItems = [
             URLQueryItem(name: "username", value: username),
             URLQueryItem(name: "password", value: password),
             URLQueryItem(name: "service", value: "moodle_mobile_app")
         ]
-        guard let url = components?.url else {
+        // Form decoders treat '+' as a space. Preserve literal plus signs in
+        // credentials while keeping all credentials out of URL/error logs.
+        guard let body = form.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B") else {
             throw MoodleError.invalidURL
         }
 
         var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(body.utf8)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 20
         applyMoodleMobileHeaders(to: &request)
         let (data, response) = try await URLSession.shared.data(for: request)

@@ -89,6 +89,8 @@
 		E880B97A27A0F77D4C7CFF25 /* Features/EventRegistration/Views/EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */; };
 		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
 		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
+		D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C002D031C002D031C002 /* LibraryCodeService.swift */; };
+		D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C004D031C004D031C004 /* LibraryCodeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -218,6 +220,8 @@
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
 		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
+		D031C002D031C002D031C002 /* LibraryCodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeService.swift; sourceTree = "<group>"; };
+		D031C004D031C004D031C004 /* LibraryCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -479,6 +483,7 @@
 			children = (
 				10A32DA02F431F630009BB45 /* Authentication */,
 				10A32DA32F431F630009BB45 /* Home */,
+				D031C005D031C005D031C005 /* Library */,
 				AA01BC10AA01BC10AA01BC10 /* GradeHistory */,
 			);
 			path = Features;
@@ -695,6 +700,15 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		D031C005D031C005D031C005 /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				D031C002D031C002D031C002 /* LibraryCodeService.swift */,
+				D031C004D031C004D031C004 /* LibraryCodeView.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -876,6 +890,8 @@
 				C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */,
 				C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */,
 				C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */,
+				D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */,
+				D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */,
 				10A32DBB2F431F630009BB45 /* HomeView.swift in Sources */,
 				AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */,
 				10A32DBD2F431F630009BB45 /* LoginView.swift in Sources */,

@@ -81,6 +81,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
     }
 
     public func updateNSView(_ nsView: WKWebView, context: Context) {}
+
+    public static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancel(in: nsView)
+    }
     #else
     public func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -100,6 +104,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
     }
 
     public func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    public static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancel(in: uiView)
+    }
     #endif
 
     public class Coordinator: NSObject, WKNavigationDelegate {
@@ -115,6 +123,17 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         private var modernStateCheckInFlight = false
         private var modernWebContentRecoveryCount = 0
         private var modernPageGeneration = 0
+        private var authorizationTask: Task<Void, Never>?
+
+        fileprivate func cancel(in webView: WKWebView) {
+            modernLoginFinished = true
+            isProcessingCaptcha = false
+            modernPageGeneration += 1
+            authorizationTask?.cancel()
+            authorizationTask = nil
+            webView.navigationDelegate = nil
+            webView.stopLoading()
+        }
         private let maxLegacyCaptchaAttempts = 6
         private var legacyCaptchaRetryCount = 0
         private var didFallbackToLegacyFlow = false
@@ -410,7 +429,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         private func startModernLogin(in webView: WKWebView) {
             guard !isProcessingCaptcha, !modernLoginFinished else { return }
             isProcessingCaptcha = true
-            modernLoginDeadline = Date().addingTimeInterval(60)
+            modernLoginDeadline = Date().addingTimeInterval(120)
             print("[SSO] 開始新版登入流程")
             checkModernLoginState(in: webView)
             fillModernLoginForm(in: webView)
@@ -495,7 +514,25 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             let script = """
             (function() {
                 const token = sessionStorage.getItem('niu_sso_token') || '';
-                const alert = document.querySelector('.swal2-popup.swal2-show, .alert-danger, [role="alert"]');
+                // SweetAlert also uses role=alert for "登入中…" and success.
+                // Only visible error/warning popups can indicate a rejected login.
+                const visible = el => el && el.getClientRects().length > 0
+                    && getComputedStyle(el).visibility !== 'hidden';
+                const popup = document.querySelector('.swal2-popup.swal2-show');
+                const popupText = popup ? popup.innerText.trim() : '';
+                const warning = popup && (popup.querySelector('.swal2-icon.swal2-warning')
+                    || popup.getAttribute('data-icon') === 'warning');
+                const accountActionRequired = warning && (
+                    popupText.includes('鎖定') || (popupText.includes('密碼')
+                        && ['到期', '過期', '變更預設密碼'].some(word => popupText.includes(word))
+                        && !popupText.includes('即將'))
+                );
+                const rejected = visible(popup) && (
+                    popup.querySelector('.swal2-icon.swal2-error')
+                    || popup.getAttribute('data-icon') === 'error' || accountActionRequired
+                );
+                const danger = Array.from(document.querySelectorAll('.alert-danger')).find(visible);
+                const alert = rejected ? popup : danger;
                 return JSON.stringify({ token: token, error: alert ? alert.innerText.trim() : '' });
             })();
             """
@@ -552,9 +589,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             isProcessingCaptcha = false
             switch outcome {
             case .success(let token):
-                if let token, !token.isEmpty {
-                    SSOTokenStore.shared.save(token: token, exp: tokenExpiration(token), account: parent.account)
-                }
+                print("[SSO] 已收到登入憑證，驗證中")
                 finishModernLogin(token: token, in: webView)
             case .credentialsFailed(let message):
                 parent.onResult(.credentialsFailed(message: message))
@@ -588,27 +623,21 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 return
             }
 
-            persistTokenIntoWebView(token: token, in: webView)
-
-            Task { [weak self] in
+            let generation = modernPageGeneration
+            authorizationTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 let info = await self.fetchAuthorizationInfo(token: token)
-                await MainActor.run {
-                    let resolved = info ?? StudentInfo(name: self.parent.account, department: "", grade: "")
-                    self.appState.updateProfileFromSSO(resolved)
-                    self.parent.onResult(.success(info: resolved))
+                guard !Task.isCancelled, generation == self.modernPageGeneration else { return }
+                guard let info else {
+                    print("[SSO] 登入憑證驗證失敗")
+                    self.parent.onResult(.generic(title: "登入驗證未完成",
+                        message: "無法確認校務登入憑證，請確認網路後重新登入"))
+                    return
                 }
-            }
-        }
-
-        private func persistTokenIntoWebView(token: String, in webView: WKWebView) {
-            let escaped = token.replacingOccurrences(of: "\\", with: "\\\\")
-                                .replacingOccurrences(of: "'", with: "\\'")
-            let js = "try { sessionStorage.setItem('niu_sso_token', '\(escaped)'); } catch (e) {}"
-            webView.evaluateJavaScript(js) { _, error in
-                if let error {
-                    print("[SSO] sessionStorage 寫入失敗: \(error.localizedDescription)")
-                }
+                SSOTokenStore.shared.save(token: token, exp: self.tokenExpiration(token), account: self.parent.account)
+                self.appState.updateProfileFromSSO(info)
+                print("[SSO] 登入憑證驗證完成")
+                self.parent.onResult(.success(info: info))
             }
         }
 
@@ -618,7 +647,8 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             }
 
             for attempt in 1...3 {
-                var request = URLRequest(url: url)
+                guard !Task.isCancelled else { return nil }
+                var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
                 request.httpMethod = "GET"
                 request.timeoutInterval = 15
                 request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
@@ -640,6 +670,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                         try? await Task.sleep(nanoseconds: 600_000_000)
                         continue
                     }
+                    guard d.acnt?.lowercased() == parent.account.lowercased() else {
+                        print("[SSO] Authorization/info 帳號不符")
+                        return nil
+                    }
                     let name = d.chName?.nilIfEmpty ?? parent.account
                     let department = d.facultyName?.nilIfEmpty ?? ""
                     let grade: String
@@ -648,7 +682,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     } else {
                         grade = ""
                     }
-                    print("[SSO] 新版登入取得學生資訊: \(name) / \(department) / \(grade)")
+                    print("[SSO] 新版登入取得學生資訊")
                     return StudentInfo(name: name, department: department, grade: grade)
                 } catch {
                     print("[SSO] Authorization/info attempt=\(attempt) 失敗: \(error.localizedDescription)")

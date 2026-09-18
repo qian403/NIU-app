@@ -156,11 +156,18 @@ struct LoginView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             NIUTextField(
-                placeholder: "學號 (bXXXXXXX)",
+                placeholder: "輸入學號",
                 icon: "person",
-                text: $viewModel.username
+                text: $viewModel.username,
+                keyboardType: .asciiCapable
             )
             .focused($focusedField, equals: .username)
+            .onChange(of: viewModel.username) { _, value in
+                let filtered = value.filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
+                if filtered != value {
+                    viewModel.username = filtered
+                }
+            }
             .submitLabel(.next)
             .onSubmit { focusedField = .password }
 

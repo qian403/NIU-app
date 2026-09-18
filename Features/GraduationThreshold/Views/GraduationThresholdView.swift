@@ -45,13 +45,20 @@ struct GraduationThresholdView: View {
             }
         }
         .overlay {
-            if vm.showWebView {
-                GraduationThresholdWebView(onResult: vm.handleWebResult)
+            if vm.showWebView && !vm.isWebVisible {
+                thresholdWebView
                     .frame(width: 360, height: 640)
                     .opacity(0)
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    private var thresholdWebView: some View {
+        GraduationThresholdWebView { [requestID = vm.webViewID] result in
+            vm.handleWebResult(result, requestID: requestID)
+        }
+        .id(vm.webViewID)
     }
 
     // MARK: - Content
@@ -60,7 +67,7 @@ struct GraduationThresholdView: View {
     private func contentView(data: GraduationData) -> some View {
         if vm.isWebVisible {
             if vm.showWebView {
-                GraduationThresholdWebView(onResult: vm.handleWebResult)
+                thresholdWebView
             } else {
                 Text("載入網頁中…")
                     .foregroundColor(.secondary)
@@ -75,11 +82,18 @@ struct GraduationThresholdView: View {
                     if hasCreditCourse(data) {
                         creditCourseCard(data: data)
                     }
+                    AcademicRefreshFooter(
+                        lastUpdated: vm.lastUpdated,
+                        isRefreshing: vm.isRefreshing,
+                        errorMessage: vm.lastRefreshError,
+                        onRetry: vm.refresh
+                    )
                 }
                 .padding(.horizontal, Theme.Spacing.large)
                 .padding(.top, Theme.Spacing.medium)
                 .padding(.bottom, Theme.Spacing.large)
             }
+            .scrollBounceBehavior(.always, axes: .vertical)
             .refreshable { await vm.refreshAndWait() }
         }
     }

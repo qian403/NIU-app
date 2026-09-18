@@ -83,7 +83,10 @@ final class MoodleViewModel: ObservableObject {
             if isFirstLoad {
                 loadState = .error(error.localizedDescription)
             }
-            print("[Moodle] Load courses error: \(error)")
+            // NSError.userInfo can contain credential-bearing URLs. Log only
+            // the error category and numeric code, never the complete error.
+            let diagnostic = error as NSError
+            print("[Moodle] Load courses error: domain=\(diagnostic.domain) code=\(diagnostic.code)")
         }
     }
     

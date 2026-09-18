@@ -255,6 +255,43 @@ struct NIUTextField: View {
     }
 }
 
+/// Shared status for academic records saved on this device.
+struct AcademicRefreshFooter: View {
+    let lastUpdated: Date?
+    let isRefreshing: Bool
+    let errorMessage: String?
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if isRefreshing {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("正在更新資料…")
+                }
+            } else {
+                Label("下拉即可更新", systemImage: "arrow.down")
+            }
+            if let lastUpdated {
+                Text("上次更新：\(lastUpdated.formatted(date: .abbreviated, time: .shortened))")
+                Text("資料已儲存在此裝置")
+            }
+            if let errorMessage {
+                Text("更新失敗，目前保留上次資料。\n\(errorMessage)")
+                    .foregroundStyle(.orange)
+                Button("重新整理", action: onRetry)
+                    .disabled(isRefreshing)
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .accessibilityElement(children: .contain)
+    }
+}
+
 // MARK: - Chip Component
 
 struct NIUChip: View {

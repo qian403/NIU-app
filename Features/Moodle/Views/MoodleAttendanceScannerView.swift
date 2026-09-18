@@ -17,6 +17,7 @@ struct MoodleAttendanceScannerView: View {
     @State private var preparationState: AttendancePreparationState = .preparing
     @State private var isVisible = false
     @State private var debugPreviewOutcome: MoodleAttendanceWebOutcome?
+    @State private var expiredAttendanceURLs: Set<URL> = []
 
     private enum AttendancePreparationState: Equatable {
         case preparing
@@ -27,6 +28,16 @@ struct MoodleAttendanceScannerView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+
+            // Keep the same preview connected while loading and showing status overlays.
+            AttendanceCameraPreview(
+                session: scanner.session,
+                onFocus: scanner.focus,
+                onPinch: scanner.updateZoom,
+                onReady: scanner.setPreviewReady
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea(edges: .bottom)
 
             switch scanner.state {
             case .ready:
@@ -78,6 +89,7 @@ struct MoodleAttendanceScannerView: View {
                 MoodleAttendanceSubmissionView(
                     attendanceURL: attendanceURL,
                     previewOutcome: debugPreviewOutcome,
+                    onQRCodeExpired: { expiredAttendanceURLs.insert(attendanceURL) },
                     onReturnHome: {
                         isShowingAttendance = false
                         dismiss()
@@ -103,7 +115,7 @@ struct MoodleAttendanceScannerView: View {
                     }
                     Button("模擬 QR Code 過期", systemImage: "exclamationmark.triangle") {
                         showDebugResult(
-                            kind: .failed,
+                            kind: .expired,
                             message: "QR Code 已過期，請重新掃描。"
                         )
                     }
@@ -118,13 +130,6 @@ struct MoodleAttendanceScannerView: View {
 
     private var scannerContent: some View {
         ZStack {
-            AttendanceCameraPreview(
-                session: scanner.session,
-                onFocus: scanner.focus,
-                onPinch: scanner.updateZoom
-            )
-            .ignoresSafeArea(edges: .bottom)
-
             LinearGradient(
                 colors: [.black.opacity(0.55), .clear, .black.opacity(0.78)],
                 startPoint: .top,
@@ -363,15 +368,11 @@ struct MoodleAttendanceScannerView: View {
         }
 
         guard let url = MoodleAttendanceQRCode.validatedURL(from: rawValue) else {
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            withAnimation { validationMessage = "這不是有效的 M 園區點名 QR Code" }
-            validationTask?.cancel()
-            validationTask = Task {
-                try? await Task.sleep(for: .seconds(1.6))
-                guard !Task.isCancelled else { return }
-                withAnimation { validationMessage = nil }
-                scanner.resumeScanning()
-            }
+            showScanWarning("這不是有效的 M 園區點名 QR Code")
+            return
+        }
+        guard !expiredAttendanceURLs.contains(url) else {
+            showScanWarning("這個 QR Code 已過期，請掃描老師目前顯示的最新 QR Code")
             return
         }
 
@@ -379,6 +380,18 @@ struct MoodleAttendanceScannerView: View {
         debugPreviewOutcome = nil
         attendanceURL = url
         isShowingAttendance = true
+    }
+
+    private func showScanWarning(_ message: String) {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        withAnimation { validationMessage = message }
+        validationTask?.cancel()
+        validationTask = Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            withAnimation { validationMessage = nil }
+            scanner.resumeScanning()
+        }
     }
 
     private func prepareAttendanceAccess() {
@@ -439,6 +452,7 @@ struct MoodleAttendanceScannerView: View {
 private struct MoodleAttendanceSubmissionView: View {
     let attendanceURL: URL
     let previewOutcome: MoodleAttendanceWebOutcome?
+    let onQRCodeExpired: () -> Void
     let onReturnHome: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -451,10 +465,12 @@ private struct MoodleAttendanceSubmissionView: View {
     init(
         attendanceURL: URL,
         previewOutcome: MoodleAttendanceWebOutcome? = nil,
+        onQRCodeExpired: @escaping () -> Void = {},
         onReturnHome: @escaping () -> Void = {}
     ) {
         self.attendanceURL = attendanceURL
         self.previewOutcome = previewOutcome
+        self.onQRCodeExpired = onQRCodeExpired
         self.onReturnHome = onReturnHome
     }
 
@@ -470,8 +486,9 @@ private struct MoodleAttendanceSubmissionView: View {
     }
 
     private var shouldShowWebResponse: Bool {
+        guard webManager.errorMessage == nil else { return false }
         guard let outcome else { return false }
-        return showsWebResponse || outcome.kind == .requiresAction || outcome.kind == .unknown
+        return showsWebResponse || outcome.opensWebResponseAutomatically
     }
 
     var body: some View {
@@ -500,8 +517,7 @@ private struct MoodleAttendanceSubmissionView: View {
                 .accessibilityLabel("回到主頁")
             }
 
-            if showsWebResponse,
-               outcome?.kind == .recorded || outcome?.kind == .alreadyRecorded || outcome?.kind == .failed {
+            if showsWebResponse, outcome?.kind != .requiresAction {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("摘要") {
                         showsWebResponse = false
@@ -516,6 +532,7 @@ private struct MoodleAttendanceSubmissionView: View {
         }
         .onChange(of: webManager.attendanceOutcome) { _, newValue in
             guard let newValue else { return }
+            if newValue.kind == .expired { onQRCodeExpired() }
 
             if isVerificationRequest {
                 isVerificationRequest = false
@@ -530,12 +547,12 @@ private struct MoodleAttendanceSubmissionView: View {
                 case .requiresAction:
                     verificationState = .warning("M 園區仍顯示可填寫表單，無法確認這次點名已寫入。")
                     showsWebResponse = true
-                case .failed:
+                case .expired, .failed:
                     verificationState = .warning(newValue.message)
                     showsWebResponse = false
                 case .unknown:
                     verificationState = .warning("M 園區沒有回傳可確認的驗證結果。")
-                    showsWebResponse = true
+                    showsWebResponse = false
                 }
                 return
             }
@@ -547,12 +564,12 @@ private struct MoodleAttendanceSubmissionView: View {
             }
 
             lastResolvedOutcome = newValue
-            if newValue.kind == .requiresAction || newValue.kind == .unknown {
+            if newValue.opensWebResponseAutomatically {
                 showsWebResponse = true
             } else {
                 showsWebResponse = false
                 UINotificationFeedbackGenerator().notificationOccurred(
-                    newValue.kind == .failed ? .error : .success
+                    newValue.kind == .recorded || newValue.kind == .alreadyRecorded ? .success : .error
                 )
             }
         }
@@ -586,6 +603,14 @@ private struct MoodleAttendanceSubmissionView: View {
                     message: outcome.message,
                     showsVerification: true
                 )
+            case .expired:
+                stateView(
+                    icon: "qrcode.viewfinder",
+                    color: .orange,
+                    title: "QR Code 已過期",
+                    message: outcome.message,
+                    showsVerification: false
+                )
             case .failed:
                 stateView(
                     icon: "xmark.circle.fill",
@@ -594,7 +619,15 @@ private struct MoodleAttendanceSubmissionView: View {
                     message: outcome.message,
                     showsVerification: false
                 )
-            case .requiresAction, .unknown:
+            case .unknown:
+                stateView(
+                    icon: "questionmark.circle",
+                    color: .orange,
+                    title: "無法確認點名結果",
+                    message: outcome.message,
+                    showsVerification: false
+                )
+            case .requiresAction:
                 EmptyView()
             }
         } else {
@@ -649,6 +682,16 @@ private struct MoodleAttendanceSubmissionView: View {
                 resultDetailCard(color: color, showsVerification: showsVerification)
 
                 VStack(spacing: Theme.Spacing.small) {
+                    if !showsVerification {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Label("重新掃描 QR Code", systemImage: "qrcode.viewfinder")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
                     if showsVerification {
                         Button {
                             verifyAttendanceRecord()
@@ -671,22 +714,26 @@ private struct MoodleAttendanceSubmissionView: View {
                         .disabled(isVerifying)
                     }
 
-                    Button {
-                        showsWebResponse = true
-                    } label: {
-                        Label("查看 M 園區回應", systemImage: "safari")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(maxWidth: .infinity)
+                    if webManager.errorMessage == nil {
+                        Button {
+                            showsWebResponse = true
+                        } label: {
+                            Label("查看 M 園區回應", systemImage: "safari")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
 
-                    Button("返回掃描") {
-                        dismiss()
+                    if showsVerification {
+                        Button("返回掃描") {
+                            dismiss()
+                        }
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .padding(.top, Theme.Spacing.xsmall)
                     }
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color(.secondaryLabel))
-                    .padding(.top, Theme.Spacing.xsmall)
                 }
             }
             .padding(.horizontal, Theme.Spacing.large)
@@ -891,6 +938,8 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
     private let sessionQueue = DispatchQueue(label: "tw.edu.niu.attendance.session", qos: .userInitiated)
     private var captureDevice: AVCaptureDevice?
     private var isConfigured = false
+    private var isConfiguring = false
+    private var isPreviewReady = false
     private var isActive = false
     private var isAcceptingCodes = true
     private var pinchStartZoom: CGFloat = 1
@@ -918,7 +967,9 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
     func start() {
         isActive = true
         isAcceptingCodes = true
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        let authorization = AVCaptureDevice.authorizationStatus(for: .video)
+        print("[AttendanceCamera] permission=\(authorization.rawValue)")
+        switch authorization {
         case .authorized:
             configureIfNeeded()
         case .notDetermined:
@@ -949,6 +1000,12 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
                 captureSession.stopRunning()
             }
         }
+    }
+
+    func setPreviewReady(_ ready: Bool) {
+        guard isPreviewReady != ready else { return }
+        isPreviewReady = ready
+        if ready { startSessionIfNeeded() }
     }
 
     func resumeScanning() {
@@ -1025,6 +1082,9 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
 
     @objc private func sessionRuntimeError(_ notification: Notification) {
         let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError
+        if let error {
+            print("[AttendanceCamera] runtime error code=\(error.code.rawValue)")
+        }
         Task { @MainActor [weak self] in
             guard let self, self.isActive else { return }
             if error?.code == .mediaServicesWereReset {
@@ -1055,50 +1115,106 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
 
     private func configureIfNeeded() {
         if isConfigured {
-            state = .ready
             startSessionIfNeeded()
             return
         }
+        guard !isConfiguring else { return }
 
         guard let device = bestBackCamera() else {
+            print("[AttendanceCamera] no back camera")
             state = .unavailable
             return
         }
 
+        print("[AttendanceCamera] device=\(device.deviceType.rawValue)")
+        isConfiguring = true
+        state = .idle
+        let captureSession = session
+        let output = metadataOutput
+        let callbackQueue = metadataQueue
+        // Configuration, start and stop must all run on the same serial queue.
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            let result = Self.configureSession(captureSession, device: device, output: output)
+            if case .success = result {
+                output.setMetadataObjectsDelegate(self, queue: callbackQueue)
+            }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isConfiguring = false
+                switch result {
+                case .success:
+                    self.captureDevice = device
+                    self.maxZoomFactor = min(max(device.activeFormat.videoMaxZoomFactor, 1), 12)
+                    self.isTorchAvailable = device.hasTorch
+                    self.isConfigured = true
+                    self.configureContinuousFocus(on: device)
+                    self.startSessionIfNeeded()
+                case .failure(let error):
+                    guard self.isActive else { return }
+                    self.state = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private enum CameraSetupError: LocalizedError {
+        case inputUnavailable
+        case outputUnavailable
+        case qrUnavailable
+        case deviceError(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .inputUnavailable: return "無法連接相機，請關閉其他使用相機的 App 後重試"
+            case .outputUnavailable: return "無法建立 QR Code 掃描輸出，請重試"
+            case .qrUnavailable: return "目前相機設定不支援 QR Code 掃描"
+            case .deviceError(let message): return message
+            }
+        }
+    }
+
+    nonisolated private static func configureSession(
+        _ session: AVCaptureSession, device: AVCaptureDevice, output: AVCaptureMetadataOutput
+    ) -> Result<Void, CameraSetupError> {
         do {
             let input = try AVCaptureDeviceInput(device: device)
             session.beginConfiguration()
-            session.sessionPreset = .high
+            defer { session.commitConfiguration() }
+            if session.canSetSessionPreset(.high) { session.sessionPreset = .high }
 
-            guard session.canAddInput(input), session.canAddOutput(metadataOutput) else {
-                session.commitConfiguration()
-                state = .failed("無法建立 QR Code 掃描器")
-                return
+            guard session.canAddInput(input) else {
+                print("[AttendanceCamera] cannot add input")
+                return .failure(.inputUnavailable)
             }
-
             session.addInput(input)
-            session.addOutput(metadataOutput)
-            metadataOutput.setMetadataObjectsDelegate(self, queue: metadataQueue)
-            metadataOutput.metadataObjectTypes = [.qr]
-            session.commitConfiguration()
-
-            captureDevice = device
-            maxZoomFactor = min(max(device.activeFormat.videoMaxZoomFactor, 1), 12)
-            isTorchAvailable = device.hasTorch
-            isConfigured = true
-            configureContinuousFocus(on: device)
-            state = .ready
-            startSessionIfNeeded()
+            // Metadata output support depends on the video input already being attached.
+            guard session.canAddOutput(output) else {
+                session.removeInput(input)
+                print("[AttendanceCamera] cannot add metadata output")
+                return .failure(.outputUnavailable)
+            }
+            session.addOutput(output)
+            guard output.availableMetadataObjectTypes.contains(.qr) else {
+                session.removeOutput(output)
+                session.removeInput(input)
+                print("[AttendanceCamera] QR metadata unavailable")
+                return .failure(.qrUnavailable)
+            }
+            output.metadataObjectTypes = [.qr]
+            print("[AttendanceCamera] configured QR capture")
+            return .success(())
         } catch {
-            state = .failed(error.localizedDescription)
+            let nsError = error as NSError
+            print("[AttendanceCamera] setup error domain=\(nsError.domain) code=\(nsError.code)")
+            return .failure(.deviceError(error.localizedDescription))
         }
     }
 
     private func bestBackCamera() -> AVCaptureDevice? {
-        AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        // Use the physical main camera so scanning does not depend on virtual
+        // multi-camera switching. Zoom remains available on this device.
+        AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
     }
 
     private func configureContinuousFocus(on device: AVCaptureDevice) {
@@ -1118,11 +1234,17 @@ final class MoodleAttendanceScanner: NSObject, ObservableObject, AVCaptureMetada
     }
 
     private func startSessionIfNeeded() {
-        guard isConfigured, isActive else { return }
+        guard isConfigured, isActive, isPreviewReady else { return }
         let captureSession = session
-        sessionQueue.async {
+        sessionQueue.async { [weak self] in
             if !captureSession.isRunning {
                 captureSession.startRunning()
+            }
+            let running = captureSession.isRunning
+            print("[AttendanceCamera] running=\(running)")
+            Task { @MainActor [weak self] in
+                guard let self, self.isActive else { return }
+                self.state = running ? .ready : .failed("相機未能啟動，請重試")
             }
         }
     }
@@ -1144,19 +1266,26 @@ private struct AttendanceCameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
     let onFocus: (CGPoint) -> Void
     let onPinch: (CGFloat, UIGestureRecognizer.State) -> Void
+    let onReady: (Bool) -> Void
 
     func makeUIView(context: Context) -> AttendancePreviewView {
         let view = AttendancePreviewView()
-        view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspectFill
         view.onFocus = onFocus
         view.onPinch = onPinch
+        view.onReady = onReady
+        view.connect(to: session)
         return view
     }
 
     func updateUIView(_ uiView: AttendancePreviewView, context: Context) {
         uiView.onFocus = onFocus
         uiView.onPinch = onPinch
+        uiView.onReady = onReady
+    }
+
+    static func dismantleUIView(_ uiView: AttendancePreviewView, coordinator: ()) {
+        uiView.onReady?(false)
+        uiView.onReady = nil
     }
 }
 
@@ -1169,6 +1298,44 @@ private final class AttendancePreviewView: UIView {
 
     var onFocus: ((CGPoint) -> Void)?
     var onPinch: ((CGFloat, UIGestureRecognizer.State) -> Void)?
+    var onReady: ((Bool) -> Void)?
+    private var hasAnnouncedReady = false
+    private var previewObservation: NSKeyValueObservation?
+
+    func connect(to session: AVCaptureSession) {
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.session = session
+        previewObservation = previewLayer.observe(\.isPreviewing, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                self?.logPreviewState()
+            }
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateReadiness()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // This is the backing layer, so UIKit already sizes it to our bounds.
+        updateReadiness()
+    }
+
+    private func updateReadiness() {
+        let ready = window != nil && bounds.width > 0 && bounds.height > 0
+            && previewLayer.session != nil
+        guard ready != hasAnnouncedReady else { return }
+        hasAnnouncedReady = ready
+        logPreviewState()
+        onReady?(ready)
+    }
+
+    private func logPreviewState() {
+        let connection = previewLayer.connection
+        print("[AttendanceCamera] preview window=\(window != nil) size=\(Int(bounds.width))x\(Int(bounds.height)) connected=\(connection != nil) enabled=\(connection?.isEnabled ?? false) active=\(connection?.isActive ?? false) displaying=\(previewLayer.isPreviewing)")
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

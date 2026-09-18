@@ -17,35 +17,59 @@ final class GraduationThresholdViewModel: ObservableObject {
     @Published var isWebVisible = false
     @Published var isFetchingInBackground = false  // background refresh while showing cache
     @Published private(set) var isRefreshing = false
+    @Published private(set) var webViewID = UUID()
+    @Published private(set) var lastRefreshError: String?
+    @Published private(set) var lastUpdated: Date?
 
     private var sessionRefreshAttempted = false
+    private var operationID = UUID()
+    private var sessionRefreshTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
 
-    private let cacheKey = "graduationThreshold.v1.cachedData"
+    private let cacheKey: String?
+    private let cacheDefaults: UserDefaults
+    private let refreshTimeout: Duration
 
-    init() {
+    init(cacheDefaults: UserDefaults = .standard, account: String? = nil,
+         refreshTimeout: Duration = .seconds(90)) {
+        self.cacheDefaults = cacheDefaults
+        self.refreshTimeout = refreshTimeout
+        let owner = (account ?? cacheDefaults.string(forKey: "app.user.username") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        cacheKey = owner.isEmpty ? nil : "graduationThreshold.v2.cachedData.\(owner)"
         loadGraduationData()
     }
 
     func refresh() {
         guard !isRefreshing, !showWebView else { return }
+        operationID = UUID()
+        webViewID = UUID()
+        lastRefreshError = nil
         isRefreshing = true
         sessionRefreshAttempted = false
         isFetchingInBackground = graduationData != nil
         if graduationData == nil { loadState = .loading }
         showWebView = true
+        scheduleLoadTimeout()
+    }
+
+    /// Network loading has its own budget; interactive SSO has a separate timeout.
+    private func scheduleLoadTimeout() {
+        let operation = operationID
+        let timeout = refreshTimeout
+        timeoutTask?.cancel()
+        timeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self, self.operationID == operation, self.isRefreshing else { return }
+            self.fail("畢業門檻更新逾時，請稍後重試")
+        }
     }
 
     func refreshAndWait() async {
         refresh()
-        let deadline = Date().addingTimeInterval(90)
-        while isRefreshing && !Task.isCancelled && Date() < deadline {
+        let operation = operationID
+        while isRefreshing && operationID == operation && !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 150_000_000)
-        }
-        if isRefreshing {
-            isRefreshing = false
-            isFetchingInBackground = false
-            showWebView = false
-            if graduationData == nil { loadState = .error("畢業門檻更新逾時，請稍後再試") }
         }
     }
 
@@ -58,59 +82,72 @@ final class GraduationThresholdViewModel: ObservableObject {
     private func loadGraduationData() {
         if let cached = loadFromCache() {
             graduationData = cached.data
+            lastUpdated = cached.fetchedAt
             loadState = .loaded
         } else {
-            loadState = .loading
-            showWebView = true
+            refresh()
         }
     }
 
-    func handleWebResult(_ result: GraduationThresholdWebResult) {
+    func handleWebResult(_ result: GraduationThresholdWebResult, requestID: UUID) {
+        guard isRefreshing, showWebView, requestID == webViewID else { return }
         showWebView = false
 
         switch result {
         case .success(let data):
-            isRefreshing = false
-            sessionRefreshAttempted = false
-            isFetchingInBackground = false
-            saveToCache(CachedGraduationData(data: data, fetchedAt: Date()))
+            finishOperation()
+            let date = Date()
+            saveToCache(CachedGraduationData(data: data, fetchedAt: date))
+            lastUpdated = date
             graduationData = data
             loadState = .loaded
 
         case .sessionExpired:
-            // Try a transparent SSO re-login first (only once per operation).
-            // If cached data exists, keep showing it silently on failure.
+            // One real SSO re-login per operation, then rebuild acade cookies
+            // using a fresh GUID in a new WebView.
             if !sessionRefreshAttempted {
                 sessionRefreshAttempted = true
-                Task {
-                    let refreshed = await SSOSessionService.shared.requestRefresh()
+                let operation = operationID
+                timeoutTask?.cancel()
+                timeoutTask = nil
+                sessionRefreshTask = Task { [weak self] in
+                    let refreshed = await SSOSessionService.shared.requestRefresh(force: true)
+                    guard !Task.isCancelled, let self,
+                          self.operationID == operation, self.isRefreshing else { return }
                     if refreshed {
+                        self.scheduleLoadTimeout()
+                        self.webViewID = UUID()
                         self.showWebView = true
                     } else {
-                        self.isRefreshing = false
-                        self.isFetchingInBackground = false
-                        if self.graduationData == nil {
-                            self.loadState = .error("SSO 登入失敗\n\n請在「設定」頁面重新登入後再試")
-                        }
+                        self.fail(SSOSessionService.shared.lastFailureMessage
+                        ?? "無法更新校務登入，請稍後重試，或到設定重新登入")
                     }
                 }
             } else {
-                sessionRefreshAttempted = false
-                isRefreshing = false
-                isFetchingInBackground = false
-                if graduationData == nil {
-                    loadState = .error("SSO 登入失敗\n\n請在「設定」頁面重新登入後再試")
-                }
+                fail("教務系統登入仍已逾時，請稍後重試，或到設定重新登入")
             }
 
         case .failure(let message):
-            isRefreshing = false
-            sessionRefreshAttempted = false
-            isFetchingInBackground = false
-            if graduationData == nil {
-                loadState = .error(message)
-            }
+            fail(message)
         }
+    }
+
+    private func finishOperation() {
+        operationID = UUID()
+        sessionRefreshTask?.cancel()
+        sessionRefreshTask = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        showWebView = false
+        isRefreshing = false
+        isFetchingInBackground = false
+        sessionRefreshAttempted = false
+    }
+
+    private func fail(_ message: String) {
+        finishOperation()
+        lastRefreshError = message
+        if graduationData == nil { loadState = .error(message) }
     }
 
     func textColor(for ability: String?) -> Color {
@@ -124,15 +161,15 @@ final class GraduationThresholdViewModel: ObservableObject {
     // MARK: - Cache
 
     private func loadFromCache() -> CachedGraduationData? {
-        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+        guard let cacheKey, let data = cacheDefaults.data(forKey: cacheKey),
               let decoded = try? JSONDecoder().decode(CachedGraduationData.self, from: data)
         else { return nil }
         return decoded
     }
 
     private func saveToCache(_ cached: CachedGraduationData) {
-        if let data = try? JSONEncoder().encode(cached) {
-            UserDefaults.standard.set(data, forKey: cacheKey)
+        if let cacheKey, let data = try? JSONEncoder().encode(cached) {
+            cacheDefaults.set(data, forKey: cacheKey)
         }
     }
 
