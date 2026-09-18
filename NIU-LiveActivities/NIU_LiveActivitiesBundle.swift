@@ -13,6 +13,9 @@ struct NIU_LiveActivitiesBundle: WidgetBundle {
     var body: some Widget {
         NIU_CompactWidget()
         NIU_LiveActivities()
+        CampusQuickAccessWidget()
+        AttendanceControl()
+        LibraryCodeControl()
         NIU_LiveActivitiesLiveActivity()
     }
 }

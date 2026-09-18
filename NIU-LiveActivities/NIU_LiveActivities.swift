@@ -6,6 +6,7 @@ private let bundledAcademicCalendarURL = Bundle.main.url(forResource: "academic_
 struct NIUWidgetEntry: TimelineEntry {
     let date: Date
     fileprivate let payload: WidgetPayload
+    var tapAction: WidgetTapAction = .showContent
 }
 
 struct NIUWidgetProvider: AppIntentTimelineProvider {
@@ -33,23 +34,45 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<NIUWidgetEntry> {
-        let entry = await makeEntry(configuration: configuration)
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date().addingTimeInterval(1800)
-        return Timeline(entries: [entry], policy: .after(nextRefresh))
+        await timeline(for: configuration.contentType, tapAction: configuration.tapAction)
+    }
+
+    func timeline(for contentType: WidgetContentType, tapAction: WidgetTapAction) async -> Timeline<NIUWidgetEntry> {
+        let now = Date()
+        guard contentType == .classSchedule else {
+            let entry = await entry(for: contentType, tapAction: tapAction, at: now)
+            return Timeline(entries: [entry], policy: .after(now.addingTimeInterval(1800)))
+        }
+        let calendar = Calendar.current
+        let midnight = calendar.startOfDay(for: now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: midnight)!
+        // Precompute class boundaries, so the widget does not need a network wakeup
+        // to switch from the current class to the next one.
+        let boundaries = (loadSchedule()?.periods ?? []).flatMap { period in
+            [period.startMinutes, period.endMinutes].compactMap { $0 }.compactMap {
+                calendar.date(byAdding: .minute, value: $0, to: midnight)
+            }
+        }.filter { $0 > now && $0 < tomorrow }
+        let dates = [now] + Array(Set(boundaries)).sorted() + [tomorrow]
+        var entries: [NIUWidgetEntry] = []
+        for date in dates {
+            entries.append(await entry(for: contentType, tapAction: tapAction, at: date))
+        }
+        return Timeline(entries: entries, policy: .atEnd)
     }
 
     private func makeEntry(configuration: ConfigurationAppIntent) async -> NIUWidgetEntry {
-        await entry(for: configuration.contentType)
+        await entry(for: configuration.contentType, tapAction: configuration.tapAction)
     }
 
-    func entry(for contentType: WidgetContentType) async -> NIUWidgetEntry {
-        NIUWidgetEntry(date: Date(), payload: await makePayload(for: contentType))
+    func entry(for contentType: WidgetContentType, tapAction: WidgetTapAction = .showContent, at date: Date = Date()) async -> NIUWidgetEntry {
+        NIUWidgetEntry(date: date, payload: await makePayload(for: contentType, at: date), tapAction: tapAction)
     }
 
-    private func makePayload(for contentType: WidgetContentType) async -> WidgetPayload {
+    private func makePayload(for contentType: WidgetContentType, at date: Date) async -> WidgetPayload {
         switch contentType {
         case .classSchedule:
-            return .todaySchedule(loadTodayScheduleSummary())
+            return .todaySchedule(loadTodayScheduleSummary(now: date))
         case .academicCalendar:
             return .calendar(await loadCalendarSummary())
         case .weeklyTimetable:
@@ -57,7 +80,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         }
     }
 
-    private func loadTodayScheduleSummary() -> TodayScheduleSummary {
+    private func loadTodayScheduleSummary(now: Date) -> TodayScheduleSummary {
         guard let schedule = loadSchedule() else {
             return TodayScheduleSummary(
                 state: "未同步課表",
@@ -69,17 +92,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         }
 
         let calendar = Calendar.current
-        let now = Date()
         let currentWeekday = calendar.component(.weekday, from: now)
-        if currentWeekday == 7 || currentWeekday == 1 {
-            return TodayScheduleSummary(
-                state: "今日無課",
-                title: "好好休息吧",
-                subtitle: "週末沒有排課",
-                location: nil,
-                entries: []
-            )
-        }
 
         guard let dayIndex = schedule.dayHeaders.firstIndex(where: { weekdayIndex(from: $0) == currentWeekday }) else {
             return TodayScheduleSummary(
@@ -114,7 +127,11 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             )
         }
 
-        let primary = entries.first(where: { $0.isCurrent }) ?? first
+        let focusedEntries = focusedScheduleItems(from: entries, now: now)
+        guard let primary = focusedEntries.first else {
+            return TodayScheduleSummary(state: "今日課程結束", title: "今天的課都上完了",
+                subtitle: "點按查看課表，或使用下方快捷功能", location: nil, entries: [])
+        }
         let firstStartMinutes = minutes(from: first.timeLabel)
         let components = Calendar.current.dateComponents([.hour, .minute], from: now)
         let currentMinutes = components.hour.flatMap { hour in
@@ -131,7 +148,6 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             state = "下一堂課"
         }
         let subtitle = primary.classroom.map { "\($0) ・ 第\(primary.periodLabel)節 \(primary.timeLabel)" } ?? "第\(primary.periodLabel)節 \(primary.timeLabel)"
-        let focusedEntries = focusedScheduleItems(from: entries, now: now)
 
         return TodayScheduleSummary(
             state: state,
@@ -413,7 +429,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             return Array(entries[upcomingIndex..<upperBound])
         }
 
-        return Array(entries.suffix(2))
+        return []
     }
 
     private func minutes(from label: String) -> Int? {
@@ -431,13 +447,11 @@ struct NIUCompactWidgetProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: CompactConfigurationAppIntent, in context: Context) async -> NIUWidgetEntry {
-        await NIUWidgetProvider().entry(for: configuration.contentType.widgetContentType)
+        await NIUWidgetProvider().entry(for: configuration.contentType.widgetContentType, tapAction: configuration.tapAction)
     }
 
     func timeline(for configuration: CompactConfigurationAppIntent, in context: Context) async -> Timeline<NIUWidgetEntry> {
-        let entry = await snapshot(for: configuration, in: context)
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date().addingTimeInterval(1800)
-        return Timeline(entries: [entry], policy: .after(nextRefresh))
+        await NIUWidgetProvider().timeline(for: configuration.contentType.widgetContentType, tapAction: configuration.tapAction)
     }
 }
 
@@ -461,6 +475,7 @@ struct NIUWidgetView: View {
     }
 
     private var destinationURL: URL? {
+        if let destination = entry.tapAction.destination { return destination.url }
         switch entry.payload {
         case .todaySchedule, .weeklyTimetable:
             return URL(string: "niuapp://class-schedule")
@@ -537,7 +552,7 @@ struct NIUWidgetView: View {
         let primary = summary.entries.first
         let next = summary.entries.dropFirst().first
 
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 6) {
             if let primary {
                 HStack(alignment: .firstTextBaseline) {
                     Text(primary.courseName)
@@ -607,8 +622,20 @@ struct NIUWidgetView: View {
                     .lineLimit(2)
                 Spacer(minLength: 0)
             }
+            HStack(spacing: 10) {
+                Link(destination: CampusDestination.attendance.url) {
+                    Label("快速點名", systemImage: "qrcode.viewfinder")
+                        .frame(maxWidth: .infinity)
+                }
+                Link(destination: CampusDestination.library.url) {
+                    Label("圖書館", systemImage: "qrcode")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .font(.caption2.weight(.semibold))
+            .buttonStyle(.bordered)
         }
-        .padding()
+        .padding(12)
     }
 
     @ViewBuilder
