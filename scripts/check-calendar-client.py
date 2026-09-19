@@ -243,6 +243,40 @@ actor DocumentRaceServer {
         require(afterDocument.availableYears.contains(115), "late document response retains concurrently discovered year")
         print("PASS: concurrent old/new catalogs from independent app/widget stores")
 
+        let warningPeriod = CalendarEvent(id: "period", title: "期中預警開始", description: nil,
+                                    startDate: "2026-09-21", endDate: "2026-11-20", type: .academic)
+        require(warningPeriod.displayTitle == "期中預警期間" && warningPeriod.title == "期中預警開始", "period presentation preserves official title")
+        require(warningPeriod.isBoundary(on: instant("2026-09-20T16:00:00Z")), "opening is a daily item")
+        require(warningPeriod.isBoundary(on: instant("2026-11-19T16:00:00Z")), "inclusive closing is a daily item")
+        require(warningPeriod.contains(instant("2026-10-01T00:00:00Z")) && !warningPeriod.isBoundary(on: instant("2026-10-01T00:00:00Z")), "interior days are ongoing only")
+        let feb = AcademicCalendarMonth(academicYear: 116, month: 2)
+        require(feb.days.count == 29 && CampusCalendarDate.dayKey(feb.start) == "2028-02-01", "leap February belongs to next civil year")
+        require(feb.cells.count % 7 == 0 && feb.cells.compactMap { $0 }.count == 29, "grid includes each day once with whole weeks")
+        let august = AcademicCalendarMonth(academicYear: 115, month: 8)
+        require(august.leadingEmptyDays == 6 && august.cells.count == 42, "Saturday-start month needs six rows")
+        let sunday = AcademicCalendarMonth(academicYear: 114, month: 2)
+        require(sunday.leadingEmptyDays == 0 && sunday.cells.count == 28, "Sunday-start February needs no leading/trailing week")
+        require(CampusCalendarDate.dayKey(feb.selectedDate(day: 31)) == "2028-02-29", "selection clamps in shorter months")
+        require(CampusCalendarDate.dayKey(august.selectedDate(day: nil, now: instant("2026-08-14T16:01:00Z"))) == "2026-08-15", "month opens at Taipei today")
+        require(CampusCalendarDate.dayKey(feb.selectedDate(day: nil, now: sep)) == "2028-02-01", "other month opens at first day")
+        let october = AcademicCalendarMonth(academicYear: 115, month: 10)
+        let oneDay = CalendarEvent(id: "one-day", title: "單日測試", description: nil,
+                                  startDate: "2026-10-05", endDate: nil, type: .academic)
+        let closesFirst = CalendarEvent(id: "closes-first", title: "跨月測試", description: nil,
+                                       startDate: "2026-09-30", endDate: "2026-10-01", type: .registration)
+        let endsBefore = CalendarEvent(id: "past", title: "已結束", description: nil,
+                                      startDate: "2026-09-01", endDate: "2026-09-30", type: .activity)
+        let nextMonth = CalendarEvent(id: "future", title: "下月事件", description: nil,
+                                     startDate: "2026-11-01", endDate: nil, type: .exam)
+        let eventSections = october.eventSections([nextMonth, oneDay, endsBefore, warningPeriod, closesFirst])
+        require(eventSections.count == 2 && eventSections[0].date == nil, "carry-over periods grouped before monthly start dates")
+        require(eventSections.flatMap(\.events).map(\.id) == ["period", "closes-first", "one-day"], "monthly list includes overlapping periods once, excludes other months, sorts chronologically")
+        require(october.eventSections([]).isEmpty, "empty month/filter produces no sections")
+        let januarySections = AcademicCalendarMonth(academicYear: 115, month: 1).eventSections([uiExam])
+        require(januarySections.count == 1 && januarySections[0].date == nil, "December to January carry-over stays in same academic year")
+        print("PASS: monthly event list, inclusive overlaps, carry-over periods without daily duplicates")
+        print("PASS: month grid alignment, leap day, academic/civil year and selected date")
+
         print("PASS: Taipei January/August rollover, month spans, inclusive dates, widget states, future-year selection")
         print("PASS: shared cache restart, forced/periodic refresh, unpublished vs offline, revisions, deletions, SHA/schema rejection")
     }

@@ -546,45 +546,6 @@ private struct NotificationMenuView: View {
     }
 }
 
-// MARK: - Privacy Policy View
-
-private struct PrivacyPolicyView: View {
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                Text("隱私權聲明 (Privacy Policy)")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color(.label))
-
-                Text("感謝您下載並使用本應用程式（以下簡稱「本 App」）。本 App 致力於保護您的個人隱私，並確保您在使用校務相關功能時的資訊安全。")
-
-                Text("一、重要聲明：非官方性質")
-                    .font(.headline)
-                Text("本 App 為個人開發之第三方校務輔助工具，與「國立宜蘭大學 (NIU)」官方並無任何隸屬、合作或授權關係。")
-
-                Text("二、帳號登入與個人資料處理")
-                    .font(.headline)
-                Text("您的帳號與密碼將直接傳送至學校官方伺服器進行身分驗證，不會上傳至開發者伺服器。")
-
-                Text("三、資料儲存")
-                    .font(.headline)
-                Text("基本校務資訊儲存在您的裝置本地端；登入帳密儲存在 iOS Keychain。")
-
-                Text("四、聯繫方式")
-                    .font(.headline)
-                Text("開發者聯絡信箱：hi@chien.dev\nGitHub：https://github.com/qian403/NIU-app")
-            }
-            .font(.body)
-            .foregroundStyle(Color(.secondaryLabel))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.large)
-        }
-        .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle("隱私權聲明")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
 #Preview {
     NavigationStack {
         SettingsView()

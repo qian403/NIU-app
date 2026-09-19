@@ -1,71 +1,92 @@
 import Foundation
+import Security
 
-/// Holds the JWT issued by the modern SSO (`POST /SSO/API/Login`) so feature
-/// WebViews can hand it to `SSOGUIDBridge` and obtain a fresh GUID for the
-/// legacy `acade.niu.edu.tw` / `ccsys.niu.edu.tw/MvcTeam` portals.
-///
-/// The token lives in memory plus UserDefaults; UserDefaults is sufficient
-/// because the only thing it grants is the GUID-bridge exchange, which still
-/// requires a valid SSO session on the server side.
+/// The SSO bearer token grants access to the academic GUID bridge. Store it with
+/// the same device-only protection as the other login credentials.
+@MainActor
 final class SSOTokenStore {
     static let shared = SSOTokenStore()
 
-    private let tokenKey = "app.sso.token"
-    private let expKey = "app.sso.token.exp"
-    private let accountKey = "app.sso.token.account"
-    private let queue = DispatchQueue(label: "SSOTokenStore.queue")
+    private struct Session: Codable {
+        let token: String
+        let expiration: String?
+        let account: String
+    }
 
-    private init() {}
+    private let service = (Bundle.main.bundleIdentifier ?? "dev.chienniuapp") + ".sso"
+    private let keychainAccount = "session"
+    private var session: Session?
+
+    private init() {
+        session = readSession()
+        let defaults = UserDefaults.standard
+        if session == nil, let token = defaults.string(forKey: "app.sso.token"),
+           let account = defaults.string(forKey: "app.sso.token.account") {
+            save(token: token, exp: defaults.string(forKey: "app.sso.token.exp"), account: account)
+        }
+        // If Keychain is unavailable, the user can authenticate again; never
+        // retain a plaintext fallback of this bearer credential.
+        for key in ["app.sso.token", "app.sso.token.exp", "app.sso.token.account"] {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    private var query: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: keychainAccount]
+    }
 
     func save(token: String, exp: String?, account: String) {
-        queue.sync {
-            UserDefaults.standard.set(token, forKey: tokenKey)
-            UserDefaults.standard.set(exp, forKey: expKey)
-            UserDefaults.standard.set(account.lowercased(), forKey: accountKey)
+        let value = Session(token: token, expiration: exp, account: account.lowercased())
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
         }
+        if status == errSecSuccess { session = value }
     }
 
     func clear() {
-        queue.sync {
-            UserDefaults.standard.removeObject(forKey: tokenKey)
-            UserDefaults.standard.removeObject(forKey: expKey)
-            UserDefaults.standard.removeObject(forKey: accountKey)
-        }
+        session = nil
+        SecItemDelete(query as CFDictionary)
     }
 
-    /// A delayed 401 from an old request must not erase a newer login.
+    /// A delayed rejection must not erase a newer login.
     func clear(ifMatching rejectedToken: String) {
-        queue.sync {
-            guard UserDefaults.standard.string(forKey: tokenKey) == rejectedToken else { return }
-            UserDefaults.standard.removeObject(forKey: tokenKey)
-            UserDefaults.standard.removeObject(forKey: expKey)
-            UserDefaults.standard.removeObject(forKey: accountKey)
-        }
+        guard session?.token == rejectedToken else { return }
+        clear()
     }
 
-    var token: String? {
-        UserDefaults.standard.string(forKey: tokenKey)?.nilIfEmpty
-    }
+    var token: String? { session?.token.nilIfEmpty }
+    var account: String? { session?.account.nilIfEmpty }
 
-    var account: String? {
-        UserDefaults.standard.string(forKey: accountKey)?.nilIfEmpty
-    }
-
-    /// Parsed expiry date (server returns ISO8601 with `+08:00`).
     var expiration: Date? {
-        guard let raw = UserDefaults.standard.string(forKey: expKey)?.nilIfEmpty else {
-            return nil
-        }
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = isoFormatter.date(from: raw) { return d }
-        isoFormatter.formatOptions = [.withInternetDateTime]
-        return isoFormatter.date(from: raw)
+        guard let raw = session?.expiration?.nilIfEmpty else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: raw) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: raw)
     }
 
     var isLikelyValid: Bool {
         guard token != nil else { return false }
-        guard let exp = expiration else { return true } // unknown exp → optimistic
-        return exp.timeIntervalSinceNow > 30
+        guard let expiration else { return true }
+        return expiration.timeIntervalSinceNow > 30
+    }
+
+    private func readSession() -> Session? {
+        var lookup = query
+        lookup[kSecReturnData as String] = true
+        lookup[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: AnyObject?
+        guard SecItemCopyMatching(lookup as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return nil }
+        return try? JSONDecoder().decode(Session.self, from: data)
     }
 }

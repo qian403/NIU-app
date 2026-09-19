@@ -45,6 +45,62 @@ private let ssoModernLoginURLString = "https://ccsys1.niu.edu.tw/SSO/login"
 private let ssoLegacyDefaultURLString = "https://ccsys.niu.edu.tw/SSO/Default.aspx"
 private let ssoLegacyMainURLString = "https://ccsys.niu.edu.tw/SSO/StdMain.aspx"
 
+/// Keeps the school page mounted while covering short, automatic sign-ins.
+/// Slow or interactive verification remains reachable without restarting login.
+struct SSOLoginScreen: View {
+    let account: String
+    let password: String
+    let onResult: (SSOLoginResult) -> Void
+
+    @State private var showsSchoolPage = false
+
+    var body: some View {
+        ZStack {
+            SSOLoginWebView(account: account, password: password, onResult: onResult)
+                .accessibilityHidden(!showsSchoolPage)
+                .allowsHitTesting(showsSchoolPage)
+
+            if !showsSchoolPage {
+                backgroundColor.ignoresSafeArea()
+
+                VStack(spacing: 20) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("正在登入校務系統…")
+                        .font(.headline)
+                    Text("正在連線至校方 SSO，請稍候。\n若需要人機驗證，將顯示校方登入頁。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("開啟校方登入頁") {
+                        showsSchoolPage = true
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(24)
+            }
+        }
+        .background(backgroundColor.ignoresSafeArea())
+        .task {
+            // A bounded cover also handles unrecognized challenges and slow loads.
+            // SwiftUI cancels this delay when the login screen is dismissed.
+            do {
+                try await Task.sleep(for: .seconds(8))
+                try Task.checkCancellation()
+                showsSchoolPage = true
+            } catch {}
+        }
+    }
+
+    private var backgroundColor: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemBackground)
+        #endif
+    }
+}
+
 public struct SSOLoginWebView: SSOViewRepresentable {
     public let account: String
     public let password: String
@@ -145,7 +201,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
         public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let urlStr = webView.url?.absoluteString ?? ""
-            print("[SSO] 已載入: \(urlStr)")
+            print("[SSO] 已載入: \(URL(string: urlStr)?.path ?? "")")
 
             if urlStr.contains("StdMain.aspx") {
                 legacyCaptchaRetryCount = 0
@@ -301,13 +357,13 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
         public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             let urlStr = webView.url?.absoluteString ?? ""
-            print("[SSO] 開始載入: \(urlStr)")
+            print("[SSO] 開始載入: \(URL(string: urlStr)?.path ?? "")")
         }
 
         public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             let urlStr = webView.url?.absoluteString ?? ""
             let nsError = error as NSError
-            print("[SSO] 載入失敗(預備): \(urlStr) error=\(error.localizedDescription)")
+            print("[SSO] 載入失敗(預備): \(URL(string: urlStr)?.path ?? "") error=\(error.localizedDescription)")
             
             // 超時錯誤處理
             if nsError.code == NSURLErrorTimedOut && !lastPostFailed {
@@ -341,7 +397,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
         public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             let urlStr = webView.url?.absoluteString ?? ""
-            print("[SSO] 載入失敗: \(urlStr) error=\(error.localizedDescription)")
+            print("[SSO] 載入失敗: \(URL(string: urlStr)?.path ?? "") error=\(error.localizedDescription)")
             let nsError = error as NSError
             if nsError.code != NSURLErrorCancelled,
                !modernLoginFinished,
@@ -634,6 +690,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                         message: "無法確認校務登入憑證，請確認網路後重新登入"))
                     return
                 }
+                guard !self.appState.isLoggingOut else { return }
                 SSOTokenStore.shared.save(token: token, exp: self.tokenExpiration(token), account: self.parent.account)
                 self.appState.updateProfileFromSSO(info)
                 print("[SSO] 登入憑證驗證完成")
@@ -740,7 +797,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     let department = obj["department"] ?? ""
                     let grade = obj["grade"] ?? ""
                     let info = StudentInfo(name: name, department: department, grade: grade)
-                    print("[SSO] 取得學生資訊: \(name) / \(department) / \(grade)")
+                    print("[SSO] 取得學生資訊")
                     if !department.isEmpty || !grade.isEmpty {
                         Task { @MainActor in
                             self.appState.updateProfileFromSSO(info)
@@ -867,7 +924,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                         guard let self = self else { return }
                         
                         if let code = code, code.count == 6 {
-                            print("[SSO] OCR 成功 → \(code)")
+                            print("[SSO] OCR 成功")
                             self.legacyCaptchaRetryCount = 0
                             self.fetchHiddenFieldsAndPost(in: webView, viewState: viewState, captcha: code)
                         } else {

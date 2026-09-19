@@ -11,6 +11,10 @@ struct LoginView: View {
         case username, password
     }
 
+    private var isShowingSSO: Bool {
+        viewModel.ssoLoginStarted && !viewModel.ssoLoginCompleted
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -68,17 +72,17 @@ struct LoginView: View {
                         .opacity(animateIn ? 1 : 0)
                         .animation(Theme.Animation.slow.delay(0.4), value: animateIn)
                 }
+                .accessibilityHidden(isShowingSSO)
+                .allowsHitTesting(!isShowingSSO)
 
-                if viewModel.ssoLoginStarted && !viewModel.ssoLoginCompleted {
-                    SSOLoginWebView(
+                if isShowingSSO {
+                    SSOLoginScreen(
                         account: viewModel.username,
                         password: viewModel.password
                     ) { result in
                         viewModel.handleSSOLoginResult(result)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .background(Color(.systemBackground))
-                    .ignoresSafeArea()
                 }
 
             }
@@ -284,59 +288,29 @@ struct LoginView: View {
 
 // MARK: - Privacy Policy View
 
-private struct PrivacyPolicyView: View {
+struct PrivacyPolicyView: View {
     @Environment(\.dismiss) private var dismiss
+
+    private let sections: [(String, String)] = [
+        ("非官方校務工具", "本 App 為個人開發的第三方校務輔助工具，與國立宜蘭大學並無隸屬、合作或授權關係。校務資訊與服務狀態請以學校官方系統為準。"),
+        ("登入與校務資料", "本 App 使用您既有的學校帳號，不建立新帳號。帳號、密碼及登入憑證只用於連線至學校的校務、M 園區與圖書館服務，不傳送至開發者伺服器。登入憑證儲存在裝置 Keychain；姓名、課表、成績與畢業門檻等資料會在裝置上暫存，供查詢與重新整理使用。學校服務對連線與帳號資料的處理，依各服務的隱私政策辦理。"),
+        ("小工具、通知與即時動態", "課表可在 App 與本機 Widget 間共用，並顯示於主畫面或鎖定畫面。通知由裝置本機排程；課表即時動態由 App 在可執行時更新，背景更新時間由系統決定。本版本不向開發者後端同步課表、裝置識別碼或推播憑證。請依您的隱私需求選擇是否啟用鎖定畫面顯示。"),
+        ("裝置權限", "相機僅供掃描課堂點名 QR Code，不儲存或上傳相機影像。匯出課表時會要求行事曆寫入權限；啟用提醒時會要求通知權限。您可拒絕或在系統設定中撤回權限。圖書館通行碼只在記憶體顯示，離頁或進入背景時隱藏。"),
+        ("登出與資料清除", "在設定中登出，會移除本機登入憑證、校務快取、Widget 課表、網站登入資料、下載預覽暫存及已排程的通知，並結束課表即時動態。您自行匯出至行事曆、檔案或分享給其他 App 的副本須在目的 App 中刪除。登出不會刪除您的學校帳號或校方保存的資料；如需處理校方帳號，請聯絡學校。"),
+        ("分析與第三方服務", "本版本未整合廣告、跨 App 追蹤或開發者使用行為分析服務。您透過問題回報主動寄出的內容，會用於回覆與處理該問題；寄送前可自行編輯。系統診斷與分享設定依 Apple 的政策辦理。開啟外部網站時，請另行參閱該網站的隱私政策。"),
+        ("聯絡與更新", "若對資料處理有疑問，請寄信至 hi@chien.dev。政策更新會同步至 App 與公開政策頁面。更新日期：2026-09-18。")
+    ]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                Group {
-                    Text("隱私權聲明 (Privacy Policy)")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(.primary)
-
-                    Text("感謝您下載並使用本應用程式（以下簡稱「本 App」）。本 App 致力於保護您的個人隱私，並確保您在使用校務相關功能時的資訊安全。在使用本 App 前，請詳閱以下聲明：")
-
-                    Text("一、重要聲明：非官方性質")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("本 App 為個人開發之第三方校務輔助工具，與「國立宜蘭大學 (NIU)」官方並無任何隸屬、合作或授權關係。本 App 透過原生介面整合校務入口，提供課表/成績查詢、Moodle 整合、活動報名、行事曆匯出與通知管理等功能，以提升行動端使用體驗。")
-
-                    Text("二、帳號登入與個人資料處理")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("登入資訊：當您登入校務帳號時，您的帳號與密碼將直接傳送至學校官方伺服器進行身分驗證。為了提供自動登入與工作階段續期功能，本 App 會將帳號與密碼加密儲存在 iOS Keychain（僅於您的裝置本機）。本 App 不會將您的帳號與密碼上傳到開發者伺服器。")
-                    Text("校務資料存取：本 App 獲取之課表、成績、缺曠課等個人資訊，僅限於提供您在行動裝置上查看與管理之用。")
-
-                    Text("三、資料儲存與保護機制")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("本地存儲 (Local Storage)：為提升使用流暢度，您的基本校務資訊（如課表、姓名等）會儲存在您的行動裝置本地端；登入帳密則儲存在 iOS Keychain。")
-                    Text("Session 與 Cookie：系統會暫存必要的 Session 資訊以維持登入狀態。您隨時可以透過 App 內的「登出」功能，立即清除本機端儲存的所有登入資訊與暫存檔案。")
-
-                    Text("四、數據收集與技術分析")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("為了持續優化 App 品質，我們會收集部分匿名且無法辨識個人身分的統計數據，包括：")
-                    Text("使用統計：例如每日活躍人數 (DAU)、各功能點擊頻率。")
-                    Text("錯誤回報：App 閃退或載入失敗時的去識別化系統錯誤紀錄。")
-                    Text("上述數據僅用於技術改善與效能優化，不包含任何姓名、學號或敏感個資。")
-
-                    Text("五、第三方連結與免責聲明")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("外部連結：本 App 部分功能可能導向學校官方網頁。對於外部網站的隱私權政策，本 App 不負任何法律責任。")
-                    Text("資料準確性：所有校務資訊均同步自學校伺服器，若資料有誤，請以學校官方行政系統為準。")
-                    Text("安全風險：請確保您的行動裝置環境安全。若因裝置遭惡意程式入侵或遺失而導致資料流失，開發者概不負責。")
-
-                    Text("六、隱私權聲明之修改")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("開發者保留隨時修改本聲明之權利。修改後的條款將直接更新於本 App 內，不另行個別通知，建議您定期查看。")
-
-                    Text("七、聯繫方式")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("若您對本隱私權聲明或資料處理方式有任何疑問、建議或發現潛在漏洞，歡迎透過以下方式聯繫開發者：")
-                    Text("開發者聯絡信箱：hi@chien.dev")
-                    Text("GitHub 專案頁面：https://github.com/qian403/NIU-app")
+                ForEach(sections, id: \.0) { title, text in
+                    Text(title).font(.headline).foregroundStyle(.primary)
+                    Text(text).font(.body).foregroundStyle(.secondary)
                 }
+                Link("聯絡開發者", destination: URL(string: "mailto:hi@chien.dev")!)
+                Link("專案與支援", destination: URL(string: "https://github.com/qian403/NIU-app")!)
             }
-            .font(.system(size: 15))
-            .foregroundColor(.primary.opacity(0.75))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.large)
         }
@@ -345,10 +319,7 @@ private struct PrivacyPolicyView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("關閉") {
-                    dismiss()
-                }
-                .foregroundColor(.primary)
+                Button("關閉") { dismiss() }
             }
         }
     }

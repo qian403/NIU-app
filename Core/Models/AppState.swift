@@ -2,6 +2,8 @@ import SwiftUI
 import Combine
 import BackgroundTasks
 import UserNotifications
+import WebKit
+import WidgetKit
 #if canImport(ActivityKit)
 import ActivityKit
 #endif
@@ -10,6 +12,7 @@ import ActivityKit
 final class AppState: ObservableObject {
 
     @Published var isAuthenticated: Bool = false
+    @Published private(set) var isLoggingOut = false
     @Published var currentUser: User?
     @Published var notificationSettings = NotificationSettings.load()
 
@@ -19,26 +22,16 @@ final class AppState: ObservableObject {
     private var isRefreshingProfile = false
     private var notificationObservers: [NSObjectProtocol] = []
 
-    // API Configuration
-    static let apiBaseURL = "https://niu-app-api.your-domain.com" // TODO: Replace with actual API domain
-
-    /// Installation ID for this device (generated on first launch)
-    var installationID: String? {
-        let key = "app.installationID"
-        if let existing = UserDefaults.standard.string(forKey: key) {
-            return existing
-        }
-        let newID = UUID().uuidString
-        UserDefaults.standard.set(newID, forKey: key)
-        return newID
-    }
-
     init() {
         guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else {
             return
         }
         observeClassScheduleUpdates()
-        checkAuthenticationStatus()
+        if UserDefaults.standard.bool(forKey: "app.logoutCleanupPending") {
+            logout()
+        } else {
+            checkAuthenticationStatus()
+        }
     }
 
     deinit {
@@ -46,6 +39,7 @@ final class AppState: ObservableObject {
     }
 
     func login(user: User) {
+        guard !isLoggingOut else { return }
         let mergedUser = mergedWithPersistedProfile(user)
         currentUser = mergedUser
         isAuthenticated = true
@@ -54,7 +48,7 @@ final class AppState: ObservableObject {
         SSOSessionService.shared.enableAutoRefresh()
         // Extract EUNI redirect link while SSO session is still alive
         MoodleSessionManager.shared.fetchEUNILink()
-        print("[App] 使用者已登入: \(mergedUser.name)")
+        print("[App] 使用者已登入")
         Task { await refreshNotificationSchedules() }
         
         if mergedUser.department?.nilIfEmpty == nil || mergedUser.grade?.nilIfEmpty == nil {
@@ -63,17 +57,49 @@ final class AppState: ObservableObject {
     }
 
     func logout() {
+        guard !isLoggingOut else { return }
+        isLoggingOut = true
+        UserDefaults.standard.set(true, forKey: "app.logoutCleanupPending")
         currentUser = nil
         isAuthenticated = false
         didExplicitlyLogout = true
         clearAuthState()
+        LoginRepository.shared.clearCredentials()
+        SSOTokenStore.shared.clear()
+        clearPersonalCaches()
         SSOSessionService.shared.disableAutoRefresh()
         MoodleSessionManager.shared.reset()
         MoodleService.shared.logout()
-        NotificationScheduler.shared.clearAllManagedNotifications()
+        EventRegistrationWebViewManager.shared.resetLoginState()
         ClassLiveActivityBackgroundRefreshCoordinator.shared.cancel()
-        Task { await ClassLiveActivityCoordinator.shared.endAll() }
+        Task {
+            await NotificationScheduler.shared.clearAllManagedNotifications()
+            await ClassLiveActivityCoordinator.shared.endAll()
+            // Keep the login screen unavailable until old web sessions are removed.
+            await WKWebsiteDataStore.default().removeData(
+                ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+            HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+            URLCache.shared.removeAllCachedResponses()
+            let files = FileManager.default.temporaryDirectory.appendingPathComponent("MoodleFiles")
+            try? FileManager.default.removeItem(at: files)
+            SSOTokenStore.shared.clear()
+            clearPersonalCaches()
+            UserDefaults.standard.removeObject(forKey: "app.logoutCleanupPending")
+            isLoggingOut = false
+        }
         print("[App] 使用者已登出")
+    }
+
+    private func clearPersonalCaches() {
+        let prefixes = ["grade_history.", "graduationThreshold.", "classSchedule."]
+        for defaults in [UserDefaults.standard, UserDefaults(suiteName: "group.dev.chien.niuapp")] {
+            guard let defaults else { continue }
+            for key in defaults.dictionaryRepresentation().keys where prefixes.contains(where: key.hasPrefix) {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        UserDefaults.standard.removeObject(forKey: "app.installationID")
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func checkAuthenticationStatus() {
@@ -117,8 +143,9 @@ final class AppState: ObservableObject {
     }
 
     private func mergedWithPersistedProfile(_ user: User) -> User {
-        let savedDepartment = UserDefaults.standard.string(forKey: StorageKeys.department)?.nilIfEmpty
-        let savedGrade = UserDefaults.standard.string(forKey: StorageKeys.grade)?.nilIfEmpty
+        let sameAccount = UserDefaults.standard.string(forKey: StorageKeys.username)?.lowercased() == user.username.lowercased()
+        let savedDepartment = sameAccount ? UserDefaults.standard.string(forKey: StorageKeys.department)?.nilIfEmpty : nil
+        let savedGrade = sameAccount ? UserDefaults.standard.string(forKey: StorageKeys.grade)?.nilIfEmpty : nil
         return User(
             id: user.id,
             username: user.username,
@@ -227,7 +254,6 @@ final class AppState: ObservableObject {
             guard let self else { return }
             Task {
                 await self.refreshNotificationSchedules()
-                await self.uploadScheduleToBackend()
             }
         }
         notificationObservers.append(observer)
@@ -240,54 +266,7 @@ final class AppState: ObservableObject {
         await ClassLiveActivityCoordinator.shared.refreshFromScheduleCache(forceRebuild: forceRebuild)
     }
 
-    private func uploadScheduleToBackend() async {
-        guard let installationID = installationID else {
-            print("[AppState] No installation ID, skipping schedule upload")
-            return
-        }
 
-        let cacheKey = "classSchedule.v2.cachedData"
-        guard let data = UserDefaults.standard.data(forKey: cacheKey),
-              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
-            print("[AppState] No schedule to upload")
-            return
-        }
-
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let scheduleData = try? encoder.encode(schedule),
-              let scheduleJSON = try? JSONSerialization.jsonObject(with: scheduleData) else {
-            print("[AppState] Failed to encode schedule")
-            return
-        }
-
-        let payload: [String: Any] = [
-            "activity_kind": "class_schedule",
-            "schedule": scheduleJSON,
-            "fetched_at": ISO8601DateFormatter().string(from: schedule.fetchedAt)
-        ]
-
-        guard let url = URL(string: "\(Self.apiBaseURL)/v1/installations/\(installationID)/schedule") else {
-            print("[AppState] Invalid schedule API URL")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                print("[AppState] Schedule uploaded successfully")
-            } else {
-                print("[AppState] Schedule upload failed: \(response)")
-            }
-        } catch {
-            print("[AppState] Schedule upload error: \(error.localizedDescription)")
-        }
-    }
 }
 
 private enum StorageKeys {
@@ -339,6 +318,7 @@ private final class NotificationScheduler {
     private let calendarPrefix = "notify.calendar."
     private let classReminderPrefix = "notify.class."
     private let classScheduleCacheKey = "classSchedule.v2.cachedData"
+    private var schedulingTask: Task<Void, Never>?
 
     private init() {}
 
@@ -356,22 +336,23 @@ private final class NotificationScheduler {
         }
     }
 
-    func clearAllManagedNotifications() {
-        Task {
-            let pending = await pendingRequests()
-            let ids = pending
-                .map(\.identifier)
-                .filter {
-                    $0.hasPrefix(assignmentPrefix) ||
-                    $0.hasPrefix(calendarPrefix) ||
-                    $0.hasPrefix(classReminderPrefix)
-                }
-            guard !ids.isEmpty else { return }
-            center.removePendingNotificationRequests(withIdentifiers: ids)
-        }
+    func clearAllManagedNotifications() async {
+        schedulingTask?.cancel()
+        await schedulingTask?.value
+        schedulingTask = nil
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
     }
 
     func scheduleAll(settings: NotificationSettings, username: String, password: String) async {
+        schedulingTask?.cancel()
+        let task = Task { await performScheduleAll(settings: settings, username: username, password: password) }
+        schedulingTask = task
+        await task.value
+    }
+
+    private func performScheduleAll(settings: NotificationSettings, username: String, password: String) async {
+        guard !Task.isCancelled else { return }
         await clear(byPrefix: assignmentPrefix)
         await clear(byPrefix: calendarPrefix)
         await clear(byPrefix: classReminderPrefix)
@@ -379,12 +360,15 @@ private final class NotificationScheduler {
         guard settings.assignmentDeadlineEnabled || settings.academicCalendarEnabled || settings.classReminderEnabled else { return }
         guard await requestAuthorizationIfNeeded() else { return }
 
+        guard !Task.isCancelled else { return }
         if settings.assignmentDeadlineEnabled {
             await scheduleAssignmentDeadlines(username: username, password: password)
         }
+        guard !Task.isCancelled else { return }
         if settings.academicCalendarEnabled {
             await scheduleAcademicCalendarEvents()
         }
+        guard !Task.isCancelled else { return }
         if settings.classReminderEnabled {
             await scheduleClassReminders()
         }
@@ -402,9 +386,11 @@ private final class NotificationScheduler {
             if !MoodleService.shared.isAuthenticated {
                 try await MoodleService.shared.authenticate(username: username, password: password)
             }
+            try Task.checkCancellation()
             let courses = try await MoodleService.shared.fetchCourses()
             var allAssignments: [(courseName: String, assignment: MoodleAssignment)] = []
             for course in courses {
+                try Task.checkCancellation()
                 let assignments = try await MoodleService.shared.fetchAssignments(courseId: course.id)
                 for assignment in assignments {
                     allAssignments.append((course.cleanName, assignment))
@@ -602,6 +588,7 @@ private final class NotificationScheduler {
     }
 
     private func add(request: UNNotificationRequest) async throws {
+        try Task.checkCancellation()
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             center.add(request) { error in
                 if let error {
@@ -647,13 +634,13 @@ final class ClassLiveActivityCoordinator {
     private let cacheKey = "classSchedule.v2.cachedData"
     private let appGroupIdentifier = "group.dev.chien.niuapp"
     private let stalePaddingMinutes = 20
-    private var tokenObserverTask: Task<Void, Never>?
+    private var refreshGeneration = 0
 
-    private init() {
-        startTokenObserver()
-    }
+    private init() {}
 
     func refreshFromScheduleCache(forceRebuild: Bool = false) async {
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
         guard #available(iOS 16.1, *) else { return }
         let now = Date()
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -684,7 +671,8 @@ final class ClassLiveActivityCoordinator {
         let content = ActivityContent(state: state, staleDate: staleDate)
 
         if forceRebuild {
-            await endAll()
+            await endActivities()
+            guard generation == refreshGeneration else { return }
         }
 
         let activities = Activity<ClassLiveActivityAttributes>.activities
@@ -693,15 +681,15 @@ final class ClassLiveActivityCoordinator {
             for activity in activities {
                 let final = ActivityContent(state: activity.content.state, staleDate: Date())
                 await activity.end(final, dismissalPolicy: .immediate)
+                guard generation == refreshGeneration else { return }
             }
 
             do {
-                let activity = try Activity<ClassLiveActivityAttributes>.request(
+                _ = try Activity<ClassLiveActivityAttributes>.request(
                     attributes: attributes,
                     content: content,
-                    pushType: .token
+                    pushType: nil
                 )
-                observeTokenUpdates(for: activity)
             } catch {
                 print("[LiveActivity] 重建失敗: \(error.localizedDescription)")
             }
@@ -716,18 +704,22 @@ final class ClassLiveActivityCoordinator {
         }
 
         do {
-            let activity = try Activity<ClassLiveActivityAttributes>.request(
+            _ = try Activity<ClassLiveActivityAttributes>.request(
                 attributes: attributes,
                 content: content,
-                pushType: .token
+                pushType: nil
             )
-            observeTokenUpdates(for: activity)
         } catch {
             print("[LiveActivity] 啟動失敗: \(error.localizedDescription)")
         }
     }
 
     func endAll() async {
+        refreshGeneration &+= 1
+        await endActivities()
+    }
+
+    private func endActivities() async {
         guard #available(iOS 16.1, *) else { return }
         for activity in Activity<ClassLiveActivityAttributes>.activities {
             let final = ActivityContent(state: activity.content.state, staleDate: Date())
@@ -870,65 +862,6 @@ final class ClassLiveActivityCoordinator {
         return "第\(trimmed)節"
     }
 
-    // MARK: - Token Management
-
-    private func startTokenObserver() {
-        guard #available(iOS 16.2, *) else { return }
-        tokenObserverTask?.cancel()
-        tokenObserverTask = Task {
-            let activities = Activity<ClassLiveActivityAttributes>.activities
-            for activity in activities {
-                observeTokenUpdates(for: activity)
-            }
-        }
-    }
-
-    private func observeTokenUpdates(for activity: Activity<ClassLiveActivityAttributes>) {
-        guard #available(iOS 16.2, *) else { return }
-        Task {
-            for await tokenData in activity.pushTokenUpdates {
-                let token = tokenData.base64EncodedString()
-                await uploadToken(pushToStartToken: nil, updateToken: token)
-            }
-        }
-    }
-
-    private func uploadToken(pushToStartToken: String?, updateToken: String?) async {
-        let installationID = UserDefaults.standard.string(forKey: "app.installationID") ?? {
-            let newID = UUID().uuidString
-            UserDefaults.standard.set(newID, forKey: "app.installationID")
-            return newID
-        }()
-
-        let payload: [String: Any] = [
-            "activity_kind": "class_schedule",
-            "update_token": updateToken as Any,
-            "push_to_start_token": pushToStartToken as Any,
-            "token_updated_at": ISO8601DateFormatter().string(from: Date())
-        ]
-
-        let apiBaseURL = "https://niu-app-api.your-domain.com" // TODO: Replace with actual API domain
-        guard let url = URL(string: "\(apiBaseURL)/v1/installations/\(installationID)/live-activity") else {
-            print("[LiveActivity] Invalid API URL")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                print("[LiveActivity] Token uploaded successfully")
-            } else {
-                print("[LiveActivity] Token upload failed: \(response)")
-            }
-        } catch {
-            print("[LiveActivity] Token upload error: \(error.localizedDescription)")
-        }
-    }
 
 }
 

@@ -67,6 +67,7 @@ final class LoginRepository {
 
         var attributes = query
         attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let status = SecItemAdd(attributes as CFDictionary, nil)
         if status != errSecSuccess {
             print("[LoginRepository] Keychain write failed for \(account): \(status)")

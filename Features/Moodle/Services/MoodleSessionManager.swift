@@ -44,6 +44,7 @@ final class MoodleSessionManager: ObservableObject {
     private var hiddenWebView: WKWebView?
     private var coordinator: SSOIDCoordinator?
     private var didFail = false
+    private var loadGeneration = 0
 
     private init() {
         if SSOEUNISettings.shared.euniFullURL != nil {
@@ -54,6 +55,8 @@ final class MoodleSessionManager: ObservableObject {
     func fetchEUNILink() {
         guard !isReady && !isWorking else { return }
         isWorking = true
+        loadGeneration &+= 1
+        let generation = loadGeneration
 
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
@@ -64,13 +67,13 @@ final class MoodleSessionManager: ObservableObject {
         wv.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 
         let coord = SSOIDCoordinator { [weak self] euniPath in
-            guard let self else { return }
+            guard let self, generation == self.loadGeneration else { return }
             self.isWorking = false
             if let path = euniPath, SSOEUNISettings.isLikelyValidEUNIPath(path) {
                 SSOEUNISettings.shared.euniRedirectPath = path
                 self.isReady = true
                 self.didFail = false
-                print("[MoodleSession] ✓ Got EUNI path: \(path)")
+                print("[MoodleSession] 已取得 EUNI 入口")
             } else {
                 self.didFail = true
                 print("[MoodleSession] ✗ Failed to get EUNI path")
@@ -90,10 +93,14 @@ final class MoodleSessionManager: ObservableObject {
     }
 
     func reset() {
+        loadGeneration &+= 1
         isReady = false
         isWorking = false
         didFail = false
         SSOEUNISettings.shared.clear()
+        coordinator?.cancel()
+        hiddenWebView?.stopLoading()
+        hiddenWebView?.navigationDelegate = nil
         hiddenWebView = nil
         coordinator = nil
     }
@@ -114,9 +121,15 @@ private class SSOIDCoordinator: NSObject, WKNavigationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: work)
     }
 
+    func cancel() {
+        isDone = true
+        timeoutWork?.cancel()
+        timeoutWork = nil
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let url = webView.url?.absoluteString ?? ""
-        print("[MoodleSession] didFinish: \(url.prefix(80))")
+        print("[MoodleSession] didFinish: \(URL(string: url)?.path ?? "")")
 
         if url.contains("Std002.aspx") {
             extractEUNILink(from: webView, attempt: 0)
@@ -135,6 +148,7 @@ private class SSOIDCoordinator: NSObject, WKNavigationDelegate {
     }
 
     private func extractEUNILink(from webView: WKWebView, attempt: Int) {
+        guard !isDone else { return }
         let js = """
         (function() {
             var found = [];
@@ -188,7 +202,7 @@ private class SSOIDCoordinator: NSObject, WKNavigationDelegate {
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
 
                 if let match = obj["match"] as? String, !match.isEmpty {
-                    print("[MoodleSession] Found EUNI: \(match)")
+                    print("[MoodleSession] Found EUNI entry")
                     self.finish(match)
                 } else {
                     if attempt < 8 {
@@ -196,12 +210,12 @@ private class SSOIDCoordinator: NSObject, WKNavigationDelegate {
                             self.extractEUNILink(from: webView, attempt: attempt + 1)
                         }
                     } else {
-                        print("[MoodleSession] No EUNI found. Debug: \(jsonStr.prefix(500))")
+                        print("[MoodleSession] No EUNI entry found")
                         self.finish(nil)
                     }
                 }
             } else {
-                print("[MoodleSession] JS returned: \(String(describing: result))")
+                print("[MoodleSession] Invalid EUNI response")
                 self.finish(nil)
             }
         }
