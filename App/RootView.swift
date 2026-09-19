@@ -9,24 +9,28 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            if appState.isAuthenticated {
-                HomeView()
-            } else {
-                LoginView()
+            Group {
+                if appState.isLoggingOut {
+                    ProgressView("正在清除登入資料…")
+                } else if appState.isAuthenticated {
+                    HomeView()
+                } else {
+                    LoginView()
+                }
             }
+            .accessibilityHidden(sessionService.showRefreshWebView)
+            .allowsHitTesting(!sessionService.showRefreshWebView)
 
             // Session refresh may require interactive verification on the school's page.
             if sessionService.showRefreshWebView {
                 let refreshID = sessionService.refreshID
-                SSOLoginWebView(
+                SSOLoginScreen(
                     account: sessionService.refreshAccount,
                     password: sessionService.refreshPassword
                 ) { result in
                     SSOSessionService.shared.handleRefreshResult(result, requestID: refreshID)
                 }
                 .id(refreshID)
-                .background(Color(.systemBackground))
-                .ignoresSafeArea()
                 .zIndex(1)
             }
         }

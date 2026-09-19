@@ -1,492 +1,421 @@
 import SwiftUI
 
+private enum CalendarDisplayMode: String, CaseIterable, Identifiable {
+    case month
+    case events
+
+    var id: String { rawValue }
+    var title: String { self == .month ? "月曆" : "事件" }
+}
+
 struct AcademicCalendarView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("academicCalendar.displayMode") private var displayMode = CalendarDisplayMode.month
     @StateObject private var viewModel = AcademicCalendarViewModel()
-    @State private var presentedEvent: PresentedEvent?
+    @State private var presentedEvent: CalendarEvent?
     @State private var searchText = ""
     @State private var selectedFilter: CalendarEventType?
-    @State private var scrollMinY: CGFloat = 0
-    
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.Colors.background.ignoresSafeArea()
-                mainContent
-            }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .task(id: viewModel.currentSemester) {
-                await viewModel.reload()
-            }
-            .task {
-                // Keep a visible calendar current across midnight, including January and August.
-                viewModel.handleDateChange() // task(id:) loads a changed year.
-                while !Task.isCancelled {
-                    let delay = max(1, CampusCalendarDate.tomorrow(after: Date()).timeIntervalSinceNow)
-                    do { try await Task.sleep(for: .seconds(delay)) } catch { break }
-                    guard !Task.isCancelled else { break }
-                    if !viewModel.handleDateChange() { await viewModel.reload() }
-                }
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task { if !viewModel.handleDateChange() { await viewModel.reload() } }
-                }
-            }
-            .sheet(item: $presentedEvent) { item in
-                CalendarEventDetailSheet(event: item.event)
-            }
+    @State private var selectedDay: Int?
+    @State private var scrollPosition = ScrollPosition(edge: .top)
+
+    private var month: AcademicCalendarMonth {
+        AcademicCalendarMonth(academicYear: Int(viewModel.currentSemester)!, month: viewModel.selectedMonth ?? 8)
+    }
+    private var selection: Date { month.selectedDate(day: selectedDay) }
+    private var monthID: String { "\(viewModel.currentSemester)-\(viewModel.selectedMonth ?? 8)" }
+    private var query: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var categoryEvents: [CalendarEvent] {
+        viewModel.allEvents.filter { selectedFilter == nil || $0.type == selectedFilter }
+    }
+    private var searchResults: [CalendarEvent] {
+        categoryEvents.filter {
+            $0.title.localizedStandardContains(query) || $0.displayTitle.localizedStandardContains(query) ||
+            ($0.description?.localizedStandardContains(query) ?? false) ||
+            ($0.sourceText?.localizedStandardContains(query) ?? false)
         }
     }
-    
-    // MARK: - Main Content
-    
-    private var mainContent: some View {
-        VStack(spacing: 0) {
-            topHeader
-                .padding(.horizontal, Theme.Spacing.small)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
-            
-            // 事件列表
-            if viewModel.currentCalendar != nil {
-                ScrollView {
-                    LazyVStack(spacing: Theme.Spacing.medium, pinnedViews: [.sectionHeaders]) {
-                        Section {
-                            // Track scroll offset for compact search style.
-                            Color.clear
-                                .frame(height: 0)
-                                .background(
-                                    GeometryReader { proxy in
-                                        Color.clear
-                                            .preference(
-                                                key: CalendarScrollOffsetPreferenceKey.self,
-                                                value: proxy.frame(in: .named("calendarScroll")).minY
-                                            )
-                                    }
-                                )
+    private var dailyEvents: [CalendarEvent] { categoryEvents.filter { $0.contains(selection) } }
 
-                            // 即將到來的事件（如果有）
-                            if shouldShowUpcomingSection {
-                                upcomingEventsSection
-                            }
-                            
-                            // 按月份顯示事件
-                            if let month = viewModel.selectedMonth {
-                                monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
-                            } else {
-                                // 顯示所有月份
-                                ForEach(displayedMonths, id: \.self) { month in
-                                    monthEventsSection(month: month, events: eventsByDisplayedMonth[month] ?? [])
-                                }
-                            }
-
-                            if displayedMonths.isEmpty { emptyResultView }
-                            VStack(spacing: 6) {
-                                if viewModel.isLoading { ProgressView() }
-                                Text(viewModel.sourceLabel)
-                                Text("下拉可更新行事曆")
-                            }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Picker("顯示方式", selection: $displayMode) {
+                    ForEach(CalendarDisplayMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                scopeControls
+                if query.isEmpty {
+                    if displayMode == .month { monthCalendar }
+                    else { monthNavigation }
+                }
+                if viewModel.currentCalendar != nil {
+                    if let notice = viewModel.statusMessage {
+                        Label(notice, systemImage: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 20)
-                        } header: {
-                            stickyControlsHeader
-                        }
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                     }
+                    if query.isEmpty && displayMode == .events { monthlyAgenda }
+                    else { agenda }
+                    syncFooter
+                } else {
+                    unavailableContent
                 }
-                .coordinateSpace(name: "calendarScroll")
-                .onPreferenceChange(CalendarScrollOffsetPreferenceKey.self) { value in
-                    scrollMinY = value
-                }
-                .refreshable {
-                    await viewModel.reload(force: true)
-                }
-            } else {
-                ScrollView {
-                    VStack(spacing: 16) {
-                        if viewModel.isLoading {
-                            ProgressView("載入行事曆中…")
-                        } else {
-                            Image(systemName: "calendar.badge.exclamationmark").font(.largeTitle)
-                            Text(viewModel.statusMessage ?? "尚未取得此學年度資料")
-                                .multilineTextAlignment(.center)
-                            if viewModel.isNotPublished {
-                                Text("可切換學年度查看已公布資料")
-                                    .font(.footnote).foregroundStyle(.secondary)
-                            }
-                            Button("重新整理") { Task { await viewModel.reload(force: true) } }
-                        }
-                    }
-                    .padding(32)
-                    .frame(maxWidth: .infinity)
-                }
-                .refreshable { await viewModel.reload(force: true) }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity)
         }
-    }
-
-    private var stickyControlsHeader: some View {
-        VStack(spacing: 0) {
-            searchAndFilterSection
-                .padding(.horizontal, Theme.Spacing.small)
-                .padding(.bottom, 4)
-
-            monthSelector
-                .padding(.horizontal, Theme.Spacing.small)
-                .padding(.bottom, 4)
-        }
+        .scrollPosition($scrollPosition)
         .background(Theme.Colors.background)
-        .overlay(
-            Rectangle()
-                .fill(Color.primary.opacity(0.06))
-                .frame(height: 1),
-            alignment: .bottom
-        )
-    }
-
-    private var topHeader: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(headerMonthTitle)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(Theme.Colors.primary)
-                    .lineLimit(1)
-                Text(headerSubtitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .lineLimit(1)
+        .navigationTitle("行事曆")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(displayMode == .month ? "今天" : "本月", action: returnToToday)
+                    .accessibilityHint(displayMode == .month ? "清除搜尋與分類篩選，回到今天的事件" : "清除搜尋與分類篩選，回到本月事件")
             }
-
-            Spacer(minLength: 8)
-
-            if shouldShowYearPicker {
-                semesterPicker
+        }
+        .searchable(text: $searchText, prompt: "搜尋此學年度的事件")
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await viewModel.reload(force: true) }
+        .task(id: viewModel.currentSemester) { await viewModel.reload() }
+        .task {
+            viewModel.handleDateChange()
+            while !Task.isCancelled {
+                let delay = max(1, CampusCalendarDate.tomorrow(after: Date()).timeIntervalSinceNow)
+                do { try await Task.sleep(for: .seconds(delay)) } catch { break }
+                guard !Task.isCancelled else { break }
+                if !viewModel.handleDateChange() { await viewModel.reload() }
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { if !viewModel.handleDateChange() { await viewModel.reload() } }
+            }
+        }
+        .onChange(of: monthID) { _, _ in selectedDay = nil }
+        .onChange(of: displayMode) { _, _ in scrollPosition.scrollTo(edge: .top) }
+        .sheet(item: $presentedEvent) { event in
+            CalendarEventDetailSheet(event: event)
         }
     }
 
-    private var headerMonthTitle: String {
-        if let month = viewModel.selectedMonth {
-            return monthName(month)
+    private var scopeControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack { yearPicker; Spacer(minLength: 12); categoryPicker }
+            VStack(alignment: .leading, spacing: 4) { yearPicker; categoryPicker }
         }
-        return viewModel.displayTitle
     }
 
-    private var headerSubtitle: String {
-        let parts: [String] = [viewModel.displayPeriodLabel, viewModel.sourceLabel]
-            .filter { !$0.isEmpty }
-        return parts.joined(separator: " ・ ")
-    }
-
-    private var shouldShowYearPicker: Bool {
-        viewModel.availableYears.count > 1
-    }
-    
-    // MARK: - Components
-    
-    private var monthSelector: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                MonthButton(
-                    title: "全部",
-                    isSelected: viewModel.selectedMonth == nil,
-                    compact: true
-                ) {
-                    viewModel.selectedMonth = nil
-                }
-                
-                if let calendar = viewModel.currentCalendar {
-                    ForEach(calendar.monthsWithEvents, id: \.self) { month in
-                        MonthButton(
-                            title: monthName(month),
-                            isSelected: viewModel.selectedMonth == month,
-                            compact: true
-                        ) {
-                            viewModel.selectMonth(month)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 1)
-        }
-        .defaultScrollAnchor(.leading)
-    }
-    
-    private var semesterPicker: some View {
+    private var yearPicker: some View {
         Menu {
-            ForEach(viewModel.availableYears, id: \.self) { year in
+            ForEach(Array(Set(viewModel.availableYears + [Int(viewModel.currentSemester)!])).sorted(by: >), id: \.self) { year in
                 Button {
                     viewModel.switchSemester(to: String(year))
                 } label: {
-                    HStack {
-                        Text("\(year) 學年度")
-                        if String(year) == viewModel.currentSemester { Image(systemName: "checkmark") }
+                    if String(year) == viewModel.currentSemester {
+                        Label("\(String(year)) 學年度", systemImage: "checkmark")
+                    } else {
+                        Text("\(String(year)) 學年度")
                     }
                 }
             }
         } label: {
-            HStack(spacing: 3) {
-                Text(viewModel.currentSemester)
-                    .font(.system(size: 12, weight: .medium))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+            HStack(spacing: 6) {
+                Text("\(viewModel.currentSemester) 學年度").font(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.down").font(.caption.weight(.semibold))
             }
-            .foregroundColor(Theme.Colors.primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(Color.gray.opacity(0.12))
-            )
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .tint(.primary)
+        .accessibilityLabel("切換學年度，目前 \(viewModel.currentSemester) 學年度")
+    }
+
+    private var categoryPicker: some View {
+        Menu {
+            Picker("事件分類", selection: $selectedFilter) {
+                Text("全部類別").tag(Optional<CalendarEventType>.none)
+                ForEach(CalendarEventType.allCases, id: \.self) { type in
+                    Label(type.rawValue, systemImage: type.icon).tag(Optional(type))
+                }
+            }
+        } label: {
+            Label(selectedFilter?.rawValue ?? "全部類別", systemImage: "line.3.horizontal.decrease")
+                .font(.subheadline)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(selectedFilter == nil ? Color(.secondarySystemBackground) : Color.primary.opacity(0.1),
+                            in: Capsule())
+        }
+        .tint(.primary)
+        .accessibilityLabel("篩選事件，目前\(selectedFilter?.rawValue ?? "全部類別")")
+    }
+
+    private var monthNavigation: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(CampusCalendarDate.format(month.start, "yyyy 年"))
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Text(CampusCalendarDate.format(month.start, "M 月"))
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 8)
+            monthArrow("chevron.left", label: "上個月", offset: -1)
+            monthArrow("chevron.right", label: "下個月", offset: 1)
         }
     }
 
-    private var searchAndFilterSection: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Theme.Colors.tertiaryText)
-                TextField("搜尋活動、關鍵字", text: $searchText)
-                    .font(.system(size: isSearchCompact ? 12 : 13))
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(Theme.Colors.tertiaryText)
+    private var monthCalendar: some View {
+        VStack(spacing: 16) {
+            monthNavigation
+
+            VStack(spacing: 6) {
+                HStack(spacing: 0) {
+                    ForEach(Array(["日", "一", "二", "三", "四", "五", "六"].enumerated()), id: \.offset) { index, day in
+                        Text(day)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityHidden(true)
                     }
                 }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
+                    ForEach(Array(month.cells.enumerated()), id: \.offset) { _, date in
+                        if let date { dayButton(date) }
+                        else { Color.clear.frame(minHeight: 46).accessibilityHidden(true) }
+                    }
+                }
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, isSearchCompact ? 6 : 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.gray.opacity(0.12))
-            )
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { dayLegend; periodLegend }
+                VStack(alignment: .leading, spacing: 8) { dayLegend; periodLegend }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 
-            if let first = viewModel.todayEvents.first,
-               searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               selectedFilter == nil {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.orange)
-                    Text(first.title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
+    private var dayLegend: some View {
+        HStack(spacing: 6) {
+            Circle().fill(.secondary).frame(width: 4, height: 4)
+            Text("當日事項")
+        }
+    }
+
+    private var periodLegend: some View {
+        HStack(spacing: 6) {
+            Circle().strokeBorder(.secondary, lineWidth: 1).frame(width: 5, height: 5)
+            Text("期間進行中")
+        }
+    }
+
+    private func monthArrow(_ symbol: String, label: String, offset: Int) -> some View {
+        Button {
+            guard let date = CampusCalendarDate.calendar.date(byAdding: .month, value: offset, to: month.start) else { return }
+            viewModel.switchSemester(to: String(CampusCalendarDate.academicYear(at: date)))
+            viewModel.selectMonth(CampusCalendarDate.calendar.component(.month, from: date))
+        } label: {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .background(Color(.secondarySystemBackground), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    private func dayButton(_ date: Date) -> some View {
+        let calendar = CampusCalendarDate.calendar
+        let isSelected = calendar.isDate(date, inSameDayAs: selection)
+        let isToday = calendar.isDate(date, inSameDayAs: Date())
+        let events = categoryEvents.filter { $0.contains(date) }
+        let boundaries = events.filter { $0.isBoundary(on: date) }.count
+        let ongoing = events.count - boundaries
+        let foreground = isSelected ? Color(.systemBackground) : Color.primary
+        return Button {
+            selectedDay = calendar.component(.day, from: date)
+        } label: {
+            VStack(spacing: 4) {
+                Text(CampusCalendarDate.format(date, "d"))
+                    .font(.body.weight(isSelected || isToday ? .bold : .regular))
+                    .monospacedDigit()
+                HStack(spacing: 3) {
+                    ForEach(0..<min(boundaries, 3), id: \.self) { _ in
+                        Circle().frame(width: 3, height: 3)
+                    }
+                    if ongoing > 0 { Circle().strokeBorder(foreground, lineWidth: 1).frame(width: 4, height: 4) }
+                }
+                .frame(height: 4)
+                .accessibilityHidden(true)
+            }
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(isSelected ? Color.primary : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                if isToday && !isSelected {
+                    RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.4), lineWidth: 1)
                 }
             }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(CampusCalendarDate.format(date, "M月d日 EEEE"))\(isToday ? "，今天" : "")")
+        .accessibilityValue(viewModel.currentCalendar == nil ? "事件資料尚未取得" : "\(boundaries) 個當日事項，\(ongoing) 個期間進行中")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    EventTypeChip(
-                        title: "全部",
-                        isSelected: selectedFilter == nil
-                    ) { selectedFilter = nil }
+    private var agenda: some View {
+        let events = query.isEmpty ? dailyEvents : searchResults
+        let boundaries = dailyEvents.filter { $0.isBoundary(on: selection) }
+        let ongoing = dailyEvents.filter { !$0.isBoundary(on: selection) }
+        return VStack(alignment: .leading, spacing: 16) {
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(query.isEmpty ? CampusCalendarDate.format(selection, "M月d日 EEEE") : "搜尋結果")
+                    .font(.title3.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Text(query.isEmpty ? "\(boundaries.count) 個當日事項 · \(ongoing.count) 個期間進行中"
+                     : "\(viewModel.currentSemester) 學年度 · \(events.count) 個符合的事件")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            if events.isEmpty {
+                emptyAgenda
+            } else if !query.isEmpty {
+                eventList(events)
+            } else {
+                if !boundaries.isEmpty { eventList(boundaries) }
+                if !ongoing.isEmpty {
+                    Label("期間進行中", systemImage: "calendar.badge.clock")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, boundaries.isEmpty ? 0 : 8)
+                        .accessibilityAddTraits(.isHeader)
+                    eventList(ongoing)
+                }
+            }
+        }
+    }
 
-                    ForEach(CalendarEventType.allCases, id: \.self) { type in
-                        EventTypeChip(
-                            title: type.rawValue,
-                            isSelected: selectedFilter == type
-                        ) {
-                            selectedFilter = (selectedFilter == type ? nil : type)
+    private var monthlyAgenda: some View {
+        let sections = month.eventSections(categoryEvents)
+        let count = sections.reduce(0) { $0 + $1.events.count }
+        return VStack(alignment: .leading, spacing: 20) {
+            Text("本月共 \(count) 個事件 · 跨日事件僅列一次")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if sections.isEmpty {
+                emptyAgenda
+            } else {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    ForEach(sections) { section in
+                        VStack(alignment: .leading, spacing: 12) {
+                            if let date = section.date {
+                                Text(CampusCalendarDate.format(date, "M月d日 EEEE"))
+                                    .font(.headline)
+                                    .accessibilityAddTraits(.isHeader)
+                            } else {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Label("跨月期間", systemImage: "calendar.badge.clock")
+                                        .font(.headline)
+                                        .accessibilityAddTraits(.isHeader)
+                                    Text("先前開始，持續至本月的事件")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                }
+                            }
+                            eventList(section.events)
                         }
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 1)
-            }
-            .defaultScrollAnchor(.leading)
-        }
-    }
-
-    private var isSearchCompact: Bool {
-        scrollMinY < -10
-    }
-    
-    private var upcomingEventsSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            HStack {
-                Image(systemName: "clock.badge.exclamationmark")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.orange)
-                Text("即將到來")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Theme.Colors.primary)
-            }
-            .padding(.horizontal, Theme.Spacing.small)
-            
-            ForEach(Array(filteredUpcomingEvents.prefix(3).enumerated()), id: \.offset) { _, event in
-                CalendarEventCard(event: event) {
-                    presentedEvent = PresentedEvent(event: event)
-                }
             }
         }
     }
 
-    
-    private func monthEventsSection(month: Int, events: [CalendarEvent]) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            Text(monthName(month))
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(Theme.Colors.primary)
-                .padding(.horizontal, Theme.Spacing.small)
-                .padding(.top, Theme.Spacing.small)
-            
-            if events.isEmpty {
-                EmptyView()
+    private func eventList(_ events: [CalendarEvent]) -> some View {
+        LazyVStack(spacing: 12) {
+            ForEach(events) { event in
+                CalendarEventCard(event: event, context: eventContext(event)) { presentedEvent = event }
+            }
+        }
+    }
+
+    private func eventContext(_ event: CalendarEvent) -> String? {
+        guard query.isEmpty, displayMode == .month, event.isMultiDay else { return nil }
+        let key = CampusCalendarDate.dayKey(selection)
+        if key == event.startDate { return "本日開始" }
+        if key == event.endDate { return "本日結束" }
+        return nil
+    }
+
+    private var emptyAgenda: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(query.isEmpty ? "\(displayMode == .month ? "這天" : "這個月")沒有\(selectedFilter?.rawValue ?? "校曆")事件" : "找不到符合的事件",
+                  systemImage: query.isEmpty ? "calendar" : "magnifyingglass")
+                .font(.headline)
+            Text(query.isEmpty ? (displayMode == .month ? "可點選其他日期，或切換月份查看。" : "可切換月份，或調整分類查看其他事件。") : "試試「選課」「期中」等關鍵字，或調整分類。")
+                .font(.subheadline).foregroundStyle(.secondary)
+            if selectedFilter != nil {
+                Button("顯示全部類別") { selectedFilter = nil }.frame(minHeight: 44)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var unavailableContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if viewModel.isLoading {
+                ProgressView("載入行事曆中…").frame(maxWidth: .infinity).padding(.vertical, 24)
             } else {
-                ForEach(events) { event in
-                    CalendarEventCard(event: event) {
-                        presentedEvent = PresentedEvent(event: event)
-                    }
-                }
+                Label(viewModel.isNotPublished ? "此學年度尚未公布" : "暫時無法取得行事曆", systemImage: "calendar.badge.exclamationmark")
+                    .font(.headline)
+                Text(viewModel.statusMessage ?? "請稍後再試，或切換學年度查看已公布的資料。")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button("重新整理") { Task { await viewModel.reload(force: true) } }
+                    .frame(minHeight: 44)
             }
         }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
     }
-    
-    private var emptyResultView: some View {
-        VStack(spacing: Theme.Spacing.small) {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.system(size: 28, weight: .light))
-                .foregroundColor(.gray)
-            Text("沒有符合目前篩選條件的事件")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(.gray)
+
+    private var syncFooter: some View {
+        VStack(spacing: 6) {
+            if viewModel.isLoading { ProgressView().accessibilityLabel("正在更新行事曆") }
+            Text(viewModel.sourceLabel)
+            Label("下拉更新行事曆", systemImage: "arrow.down")
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.large)
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func monthName(_ month: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_TW")
-        return formatter.monthSymbols[month - 1]
+        .padding(.top, 4)
     }
 
-    private var filteredEvents: [CalendarEvent] {
-        var events = viewModel.allEvents
-
-        if let selectedFilter {
-            events = events.filter { $0.inferredType == selectedFilter }
-        }
-
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !query.isEmpty {
-            events = events.filter {
-                $0.title.lowercased().contains(query) ||
-                ($0.description?.lowercased().contains(query) ?? false)
-            }
-        }
-
-        if let selectedMonth = viewModel.selectedMonth {
-            events = events.filter {
-                $0.months.contains(selectedMonth)
-            }
-        }
-
-        return events.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
-    }
-
-    private var eventsByDisplayedMonth: [Int: [CalendarEvent]] {
-        var grouped: [Int: [CalendarEvent]] = [:]
-        for event in filteredEvents {
-            for month in event.months { grouped[month, default: []].append(event) }
-        }
-        return grouped
-    }
-
-    private var displayedMonths: [Int] {
-        CampusCalendarDate.monthOrder.filter { eventsByDisplayedMonth[$0] != nil }
-    }
-
-    private var filteredUpcomingEvents: [CalendarEvent] {
-        let now = CampusCalendarDate.calendar.startOfDay(for: Date())
-        let thirtyDaysLater = CampusCalendarDate.calendar.date(byAdding: .day, value: 30, to: now) ?? now
-        return filteredEvents.filter {
-            guard let start = $0.start else { return false }
-            return start >= now && start <= thirtyDaysLater
-        }
-    }
-
-    private var shouldShowUpcomingSection: Bool {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        selectedFilter == nil &&
-        viewModel.selectedMonth == nil &&
-        !filteredUpcomingEvents.isEmpty
+    private func returnToToday() {
+        let now = Date()
+        searchText = ""
+        selectedFilter = nil
+        viewModel.handleDateChange(now: now)
+        viewModel.switchSemester(to: String(CampusCalendarDate.academicYear(at: now)))
+        viewModel.selectMonth(CampusCalendarDate.calendar.component(.month, from: now))
+        selectedDay = CampusCalendarDate.calendar.component(.day, from: now)
+        scrollPosition.scrollTo(edge: .top)
     }
 }
-
-private struct CalendarScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct PresentedEvent: Identifiable {
-    let id = UUID()
-    let event: CalendarEvent
-}
-
-// MARK: - Month Button Component
-
-struct MonthButton: View {
-    let title: String
-    let isSelected: Bool
-    let compact: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: compact ? 12 : 14, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? Color(.systemBackground) : Theme.Colors.primary)
-                .frame(minWidth: compact ? (title == "全部" ? 50 : 40) : nil)
-                .padding(.horizontal, compact ? 0 : 16)
-                .padding(.vertical, compact ? 8 : 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(isSelected ? Theme.Colors.primary : Color(.secondarySystemFill))
-                )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-private struct EventTypeChip: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? Color(.systemBackground) : Theme.Colors.primary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? Theme.Colors.primary : Color(.secondarySystemFill))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Preview
 
 #Preview {
-    AcademicCalendarView()
+    NavigationStack { AcademicCalendarView() }
 }

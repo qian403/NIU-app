@@ -114,3 +114,4 @@ add_*.rb
 /.deriveddata
 /.playwright-mcp
 /.claude
+AGENTS.md

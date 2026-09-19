@@ -121,6 +121,19 @@ struct CalendarEvent: Codable, Identifiable, Hashable {
         return startDate <= day && day <= (endDate ?? startDate)
     }
 
+    /// A period's opening/closing days are distinct from days within that period.
+    func isBoundary(on date: Date) -> Bool {
+        let key = CampusCalendarDate.dayKey(date)
+        return key == startDate || key == (endDate ?? startDate)
+    }
+
+    var displayTitle: String {
+        if isMultiDay && title.hasSuffix("開始") {
+            return String(title.dropLast(2)) + "期間"
+        }
+        return title
+    }
+
     var months: [Int] {
         guard let start, let end else { return [] }
         let calendar = CampusCalendarDate.calendar
@@ -200,4 +213,61 @@ extension CalendarEvent {
         sourceText = event.sourceText
         sourceURL = document.sources.first(where: { $0.id == event.sourceId }).flatMap { URL(string: $0.url) }
     }
+}
+
+/// A Sunday-first month, always interpreted in the school's time zone.
+struct AcademicCalendarMonth {
+    let start: Date
+    let days: [Date]
+    let leadingEmptyDays: Int
+
+    init(academicYear: Int, month: Int) {
+        let calendar = CampusCalendarDate.calendar
+        let year = academicYear + 1911 + (month < 8 ? 1 : 0)
+        let start = calendar.date(from: DateComponents(year: year, month: month, day: 1))!
+        self.start = start
+        leadingEmptyDays = calendar.component(.weekday, from: start) - 1
+        days = calendar.range(of: .day, in: .month, for: start)!.map {
+            calendar.date(byAdding: .day, value: $0 - 1, to: start)!
+        }
+    }
+
+    var cells: [Date?] {
+        let count = leadingEmptyDays + days.count
+        let trailing = (7 - count % 7) % 7
+        return Array(repeating: nil, count: leadingEmptyDays) + days.map(Optional.some)
+            + Array(repeating: nil, count: trailing)
+    }
+
+    /// Each event appears once: carry-over periods first, then events by start day.
+    func eventSections(_ events: [CalendarEvent]) -> [AcademicCalendarEventSection] {
+        let firstDay = CampusCalendarDate.dayKey(start)
+        let lastDay = CampusCalendarDate.dayKey(days.last!)
+        let matching = events.filter {
+            $0.startDate <= lastDay && ($0.endDate ?? $0.startDate) >= firstDay
+        }.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+        let carryover = matching.filter { $0.startDate < firstDay }
+        var sections: [AcademicCalendarEventSection] = carryover.isEmpty ? [] : [
+            AcademicCalendarEventSection(date: nil, events: carryover)
+        ]
+        let startsInMonth = Dictionary(grouping: matching.filter { $0.startDate >= firstDay }, by: \.startDate)
+        for key in startsInMonth.keys.sorted() {
+            sections.append(AcademicCalendarEventSection(date: CampusCalendarDate.parse(key), events: startsInMonth[key]!))
+        }
+        return sections
+    }
+
+    func selectedDate(day: Int?, now: Date = Date()) -> Date {
+        let calendar = CampusCalendarDate.calendar
+        let defaultDay = calendar.isDate(now, equalTo: start, toGranularity: .month)
+            ? calendar.component(.day, from: now) : 1
+        return days[min(max((day ?? defaultDay) - 1, 0), days.count - 1)]
+    }
+}
+
+struct AcademicCalendarEventSection: Identifiable {
+    /// nil identifies periods carried over from an earlier month.
+    let date: Date?
+    let events: [CalendarEvent]
+    var id: String { date.map(CampusCalendarDate.dayKey) ?? "carryover" }
 }

@@ -1,314 +1,157 @@
 import SwiftUI
 
-struct CalendarEventCard: View {
-    let event: CalendarEvent
-    let onTap: () -> Void
-    
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: Theme.Spacing.medium) {
-                // 左側日期
-                dateIndicator
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(event.title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Theme.Colors.primary)
-                        .lineLimit(2)
-                    
-                    if let description = event.description, !description.isEmpty {
-                        Text(description)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(Theme.Colors.secondaryText)
-                            .lineLimit(1)
-                    }
-                    
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(eventTypeColor)
-                            .frame(width: 7, height: 7)
-                        Text(event.inferredType.rawValue)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(eventTypeColor)
-                    }
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Theme.Colors.tertiaryText)
-            }
-            .padding(.horizontal, Theme.Spacing.small)
-            .padding(.vertical, 12)
-            .background(Color(.systemBackground))
-            .overlay(
-                Rectangle()
-                    .fill(Color.primary.opacity(0.07))
-                    .frame(height: 1),
-                alignment: .bottom
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    // MARK: - Components
-    
-    private var dateIndicator: some View {
-        VStack(spacing: 2) {
-            if let date = event.start {
-                Text(weekdayString(from: date))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Theme.Colors.tertiaryText)
-                Text(dayString(from: date))
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(Theme.Colors.primary)
-                Text(monthString(from: date))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(eventTypeColor)
-            }
-        }
-        .frame(width: 52)
-    }
-    
-    // MARK: - Helper Properties
-    
-    private var eventTypeColor: Color {
-        switch event.inferredType {
+extension CalendarEventType {
+    var tint: Color {
+        switch self {
         case .registration: return .blue
         case .exam: return .red
         case .holiday: return .green
         case .important: return .orange
         case .semester: return .purple
-        case .activity: return .cyan
+        case .activity: return .teal
         case .deadline: return .pink
         case .academic: return .indigo
         }
     }
-    
-    // MARK: - Helper Methods
-    
-    private func monthString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = CampusCalendarDate.calendar
-        formatter.timeZone = CampusCalendarDate.calendar.timeZone
-        formatter.dateFormat = "M月"
-        formatter.locale = Locale(identifier: "zh_TW")
-        return formatter.string(from: date)
-    }
-    
-    private func weekdayString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = CampusCalendarDate.calendar
-        formatter.timeZone = CampusCalendarDate.calendar.timeZone
-        formatter.dateFormat = "E"
-        formatter.locale = Locale(identifier: "zh_TW")
-        return formatter.string(from: date)
-    }
-
-    private func dayString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = CampusCalendarDate.calendar
-        formatter.timeZone = CampusCalendarDate.calendar.timeZone
-        formatter.dateFormat = "dd"
-        return formatter.string(from: date)
-    }
 }
 
-// MARK: - Event Detail Sheet
+struct CalendarEventCard: View {
+    let event: CalendarEvent
+    var context: String? = nil
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 12) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(event.type.tint)
+                    .frame(width: 3)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(context.map { "\(event.type.rawValue) · \($0)" } ?? event.type.rawValue, systemImage: event.type.icon)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(event.displayTitle)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(dateLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    if let note = event.description, !note.isEmpty, note != event.title {
+                        Text(note)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 4)
+            }
+            .padding(16)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("查看事件詳情與校方原文")
+    }
+
+    private var dateLabel: String {
+        guard let start = event.start else { return event.dateString }
+        let first = CampusCalendarDate.format(start, "M/d（E）")
+        guard event.isMultiDay, let end = event.end else { return first }
+        return "\(first) – \(CampusCalendarDate.format(end, "M/d（E）"))"
+    }
+}
 
 struct CalendarEventDetailSheet: View {
     let event: CalendarEvent
-    @Environment(\.dismiss) var dismiss
-    
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.large) {
-                    // 日期區塊
-                    dateSection
-                    
-                    Divider()
-                    
-                    // 事件資訊
-                    eventInfoSection
-                    
-                    Divider()
-                    
-                    // 描述
-                    if let description = event.description, !description.isEmpty {
-                        descriptionSection(description)
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label(event.type.rawValue, systemImage: event.type.icon)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(event.type.tint)
+                        Text(event.displayTitle)
+                            .font(.title2.bold())
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let sourceText = event.sourceText {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("校方原文").font(.subheadline).foregroundStyle(.secondary)
-                            Text(sourceText)
-                            if let url = event.sourceURL {
-                                Link("查看校方行事曆 PDF", destination: url)
+                    dateSection
+                    if let description = event.description, !description.isEmpty {
+                        textSection("說明", text: description)
+                    }
+                    if let sourceText = event.sourceText, !sourceText.isEmpty {
+                        textSection("校方原文", text: sourceText)
+                    }
+                    if let url = event.sourceURL {
+                        Link(destination: url) {
+                            HStack {
+                                Label("查看校方行事曆 PDF", systemImage: "doc.text")
+                                Spacer(minLength: 8)
+                                Image(systemName: "arrow.up.right")
                             }
+                            .font(.subheadline.weight(.medium))
+                            .padding(16)
+                            .frame(minHeight: 44)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                         }
+                        .tint(.primary)
                     }
                 }
-                .padding()
+                .padding(24)
+                .frame(maxWidth: 700, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
-            .navigationTitle("活動詳情")
+            .navigationTitle("事件詳情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("關閉") {
-                        dismiss()
-                    }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
                 }
             }
+            .background(Theme.Colors.background)
         }
+        .presentationDragIndicator(.visible)
     }
-    
+
     private var dateSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+        VStack(alignment: .leading, spacing: 12) {
             Label("日期", systemImage: "calendar")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Theme.Colors.tertiaryText)
-            
-            HStack {
-                if let start = event.start {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("開始")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(Theme.Colors.tertiaryText)
-                        Text(fullDateString(from: start))
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(Theme.Colors.primary)
-                    }
-                    
-                    if event.isMultiDay, let end = event.end {
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(Theme.Colors.tertiaryText)
-                            .padding(.horizontal)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("結束")
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundColor(Theme.Colors.tertiaryText)
-                            Text(fullDateString(from: end))
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(Theme.Colors.primary)
-                        }
-                    }
+                .font(.subheadline).foregroundStyle(.secondary)
+            if let start = event.start {
+                Text(CampusCalendarDate.format(start, "yyyy年M月d日 EEEE"))
+                    .font(.headline)
+                if event.isMultiDay, let end = event.end {
+                    Text("至 \(CampusCalendarDate.format(end, "yyyy年M月d日 EEEE"))")
+                        .font(.headline)
+                    Text("含開始與結束當天")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.gray.opacity(0.1))
-            )
         }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
     }
-    
-    private var eventInfoSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-            Text(event.title)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(Theme.Colors.primary)
-            
-            HStack(spacing: 8) {
-                Image(systemName: event.inferredType.icon)
-                    .font(.system(size: 14))
-                Text(event.inferredType.rawValue)
-                    .font(.system(size: 14, weight: .medium))
-            }
-            .foregroundColor(eventTypeColor)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(eventTypeColor.opacity(0.15))
-            )
+
+    private func textSection(_ title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+            Text(text).font(.body).textSelection(.enabled)
         }
-    }
-    
-    private func descriptionSection(_ description: String) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            Label("說明", systemImage: "doc.text")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Theme.Colors.tertiaryText)
-            
-            Text(description)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundColor(Theme.Colors.primary)
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.primary.opacity(0.05))
-                )
-        }
-    }
-    
-    private var eventTypeColor: Color {
-        switch event.inferredType {
-        case .registration: return .blue
-        case .exam: return .red
-        case .holiday: return .green
-        case .important: return .orange
-        case .semester: return .purple
-        case .activity: return .cyan
-        case .deadline: return .pink
-        case .academic: return .indigo
-        }
-    }
-    
-    private func fullDateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = CampusCalendarDate.calendar
-        formatter.timeZone = CampusCalendarDate.calendar.timeZone
-        formatter.dateFormat = "yyyy年MM月dd日"
-        formatter.locale = Locale(identifier: "zh_TW")
-        return formatter.string(from: date)
     }
 }
 
-// MARK: - Preview Data
-
 #Preview {
-    VStack(spacing: 16) {
-        CalendarEventCard(
-            event: CalendarEvent(
-                id: "1",
-                title: "開學日",
-                description: "114學年度第1學期開始上課",
-                startDate: "2024-09-09",
-                endDate: nil,
-                type: .semester
-            ),
-            onTap: {}
-        )
-        
-        CalendarEventCard(
-            event: CalendarEvent(
-                id: "2",
-                title: "期中考試",
-                description: "期中考試週",
-                startDate: "2024-11-04",
-                endDate: "2024-11-08",
-                type: .exam
-            ),
-            onTap: {}
-        )
-        
-        CalendarEventCard(
-            event: CalendarEvent(
-                id: "3",
-                title: "元旦連假",
-                description: nil,
-                startDate: "2025-01-01",
-                endDate: "2025-01-01",
-                type: .holiday
-            ),
-            onTap: {}
-        )
-    }
-    .padding()
+    CalendarEventDetailSheet(event: CalendarEvent(
+        id: "preview", title: "第二學期期末考試", description: "請依各課程公告的考試時間應試。",
+        startDate: "2027-06-21", endDate: "2027-06-27", type: .exam
+    ))
 }

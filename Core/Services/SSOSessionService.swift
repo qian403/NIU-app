@@ -7,8 +7,9 @@ import UIKit
 ///
 /// When a feature WebView detects that the session has expired, it calls
 /// `requestRefresh()`. This service triggers a single re-login via the
-/// SSOLoginWebView embedded in RootView (using shared WKWebsiteDataStore
-/// cookies). The school's interactive verification remains visible.
+/// SSOLoginScreen embedded in RootView (using shared WKWebsiteDataStore
+/// cookies). Brief sign-ins use a loading cover; the school page is available
+/// manually and is revealed automatically if sign-in takes longer.
 ///
 /// Auto-refresh is disabled when the user explicitly logs out and re-enabled
 /// on the next successful login.

@@ -284,7 +284,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                let euniURL = SSOEUNISettings.shared.euniFullURL,
                let url = URL(string: euniURL) {
                 // Step 1: Load SSO EUNI redirect to establish Moodle session
-                print("[MoodleWeb] SSO redirect: \(euniURL.prefix(80))")
+                print("[MoodleWeb] SSO redirect: \(URL(string: euniURL)?.path ?? "")")
                 self.phase = .ssoRedirect
                 self.webView.load(URLRequest(url: url))
             } else {
@@ -436,7 +436,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 self.fallbackToTargetAfterSSOFailure()
                 return
             }
-            print("[MoodleWeb] Resolved EUNI link: \(full.prefix(80))")
+            print("[MoodleWeb] Resolved EUNI link: \(URL(string: full)?.path ?? "")")
             self.phase = .ssoRedirect
             self.webView.load(URLRequest(url: url))
         }
@@ -812,7 +812,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             // QR pass and mobile autologin keys must not appear in diagnostics.
             print("[MoodleWeb] didFinish (\(phase)): \(wv.url?.path ?? "")")
         } else {
-            print("[MoodleWeb] didFinish (\(phase)): \(url.prefix(100))")
+            print("[MoodleWeb] didFinish (\(phase)): \(URL(string: url)?.path ?? "")")
         }
 
         switch phase {
