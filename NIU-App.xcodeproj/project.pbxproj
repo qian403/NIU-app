@@ -95,6 +95,10 @@
 		CA1E00010000000000000001 /* AcademicCalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000001 /* AcademicCalendarStore.swift */; };
 		CA1E00010000000000000002 /* AcademicCalendar in App Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* AcademicCalendar */; };
 		CA1E00010000000000000003 /* AcademicCalendar in Widget Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* AcademicCalendar */; };
+		C0ED00010000000000000001 /* CreditsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000001 /* CreditsStore.swift */; };
+		C0ED00010000000000000002 /* CreditsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000002 /* CreditsViewModel.swift */; };
+		C0ED00010000000000000003 /* SpecialThanksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000003 /* SpecialThanksView.swift */; };
+		C0ED00010000000000000004 /* credits.json in Resources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000004 /* credits.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -229,6 +233,10 @@
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
 		CA1E00020000000000000001 /* AcademicCalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/AcademicCalendarStore.swift"; sourceTree = SOURCE_ROOT; };
 		CA1E00020000000000000002 /* AcademicCalendar */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/AcademicCalendar; sourceTree = SOURCE_ROOT; };
+		C0ED00020000000000000001 /* CreditsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Services/CreditsStore.swift; sourceTree = SOURCE_ROOT; };
+		C0ED00020000000000000002 /* CreditsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/CreditsViewModel.swift; sourceTree = SOURCE_ROOT; };
+		C0ED00020000000000000003 /* SpecialThanksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Views/SpecialThanksView.swift; sourceTree = SOURCE_ROOT; };
+		C0ED00020000000000000004 /* credits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = app-content/credits.json; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -283,6 +291,10 @@
 				D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */,
 				CA1E00020000000000000001 /* AcademicCalendarStore.swift */,
 				CA1E00020000000000000002 /* AcademicCalendar */,
+				C0ED00020000000000000004 /* credits.json */,
+				C0ED00020000000000000003 /* SpecialThanksView.swift */,
+				C0ED00020000000000000002 /* CreditsViewModel.swift */,
+				C0ED00020000000000000001 /* CreditsStore.swift */,
 				10D1F8742F80C57900034946 /* Frameworks */,
 				10A32D672F431B8B0009BB45 /* Products */,
 				10A32DC92F4327A60009BB45 /* Core */,
@@ -816,6 +828,7 @@
 			files = (
 				10A32DB12F431F630009BB45 /* Assets.xcassets in Resources */,
 				CA1E00010000000000000002 /* AcademicCalendar in App Resources */,
+				C0ED00010000000000000004 /* credits.json in Resources */,
 				0E182345FA814B44AC09A920 /* Settings.bundle in Resources */,
 				A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */,
 				A1B2C3D4E5F60718293A4B5D /* LICENSE in Resources */,
@@ -870,6 +883,9 @@
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,
 				D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */,
 				CA1E00010000000000000001 /* AcademicCalendarStore.swift in Sources */,
+				C0ED00010000000000000003 /* SpecialThanksView.swift in Sources */,
+				C0ED00010000000000000002 /* CreditsViewModel.swift in Sources */,
+				C0ED00010000000000000001 /* CreditsStore.swift in Sources */,
 				10A32DB82F431F630009BB45 /* MinimalCard.swift in Sources */,
 				10A32DB92F431F630009BB45 /* Theme.swift in Sources */,
 				10A32DBA2F431F630009BB45 /* MinimalSecureField.swift in Sources */,
@@ -1063,7 +1079,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1111,7 +1127,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1159,7 +1175,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
@@ -1192,7 +1208,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
