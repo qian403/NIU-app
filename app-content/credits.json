@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "introduction": "感謝下列開源專案與開發者提供靈感與參考：",
+  "entries": [
+    {
+      "id": "kennyyang0726-niu-app-ios",
+      "name": "KennyYang0726",
+      "description": "NIU_APP_IOS 開發者",
+      "projectName": "NIU_APP_IOS",
+      "url": "https://github.com/KennyYang0726/NIU_APP_IOS",
+      "order": 10
+    }
+  ]
+}

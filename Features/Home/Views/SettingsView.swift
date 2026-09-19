@@ -585,64 +585,6 @@ private struct PrivacyPolicyView: View {
     }
 }
 
-// MARK: - Special Thanks View
-
-private struct SpecialThanksView: View {
-    private let githubURL = URL(string: "https://github.com/KennyYang0726/NIU_APP_IOS")!
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                Text("特別感謝")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color(.label))
-
-                Text("感謝下列開源專案與開發者提供靈感與參考：")
-                    .foregroundStyle(Color(.secondaryLabel))
-
-                Link(destination: githubURL) {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.accentColor.opacity(0.12))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 20))
-                                .foregroundStyle(Color.accentColor)
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("KennyYang0726")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color(.label))
-                            Text("NIU_APP_IOS 開發者")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color(.secondaryLabel))
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(Color(.tertiaryLabel))
-                    }
-                    .padding(Theme.Spacing.medium)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
-                            .fill(Color(.secondarySystemGroupedBackground))
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.large)
-        }
-        .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle("特別感謝")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
 #Preview {
     NavigationStack {
         SettingsView()
