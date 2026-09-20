@@ -19,9 +19,11 @@ def replace_block(text, marker, replacement):
     return text[:start] + replacement + text[end:]
 
 source = source.replace('import ActivityKit\n', '').replace('import CryptoKit\n', '').replace('import DeviceCheck\n', '').replace('import Security\n', '')
+source = source.replace('task = Task { [weak self] in\n', 'task = Task { [weak self] in\n            await Fixture.waitForObserver(activity.id)\n')
 source = replace_block(source, '    static var baseURL:', '    static var baseURL: URL? { URL(string: "https://activity.example.test") }')
 source = replace_block(source, '    private func request(', '''    private func request(endpoint: String, path: String, method: String, token: String? = nil, body: Data? = nil) async throws -> Data {
-        try await Fixture.request(method: method, path: path, token: token, body: body)
+        do { return try await Fixture.request(method: method, path: path, token: token, body: body) }
+        catch FixtureFailure.unauthorized { throw RemoteError.httpResponse(401) }
     }''')
 attestation_start = source.index('    private func createDeviceSession(endpoint:')
 request_start = source.index('    private func request(', attestation_start)
@@ -33,12 +35,19 @@ source = source[:attestation_start] + '''    private func createDeviceSession(en
 start = source.index('    private var keychainQuery:')
 source = source[:start] + '''    private func readKeychain() throws -> Data { Fixture.saved }
     private func persist() throws { Fixture.saved = try JSONEncoder().encode(records) }
-    func simulateRelaunch() { task?.cancel(); uploadTask?.cancel(); observedID = nil; pushToken = nil }
+    func simulateRelaunch() {
+        task?.cancel(); uploadTask?.cancel(); observedID = nil; pushToken = nil
+        records = (try? JSONDecoder().decode([Credential].self, from: Fixture.saved)) ?? []
+    }
 }
 '''
 source = source.replace('UserDefaults.standard', 'Fixture.defaults').replace('UserDefaults(suiteName: "group.dev.chien.niuapp")?', 'Optional(Fixture.defaults)?')
+app_state = (root / 'Core/Models/AppState.swift').read_text()
+keys_start = app_state.index('enum StorageKeys {')
+source += app_state[keys_start:app_state.index('}', keys_start) + 1]
 fixtures = r'''
 import Foundation
+enum FixtureFailure: Error { case unauthorized }
 @MainActor enum Fixture {
     static let defaults = UserDefaults(suiteName: "test.niu.activity." + UUID().uuidString)!
     static var saved = Data("[]".utf8)
@@ -49,8 +58,25 @@ import Foundation
     static var holdPost = false
     static var deleteGate: CheckedContinuation<Data, Never>?
     static var postGate: CheckedContinuation<Data, Never>?
+    static var heldObserverID: String?
+    static var observerGate: CheckedContinuation<Void, Never>?
+    static var expectedTokens: [String: String] = [:]
+    static var expectedScopes: [String: String] = [:]
+    static var expectedCourses: [String: String] = [:]
+    static var credentialScopes: [String: String] = [:]
+    static var denyNextPut = false
+    static var unauthorizedPuts = 0
+    static var holdUnauthorizedPut = false
+    static var unauthorizedGate: CheckedContinuation<Void, Never>?
+    static var storedCredentialTokens: [String] {
+        ((try? JSONSerialization.jsonObject(with: saved)) as? [[String: Any]] ?? []).compactMap { $0["token"] as? String }
+    }
+    static func waitForObserver(_ id: String) async {
+        if id == heldObserverID { await withCheckedContinuation { observerGate = $0 } }
+    }
     static func response(_ token: String) -> Data {
-        try! JSONSerialization.data(withJSONObject: ["token": token, "expires_at": Date().addingTimeInterval(86400).timeIntervalSince1970])
+        credentialScopes[token] = defaults.string(forKey: StorageKeys.authSessionID)
+        return try! JSONSerialization.data(withJSONObject: ["token": token, "expires_at": Date().addingTimeInterval(86400).timeIntervalSince1970])
     }
     static func request(method: String, path: String, token: String?, body: Data?) async throws -> Data {
         if method == "POST" {
@@ -62,7 +88,19 @@ import Foundation
             puts += 1
             let data = try JSONSerialization.jsonObject(with: body!) as! [String: Any]
             precondition(data["installation_id"] == nil)
+            precondition(data["ownerSessionID"] == nil && data["username"] == nil)
             precondition(data["sessions"] != nil && data["update_token"] != nil)
+            let activityID = data["activity_id"] as! String
+            precondition(data["update_token"] as? String == expectedTokens[activityID], "activity content paired with another recipient token")
+            let sessions = data["sessions"] as! [[String: Any]]
+            precondition(sessions.first?["courseName"] as? String == expectedCourses[activityID], "activity uploaded another login's course")
+            precondition(credentialScopes[token!] == expectedScopes[activityID], "activity uploaded with another login's bearer")
+            if denyNextPut {
+                denyNextPut = false
+                unauthorizedPuts += 1
+                if holdUnauthorizedPut { await withCheckedContinuation { unauthorizedGate = $0 } }
+                throw FixtureFailure.unauthorized
+            }
             return Data()
         }
         precondition(method == "DELETE")
@@ -71,15 +109,33 @@ import Foundation
         return Data()
     }
 }
-nonisolated struct ClassLiveActivityAttributes { let startedAt: Date }
+nonisolated struct ClassLiveActivityAttributes { let startedAt: Date; let token: String }
 @MainActor final class Activity<T> {
     enum State { case active, stale, ended }
     let id: String
     let attributes: ClassLiveActivityAttributes
     var activityState = State.active
-    var pushToken: Data? = Data(repeating: 0xab, count: 32)
-    let pushTokenUpdates: AsyncStream<Data> = AsyncStream { _ in }
-    init(_ id: String) { self.id = id; attributes = ClassLiveActivityAttributes(startedAt: Date()) }
+    var pushToken: Data?
+    let pushTokenUpdates: AsyncStream<Data>
+    private let tokenUpdates: AsyncStream<Data>.Continuation
+    init(_ id: String, tokenByte: UInt8 = 0xab) {
+        self.id = id
+        let updates = AsyncStream<Data>.makeStream()
+        pushTokenUpdates = updates.stream
+        tokenUpdates = updates.continuation
+        attributes = ClassLiveActivityAttributes(startedAt: Date(), token: Fixture.defaults.string(forKey: StorageKeys.authSessionID)!)
+        pushToken = Data(repeating: tokenByte, count: 32)
+        Fixture.expectedTokens[id] = String(repeating: String(format: "%02x", tokenByte), count: 32)
+        Fixture.expectedScopes[id] = attributes.token
+        let cached = Fixture.defaults.data(forKey: "classSchedule.v2.cachedData")!
+        Fixture.expectedCourses[id] = (try! JSONDecoder().decode(ClassSchedule.self, from: cached)).sessions(on: Date()).first?.courseName
+    }
+    func rotateToken(to byte: UInt8) {
+        let data = Data(repeating: byte, count: 32)
+        pushToken = data
+        Fixture.expectedTokens[id] = String(repeating: String(format: "%02x", byte), count: 32)
+        tokenUpdates.yield(data)
+    }
 }
 @main struct Checks {
     @MainActor static func waitFor(_ predicate: () -> Bool) async {
@@ -96,7 +152,11 @@ nonisolated struct ClassLiveActivityAttributes { let startedAt: Date }
         let start = max(0, mins-1), end = min(1439, mins+10)
         let range = String(format:"%02d:%02d~%02d:%02d",start/60,start%60,end/60,end%60)
         let headers = ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"]
-        let fixture = ClassSchedule(periods: [.init(id:"1",timeRange:range,courses:[0:CourseInfo(name:"Synthetic")])],dayCount:1,dayHeaders:[headers[cal.component(.weekday,from:now)-1]],fetchedAt:now)
+        let sessionID = UUID().uuidString
+        Fixture.defaults.set("synthetic-account", forKey: StorageKeys.username)
+        Fixture.defaults.set(sessionID, forKey: StorageKeys.authSessionID)
+        var fixture = ClassSchedule(periods: [.init(id:"1",timeRange:range,courses:[0:CourseInfo(name:"Synthetic")])],dayCount:1,dayHeaders:[headers[cal.component(.weekday,from:now)-1]],fetchedAt:now)
+        fixture.ownerSessionID = sessionID
         Fixture.defaults.set(try JSONEncoder().encode(fixture),forKey:"classSchedule.v2.cachedData")
         let client = LiveActivityRemoteClient.shared
         let a = Activity<ClassLiveActivityAttributes>("A")
@@ -127,6 +187,78 @@ nonisolated struct ClassLiveActivityAttributes { let startedAt: Date }
         Fixture.postGate?.resume(returning: Fixture.response("late-registration")); Fixture.postGate = nil
         await waitFor { Fixture.deletes.contains("late-registration") }
         precondition(Fixture.puts == 3, "late registration must never upload after logout")
+        Fixture.holdPost = false
+        Fixture.defaults.set(true, forKey: LiveActivityRemoteClient.consentKey)
+        Fixture.heldObserverID = "delayed-old-activity"
+        client.observe(Activity<ClassLiveActivityAttributes>("delayed-old-activity", tokenByte: 0xcd))
+        await waitFor { Fixture.observerGate != nil }
+        let currentActivity = Activity<ClassLiveActivityAttributes>("current-activity", tokenByte: 0xef)
+        client.observe(currentActivity)
+        await waitFor { Fixture.puts == 4 }
+        Fixture.observerGate?.resume(); Fixture.observerGate = nil
+        try await Task.sleep(for: .milliseconds(100))
+        precondition(Fixture.puts == 4, "cancelled observer must never upload or reuse the current token")
+        currentActivity.rotateToken(to: 0x56)
+        await waitFor { Fixture.puts == 5 }
+        client.disable()
+        print("PASS: delayed old observer cannot target the current recipient; token rotation preserves binding")
+        let previousPuts = Fixture.puts
+        Fixture.defaults.set(true, forKey: LiveActivityRemoteClient.consentKey)
+        for cacheOwner in [nil, Optional(UUID().uuidString)] {
+            fixture.ownerSessionID = cacheOwner
+            Fixture.defaults.set(try JSONEncoder().encode(fixture), forKey: "classSchedule.v2.cachedData")
+            client.observe(Activity<ClassLiveActivityAttributes>(UUID().uuidString, tokenByte: 0x12))
+            try await Task.sleep(for: .milliseconds(30))
+            precondition(Fixture.puts == previousPuts, "unbound or another login's cache must never upload")
+        }
+        fixture.ownerSessionID = sessionID
+        Fixture.defaults.set(try JSONEncoder().encode(fixture), forKey: "classSchedule.v2.cachedData")
+        Fixture.holdPost = true
+        let oldLoginActivity = Activity<ClassLiveActivityAttributes>("old-login", tokenByte: 0x34)
+        client.observe(oldLoginActivity)
+        await waitFor { Fixture.postGate != nil }
+        Fixture.defaults.set(UUID().uuidString, forKey: StorageKeys.authSessionID)
+        Fixture.postGate?.resume(returning: Fixture.response("late-old-login")); Fixture.postGate = nil
+        await waitFor { Fixture.deletes.contains("late-old-login") }
+        client.observe(oldLoginActivity)
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(Fixture.puts == previousPuts, "same-account re-login must invalidate old registration and activity")
+        client.disable()
+        print("PASS: legacy/mismatched cache, login rotation, old activity and late credential fail closed")
+        Fixture.holdPost = false
+        let newSessionID = Fixture.defaults.string(forKey: StorageKeys.authSessionID)!
+        fixture = ClassSchedule(periods: [.init(id:"1",timeRange:range,courses:[0:CourseInfo(name:"Synthetic new login")])],dayCount:1,dayHeaders:fixture.dayHeaders,fetchedAt:now,ownerSessionID:newSessionID)
+        Fixture.defaults.set(try JSONEncoder().encode(fixture), forKey: "classSchedule.v2.cachedData")
+        Fixture.defaults.set(true, forKey: LiveActivityRemoteClient.consentKey)
+        let nextActivity = Activity<ClassLiveActivityAttributes>("new-login", tokenByte: 0x78)
+        Fixture.denyNextPut = true
+        client.observe(nextActivity)
+        await waitFor { Fixture.unauthorizedPuts == 1 }
+        let expiredCredential = "fixture-\(Fixture.posts)"
+        await waitFor { !Fixture.storedCredentialTokens.contains(expiredCredential) }
+        let beforeRecovery = Fixture.puts
+        client.observe(nextActivity)
+        await waitFor { Fixture.puts == beforeRecovery + 1 }
+        precondition(!Fixture.storedCredentialTokens.contains(expiredCredential), "401 credential must not be reused")
+        Fixture.denyNextPut = true
+        Fixture.holdUnauthorizedPut = true
+        client.observe(nextActivity)
+        await waitFor { Fixture.unauthorizedGate != nil }
+        client.disable()
+        let latestSessionID = UUID().uuidString
+        Fixture.defaults.set(latestSessionID, forKey: StorageKeys.authSessionID)
+        fixture.ownerSessionID = latestSessionID
+        Fixture.defaults.set(try JSONEncoder().encode(fixture), forKey: "classSchedule.v2.cachedData")
+        Fixture.defaults.set(true, forKey: LiveActivityRemoteClient.consentKey)
+        let beforeLatest = Fixture.puts
+        client.observe(Activity<ClassLiveActivityAttributes>("latest-login", tokenByte: 0x9a))
+        await waitFor { Fixture.puts == beforeLatest + 1 }
+        let latestCredential = "fixture-\(Fixture.posts)"
+        Fixture.unauthorizedGate?.resume(); Fixture.unauthorizedGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(Fixture.storedCredentialTokens.contains(latestCredential), "late 401 must not remove the new login's credential")
+        client.disable()
+        print("PASS: course/activity/recipient/bearer pairing, 401 recovery, and late 401 isolation")
         print("PASS: consent, cold-start credential reuse, concurrent revocation drain, late registration after logout")
     }
 }

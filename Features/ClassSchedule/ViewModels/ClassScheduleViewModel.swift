@@ -30,6 +30,7 @@ final class ClassScheduleViewModel: ObservableObject {
     private var sessionRefreshAttempted = false
     private(set) var loadGeneration = 0
     private var loadingAccount: String?
+    private var loadingSessionID: String?
     private var sessionRefreshTask: Task<Void, Never>?
 
     private let cacheKey = "classSchedule.v2.cachedData"
@@ -95,6 +96,7 @@ final class ClassScheduleViewModel: ObservableObject {
 
     func loadSchedule() {
         loadingAccount = UserDefaults.standard.string(forKey: StorageKeys.username)
+        loadingSessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID)
         if let cached = loadFromCache() {
             schedule = cached
             selectedDayIndex = todayDayIndex
@@ -119,6 +121,7 @@ final class ClassScheduleViewModel: ObservableObject {
         guard !isRefreshing, !showWebView else { return }
         loadGeneration &+= 1
         loadingAccount = UserDefaults.standard.string(forKey: StorageKeys.username)
+        loadingSessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID)
         isRefreshing = true
         isFetchingInBackground = schedule != nil
         if schedule == nil { loadState = .loading }
@@ -144,6 +147,7 @@ final class ClassScheduleViewModel: ObservableObject {
     func handleWebResult(_ result: ClassScheduleWebResult, generation: Int) {
         guard generation == loadGeneration, showWebView,
               let loadingAccount, loadingAccount == UserDefaults.standard.string(forKey: StorageKeys.username),
+              let loadingSessionID, loadingSessionID == UserDefaults.standard.string(forKey: StorageKeys.authSessionID),
               !UserDefaults.standard.bool(forKey: "app.logoutCleanupPending") else { return }
         showWebView = false
 
@@ -152,7 +156,8 @@ final class ClassScheduleViewModel: ObservableObject {
             isRefreshing = false
             isFetchingInBackground = false
             sessionRefreshAttempted = false
-            let parsed = parseTableRows(rows)
+            var parsed = parseTableRows(rows)
+            parsed.ownerSessionID = loadingSessionID
             schedule = parsed
             // Recalculate today's index now that we have the real day headers
             selectedDayIndex = todayDayIndex
@@ -178,7 +183,9 @@ final class ClassScheduleViewModel: ObservableObject {
                 sessionRefreshTask = Task { [weak self] in
                     guard !Task.isCancelled else { return }
                     let refreshed = await SSOSessionService.shared.requestRefresh()
-                    guard !Task.isCancelled, let self else { return }
+                    guard !Task.isCancelled, let self,
+                          generation == self.loadGeneration,
+                          loadingSessionID == UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else { return }
                     if refreshed {
                         // Shared cookie store is now refreshed – retry the schedule fetch
                         self.showWebView = true
@@ -277,7 +284,9 @@ final class ClassScheduleViewModel: ObservableObject {
 
     private func loadFromCache() -> ClassSchedule? {
         guard let data = UserDefaults.standard.data(forKey: cacheKey),
-              let decoded = try? JSONDecoder().decode(ClassSchedule.self, from: data)
+              let decoded = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID),
+              decoded.ownerSessionID == sessionID
         else { return nil }
         // Repair App Group cache when upgrading from an App-only cached schedule.
         if let shared = UserDefaults(suiteName: appGroupIdentifier), shared.data(forKey: cacheKey) != data {
@@ -288,6 +297,9 @@ final class ClassScheduleViewModel: ObservableObject {
     }
 
     private func saveToCache(_ schedule: ClassSchedule) {
+        guard let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID),
+              schedule.ownerSessionID == sessionID,
+              !UserDefaults.standard.bool(forKey: "app.logoutCleanupPending") else { return }
         if let data = try? JSONEncoder().encode(schedule) {
             UserDefaults.standard.set(data, forKey: cacheKey)
             UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: cacheKey)

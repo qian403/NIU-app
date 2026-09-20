@@ -26,6 +26,7 @@ final class LiveActivityRemoteClient {
         var expiresAt: Date
         var revision: Int64
         var revoked: Bool
+        var ownerSessionID: String?
     }
     private struct AppAttestKey: Codable {
         let keyID: String
@@ -52,7 +53,7 @@ final class LiveActivityRemoteClient {
         let expires_at: Date
         let sessions: [ScheduleSession]
     }
-    private enum RemoteError: Error { case invalidConfiguration, response, keychain }
+    private enum RemoteError: Error { case invalidConfiguration, response, keychain, httpResponse(Int) }
 
     static var baseURL: URL? {
         var raw = Bundle.main.object(forInfoDictionaryKey: "NIUActivityAPIBaseURL") as? String ?? ""
@@ -84,14 +85,15 @@ final class LiveActivityRemoteClient {
 
     func observe(_ activity: Activity<ClassLiveActivityAttributes>) {
         retryCleanup()
-        guard Self.enabled else { return }
+        guard Self.enabled, let sessionID = currentSessionID,
+              activity.attributes.token == sessionID else { return }
         if observedID == activity.id {
             if let pushToken { upload(activity, token: pushToken) }
             return
         }
         generation &+= 1
         task?.cancel(); uploadTask?.cancel()
-        for index in records.indices where records[index].activityID != activity.id || records[index].endpoint != Self.baseURL?.absoluteString {
+        for index in records.indices where records[index].activityID != activity.id || records[index].endpoint != Self.baseURL?.absoluteString || records[index].ownerSessionID != sessionID {
             records[index].revoked = true
         }
         do { try persist() } catch { return }
@@ -100,10 +102,12 @@ final class LiveActivityRemoteClient {
         pushToken = activity.pushToken.map { $0.map { String(format: "%02x", $0) }.joined() }
         let current = generation
         task = Task { [weak self] in
-            guard let self else { return }
+            guard !Task.isCancelled, let self, current == self.generation,
+                  self.observedID == activity.id, self.currentSessionID == sessionID else { return }
             if let token = self.pushToken { self.upload(activity, token: token) }
             for await token in activity.pushTokenUpdates {
-                guard !Task.isCancelled, current == self.generation else { return }
+                guard !Task.isCancelled, current == self.generation,
+                      self.observedID == activity.id, self.currentSessionID == sessionID else { return }
                 let value = token.map { String(format: "%02x", $0) }.joined()
                 self.pushToken = value
                 self.upload(activity, token: value)
@@ -113,9 +117,23 @@ final class LiveActivityRemoteClient {
     // A separate finite task allows schedule revisions without cancelling token observation.
     private var uploadTask: Task<Void, Never>?
     private func upload(_ activity: Activity<ClassLiveActivityAttributes>, token: String) {
+        guard isCurrent(activity, token: token, generation: generation) else { return }
         uploadTask?.cancel()
         let current = generation
         uploadTask = Task { [weak self] in await self?.synchronize(activity, token: token, generation: current) }
+    }
+
+    private var currentSessionID: String? {
+        guard UserDefaults.standard.string(forKey: StorageKeys.username) != nil,
+              !UserDefaults.standard.bool(forKey: "app.logoutCleanupPending") else { return nil }
+        return UserDefaults.standard.string(forKey: StorageKeys.authSessionID)
+    }
+
+    private func isCurrent(_ activity: Activity<ClassLiveActivityAttributes>, token: String, generation current: Int) -> Bool {
+        Self.enabled && !Task.isCancelled && current == generation && observedID == activity.id
+            && pushToken == token && currentSessionID == activity.attributes.token
+            && activity.pushToken.map { $0.map { String(format: "%02x", $0) }.joined() } == token
+            && (activity.activityState == .active || activity.activityState == .stale)
     }
 
     func disable() {
@@ -151,34 +169,41 @@ final class LiveActivityRemoteClient {
     }
 
     private func synchronize(_ activity: Activity<ClassLiveActivityAttributes>, token: String, generation current: Int) async {
-        guard Self.enabled, current == generation, !Task.isCancelled,
-              let base = Self.baseURL, (activity.activityState == .active || activity.activityState == .stale),
+        guard isCurrent(activity, token: token, generation: current),
+              let base = Self.baseURL,
               let data = UserDefaults(suiteName: "group.dev.chien.niuapp")?.data(forKey: "classSchedule.v2.cachedData"),
-              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else { return }
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              schedule.ownerSessionID == activity.attributes.token else { return }
         let now = Date()
         let limit = activity.attributes.startedAt.addingTimeInterval(7 * 3600 + 55 * 60)
         let sessions = schedule.sessions(on: now).filter { $0.end > now && $0.end <= limit }
         guard let last = sessions.last else { return }
         let endpoint = base.absoluteString
         do {
-            if !records.contains(where: { !$0.revoked && $0.activityID == activity.id && $0.endpoint == endpoint && $0.expiresAt > now }) {
+            if !records.contains(where: { !$0.revoked && $0.activityID == activity.id && $0.endpoint == endpoint && $0.expiresAt > now && $0.ownerSessionID == activity.attributes.token }) {
                 let data = try await createDeviceSession(endpoint: endpoint)
                 let response = try JSONDecoder().decode(Registration.self, from: data)
-                let revoked = current != generation || Task.isCancelled || !Self.enabled
+                let revoked = !isCurrent(activity, token: token, generation: current)
                 records.append(Credential(token: response.token, activityID: activity.id, endpoint: endpoint,
-                                          expiresAt: Date(timeIntervalSince1970: response.expires_at), revision: 0, revoked: revoked))
+                                          expiresAt: Date(timeIntervalSince1970: response.expires_at), revision: 0, revoked: revoked,
+                                          ownerSessionID: activity.attributes.token))
                 try persist()
                 if revoked { retryCleanup(); return }
             }
-            guard current == generation, !Task.isCancelled, Self.enabled,
-                  let index = records.firstIndex(where: { !$0.revoked && $0.activityID == activity.id && $0.endpoint == endpoint && $0.expiresAt > now }) else { return }
+            guard isCurrent(activity, token: token, generation: current),
+                  let index = records.firstIndex(where: { !$0.revoked && $0.activityID == activity.id && $0.endpoint == endpoint && $0.expiresAt > Date() && $0.ownerSessionID == activity.attributes.token }) else { return }
             records[index].revision += 1
             let credential = records[index]
             try persist()
             let body = Upload(activity_id: activity.id, update_token: token, revision: credential.revision,
                               expires_at: last.end, sessions: sessions)
             let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-            _ = try await request(endpoint: endpoint, path: "v1/me/live-activity", method: "PUT", token: credential.token, body: encoder.encode(body))
+            do {
+                _ = try await request(endpoint: endpoint, path: "v1/me/live-activity", method: "PUT", token: credential.token, body: encoder.encode(body))
+            } catch RemoteError.httpResponse(401) {
+                records.removeAll { $0.token == credential.token }
+                try persist()
+            }
         } catch {
             // No payload/URL/token is logged. The next foreground refresh retries;
             // the system's stale state is the user-visible fallback.
@@ -207,6 +232,7 @@ final class LiveActivityRemoteClient {
             method: "POST",
             body: encoder.encode(ChallengeRequest(key_id: key.keyID))
         )
+        try Task.checkCancellation()
         let challenge = try JSONDecoder().decode(Challenge.self, from: challengeData)
         guard challenge.expires_at > Date().timeIntervalSince1970,
               let rawChallenge = Data(base64Encoded: challenge.challenge), rawChallenge.count == 32 else {
@@ -222,6 +248,7 @@ final class LiveActivityRemoteClient {
                 return try await createDeviceSession(endpoint: endpoint, service: service, key: try await appAttestKey(service: service), mayReplaceKey: false)
             }
             let attestation = try await service.attestKey(key.keyID, clientDataHash: clientDataHash)
+            try Task.checkCancellation()
             try writeKeychain(JSONEncoder().encode(AppAttestKey(keyID: key.keyID, attested: true)), account: appAttestAccount)
             registration = AttestedRegistration(
                 challenge_id: challenge.challenge_id,
@@ -231,6 +258,7 @@ final class LiveActivityRemoteClient {
             )
         } else {
             let assertion = try await service.generateAssertion(key.keyID, clientDataHash: clientDataHash)
+            try Task.checkCancellation()
             if !key.attested {
                 try writeKeychain(JSONEncoder().encode(AppAttestKey(keyID: key.keyID, attested: true)), account: appAttestAccount)
             }
@@ -260,6 +288,7 @@ final class LiveActivityRemoteClient {
             }
         }
         let keyID = try await service.generateKey()
+        try Task.checkCancellation()
         let key = AppAttestKey(keyID: keyID, attested: false)
         try writeKeychain(JSONEncoder().encode(key), account: appAttestAccount)
         return key
@@ -273,8 +302,10 @@ final class LiveActivityRemoteClient {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         let (data, response) = try await session.data(for: request, delegate: NoActivityRedirects())
-        guard let response = response as? HTTPURLResponse,
-              (200..<300).contains(response.statusCode) || (method == "DELETE" && response.statusCode == 401) else { throw RemoteError.response }
+        guard let response = response as? HTTPURLResponse else { throw RemoteError.response }
+        guard (200..<300).contains(response.statusCode) || (method == "DELETE" && response.statusCode == 401) else {
+            throw RemoteError.httpResponse(response.statusCode)
+        }
         return data
     }
     private var keychainQuery: [String: Any] {
