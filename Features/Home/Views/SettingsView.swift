@@ -168,6 +168,19 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
 
+                if let projectURL = URL(string: "https://github.com/qian403/NIU-app") {
+                    Link(destination: projectURL) {
+                        SettingsNavigationRow(
+                            icon: "chevron.left.forwardslash.chevron.right",
+                            title: "開源專案",
+                            subtitle: "GitHub 原始碼・MIT 授權"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityHint("開啟 NIU-Life 的 GitHub 開源專案網頁")
+                }
+
                 NavigationLink(destination: SpecialThanksView()) {
                     SettingsNavigationRow(icon: "heart.text.square.fill", title: "特別感謝", subtitle: "致謝開源專案開發者")
                 }
