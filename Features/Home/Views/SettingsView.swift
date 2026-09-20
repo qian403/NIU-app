@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -7,8 +6,7 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var showLogoutConfirm = false
-    @State private var showReportAlert = false
-    @State private var showMailError = false
+    @State private var showReportFormError = false
     @State private var isRefreshingProfile = false
     @AppStorage("app.appearance.mode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
 
@@ -34,15 +32,10 @@ struct SettingsView: View {
         }
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.large)
-        .alert("回報問題", isPresented: $showReportAlert) {
-            Button("傳送（含設備資訊）") { sendReport(includeDeviceInfo: true) }
-            Button("傳送（不含設備資訊）") { sendReport(includeDeviceInfo: false) }
-            Button("取消", role: .cancel) {}
-        }
-        .alert("無法開啟郵件 App", isPresented: $showMailError) {
+        .alert("無法開啟問題回報表單", isPresented: $showReportFormError) {
             Button("好") {}
         } message: {
-            Text("請先在此裝置設定可用的郵件 App。")
+            Text("請稍後再試，或確認裝置目前可以開啟網頁。")
         }
     }
 
@@ -142,8 +135,14 @@ struct SettingsView: View {
             VStack(spacing: Theme.Spacing.xsmall) {
                 SettingsInfoRow(icon: "info.circle.fill", title: "版本", value: appVersionText)
 
-                Button { showReportAlert = true } label: {
-                    SettingsNavigationRow(icon: "exclamationmark.bubble.fill", title: "回報問題", subtitle: "hi@chien.dev")
+                Button {
+                    if let reportURL = URL(string: "https://forms.gle/2ok6fydShrfe6PHr5") {
+                        openURL(reportURL) { accepted in
+                            if !accepted { showReportFormError = true }
+                        }
+                    }
+                } label: {
+                    SettingsNavigationRow(icon: "exclamationmark.bubble.fill", title: "回報問題", subtitle: "填寫問題回報表單")
                 }
                 .buttonStyle(.plain)
 
@@ -285,36 +284,6 @@ struct SettingsView: View {
         isRefreshingProfile = false
     }
 
-    private func sendReport(includeDeviceInfo: Bool) {
-        guard let url = makeMailURL(includeDeviceInfo: includeDeviceInfo) else {
-            showMailError = true
-            return
-        }
-        openURL(url) { if !$0 { showMailError = true } }
-    }
-
-    private func makeMailURL(includeDeviceInfo: Bool) -> URL? {
-        let subject = "NIU App 問題回報"
-        let body: String
-        if includeDeviceInfo {
-            body = """
-        問題描述
-
-
-        設備資訊
-        - App 版本：\(appVersionText)
-        - iOS：\(UIDevice.current.systemVersion)
-        - 裝置：\(UIDevice.current.model)
-        - 裝置名稱：\(UIDevice.current.name)
-        - 語系：\(Locale.current.identifier)
-        - 時區：\(TimeZone.current.identifier)
-        """
-        } else {
-            body = "問題描述\n\n\n（未附帶設備資訊）"
-        }
-        let enc = { (s: String) in s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "" }
-        return URL(string: "mailto:hi@chien.dev?subject=\(enc(subject))&body=\(enc(body))")
-    }
 }
 
 // MARK: - Settings Info Row (display only)
