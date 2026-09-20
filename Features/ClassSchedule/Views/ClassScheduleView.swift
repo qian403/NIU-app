@@ -29,8 +29,9 @@ struct ClassScheduleView: View {
 
             // Invisible WebView for background data fetching
             if vm.showWebView {
+                let generation = vm.loadGeneration
                 ClassScheduleWebView { result in
-                    vm.handleWebResult(result)
+                    vm.handleWebResult(result, generation: generation)
                 }
                 .frame(width: 1, height: 1)
                 .opacity(0)

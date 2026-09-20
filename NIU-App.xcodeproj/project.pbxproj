@@ -48,7 +48,7 @@
 		A1B2C3D4E5F60718293A4B5D /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LICENSE */; };
 		A1F235FAF2EF434A85F33837 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */; };
 		A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A9F0C1D2E3F4A5B6C7D8E9E0 /* PrivacyInfo.xcprivacy */; };
-		AA01BC01AA01BC01AA01BC01 /* Features/ClassSchedule/Models/ClassScheduleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC11AA01BC11AA01BC11 /* Features/ClassSchedule/Models/ClassScheduleModels.swift */; };
+		AA01BC01AA01BC01AA01BC01 /* NIU-LiveActivities/ClassScheduleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */; };
 		AA01BC02AA01BC02AA01BC02 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */; };
 		AA01BC03AA01BC03AA01BC03 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC13AA01BC13AA01BC13 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift */; };
 		AA01BC04AA01BC04AA01BC04 /* Features/ClassSchedule/Views/ClassScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC14AA01BC14AA01BC14 /* Features/ClassSchedule/Views/ClassScheduleView.swift */; };
@@ -99,6 +99,9 @@
 		C0ED00010000000000000002 /* CreditsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000002 /* CreditsViewModel.swift */; };
 		C0ED00010000000000000003 /* SpecialThanksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000003 /* SpecialThanksView.swift */; };
 		C0ED00010000000000000004 /* credits.json in Resources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000004 /* credits.json */; };
+ABCD01000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000000; };
+ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000001; };
+		C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE10020000000000000001 /* UsageHeartbeatClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -190,7 +193,7 @@
 		A1B2C3D4E5F60718293A4B5C /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
 		A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistration_Tab1_View.swift; sourceTree = "<group>"; };
 		A9F0C1D2E3F4A5B6C7D8E9E0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		AA01BC11AA01BC11AA01BC11 /* Features/ClassSchedule/Models/ClassScheduleModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Models/ClassScheduleModels.swift; sourceTree = "<group>"; };
+		AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/ClassScheduleModels.swift"; sourceTree = SOURCE_ROOT; };
 		AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/ClassScheduleWebView.swift; sourceTree = "<group>"; };
 		AA01BC13AA01BC13AA01BC13 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift; sourceTree = "<group>"; };
 		AA01BC14AA01BC14AA01BC14 /* Features/ClassSchedule/Views/ClassScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleView.swift; sourceTree = "<group>"; };
@@ -237,6 +240,9 @@
 		C0ED00020000000000000002 /* CreditsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/CreditsViewModel.swift; sourceTree = SOURCE_ROOT; };
 		C0ED00020000000000000003 /* SpecialThanksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Views/SpecialThanksView.swift; sourceTree = SOURCE_ROOT; };
 		C0ED00020000000000000004 /* credits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = app-content/credits.json; sourceTree = SOURCE_ROOT; };
+ABCD02000000000000000000 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/ClassLiveActivityAttributes.swift"; sourceTree = SOURCE_ROOT; };
+ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Services/LiveActivityRemoteClient.swift"; sourceTree = SOURCE_ROOT; };
+		C0DE10020000000000000001 /* UsageHeartbeatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageHeartbeatClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -577,6 +583,7 @@
 				10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */,
 				10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */,
 				10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */,
+				C0DE10020000000000000001 /* UsageHeartbeatClient.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -611,7 +618,7 @@
 				87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */,
 				9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */,
 				164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */,
-				AA01BC11AA01BC11AA01BC11 /* Features/ClassSchedule/Models/ClassScheduleModels.swift */,
+				AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */,
 				AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */,
 				AA01BC13AA01BC13AA01BC13 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift */,
 				AA01BC14AA01BC14AA01BC14 /* Features/ClassSchedule/Views/ClassScheduleView.swift */,
@@ -882,6 +889,9 @@
 				10A32DB62F431F630009BB45 /* MinimalTextField.swift in Sources */,
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,
 				D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */,
+ABCD01000000000000000001,
+				C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */,
+ABCD01000000000000000000,
 				CA1E00010000000000000001 /* AcademicCalendarStore.swift in Sources */,
 				C0ED00010000000000000003 /* SpecialThanksView.swift in Sources */,
 				C0ED00010000000000000002 /* CreditsViewModel.swift in Sources */,
@@ -889,7 +899,7 @@
 				10A32DB82F431F630009BB45 /* MinimalCard.swift in Sources */,
 				10A32DB92F431F630009BB45 /* Theme.swift in Sources */,
 				10A32DBA2F431F630009BB45 /* MinimalSecureField.swift in Sources */,
-				AA01BC01AA01BC01AA01BC01 /* Features/ClassSchedule/Models/ClassScheduleModels.swift in Sources */,
+				AA01BC01AA01BC01AA01BC01 /* NIU-LiveActivities/ClassScheduleModels.swift in Sources */,
 				AA01BC02AA01BC02AA01BC02 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift in Sources */,
 				AA01BC03AA01BC03AA01BC03 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift in Sources */,
 				AA01BC04AA01BC04AA01BC04 /* Features/ClassSchedule/Views/ClassScheduleView.swift in Sources */,
@@ -1078,6 +1088,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
+                APS_ENVIRONMENT = development;
+                NIU_ACTIVITY_API_BASE_URL = "";
+				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
@@ -1126,6 +1139,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
+                APS_ENVIRONMENT = production;
+                NIU_ACTIVITY_API_BASE_URL = "";
+				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;

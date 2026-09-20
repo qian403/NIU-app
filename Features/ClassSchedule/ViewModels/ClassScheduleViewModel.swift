@@ -28,7 +28,8 @@ final class ClassScheduleViewModel: ObservableObject {
     /// Guard to prevent infinite retry loops if re-auth succeeds but schedule
     /// fetch still fails due to a server-side issue.
     private var sessionRefreshAttempted = false
-    private var loadGeneration = 0
+    private(set) var loadGeneration = 0
+    private var loadingAccount: String?
     private var sessionRefreshTask: Task<Void, Never>?
 
     private let cacheKey = "classSchedule.v2.cachedData"
@@ -78,7 +79,7 @@ final class ClassScheduleViewModel: ObservableObject {
 
     /// Nil when today's weekday is not included in the school's schedule.
     var actualTodayDayIndex: Int? {
-        let weekday = Calendar.current.component(.weekday, from: Date())
+        let weekday = ScheduleClock.calendar.component(.weekday, from: Date())
         let mondayBased = (weekday + 5) % 7   // 0=Mon…6=Sun
         let todayName = mondayBased < Self.weekdayNames.count
             ? Self.weekdayNames[mondayBased] : "星期一"
@@ -93,6 +94,7 @@ final class ClassScheduleViewModel: ObservableObject {
     // MARK: - Load
 
     func loadSchedule() {
+        loadingAccount = UserDefaults.standard.string(forKey: StorageKeys.username)
         if let cached = loadFromCache() {
             schedule = cached
             selectedDayIndex = todayDayIndex
@@ -116,6 +118,7 @@ final class ClassScheduleViewModel: ObservableObject {
     func refresh() {
         guard !isRefreshing, !showWebView else { return }
         loadGeneration &+= 1
+        loadingAccount = UserDefaults.standard.string(forKey: StorageKeys.username)
         isRefreshing = true
         isFetchingInBackground = schedule != nil
         if schedule == nil { loadState = .loading }
@@ -138,7 +141,10 @@ final class ClassScheduleViewModel: ObservableObject {
 
     // MARK: - WebView result handler
 
-    func handleWebResult(_ result: ClassScheduleWebResult) {
+    func handleWebResult(_ result: ClassScheduleWebResult, generation: Int) {
+        guard generation == loadGeneration, showWebView,
+              let loadingAccount, loadingAccount == UserDefaults.standard.string(forKey: StorageKeys.username),
+              !UserDefaults.standard.bool(forKey: "app.logoutCleanupPending") else { return }
         showWebView = false
 
         switch result {
@@ -273,6 +279,11 @@ final class ClassScheduleViewModel: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: cacheKey),
               let decoded = try? JSONDecoder().decode(ClassSchedule.self, from: data)
         else { return nil }
+        // Repair App Group cache when upgrading from an App-only cached schedule.
+        if let shared = UserDefaults(suiteName: appGroupIdentifier), shared.data(forKey: cacheKey) != data {
+            shared.set(data, forKey: cacheKey)
+            WidgetCenter.shared.reloadAllTimelines()
+        }
         return decoded
     }
 

@@ -1,7 +1,7 @@
 import Foundation
 import ActivityKit
 
-struct ClassLiveActivityAttributes: ActivityAttributes {
+nonisolated struct ClassLiveActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         let mode: String // "current" or "upcoming"
         let courseName: String
@@ -12,5 +12,6 @@ struct ClassLiveActivityAttributes: ActivityAttributes {
         let endDate: Date
     }
 
+    let startedAt: Date
     let token: String
 }

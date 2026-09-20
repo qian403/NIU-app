@@ -39,26 +39,14 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             ]
             return Timeline(entries: entries, policy: .after(min(now.addingTimeInterval(1800), tomorrow)))
         }
-        guard contentType == .classSchedule else {
-            let entry = await entry(for: contentType, tapAction: tapAction, at: now)
-            return Timeline(entries: [entry], policy: .after(now.addingTimeInterval(1800)))
-        }
-        let calendar = Calendar.current
-        let midnight = calendar.startOfDay(for: now)
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: midnight)!
-        // Precompute class boundaries, so the widget does not need a network wakeup
-        // to switch from the current class to the next one.
-        let boundaries = (loadSchedule()?.periods ?? []).flatMap { period in
-            [period.startMinutes, period.endMinutes].compactMap { $0 }.compactMap {
-                calendar.date(byAdding: .minute, value: $0, to: midnight)
-            }
-        }.filter { $0 > now && $0 < tomorrow }
-        let dates = [now] + Array(Set(boundaries)).sorted() + [tomorrow]
+        let schedule = loadSchedule() ?? ClassSchedule(periods: [], dayCount: 0, dayHeaders: [], fetchedAt: now)
+        let dates = schedule.timelineDates(after: now)
         var entries: [NIUWidgetEntry] = []
         for date in dates {
             entries.append(await entry(for: contentType, tapAction: tapAction, at: date))
         }
-        return Timeline(entries: entries, policy: .atEnd)
+        // Ask for replenishment early; the remaining entries cover delayed execution.
+        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(24 * 3600)))
     }
 
     private func makeEntry(configuration: ConfigurationAppIntent) async -> NIUWidgetEntry {
@@ -76,7 +64,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         case .academicCalendar:
             return .calendar(await loadCalendarSummary(now: date))
         case .weeklyTimetable:
-            return .weeklyTimetable(loadWeekSummary())
+            return .weeklyTimetable(loadWeekSummary(now: date))
         }
     }
 
@@ -91,7 +79,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             )
         }
 
-        let calendar = Calendar.current
+        let calendar = ScheduleClock.calendar
         let currentWeekday = calendar.component(.weekday, from: now)
 
         guard let dayIndex = schedule.dayHeaders.firstIndex(where: { weekdayIndex(from: $0) == currentWeekday }) else {
@@ -133,7 +121,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
                 subtitle: "點按查看課表，或使用下方快捷功能", location: nil, entries: [])
         }
         let firstStartMinutes = minutes(from: first.timeLabel)
-        let components = Calendar.current.dateComponents([.hour, .minute], from: now)
+        let components = ScheduleClock.calendar.dateComponents([.hour, .minute], from: now)
         let currentMinutes = components.hour.flatMap { hour in
             components.minute.map { minute in
                 hour * 60 + minute
@@ -158,7 +146,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         )
     }
 
-    private func loadWeekSummary() -> WeekTimetableSummary {
+    private func loadWeekSummary(now: Date) -> WeekTimetableSummary {
         guard let schedule = loadSchedule() else {
             return WeekTimetableSummary(
                 title: "完整課表",
@@ -168,14 +156,14 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             )
         }
 
-        let todayWeekday = Calendar.current.component(.weekday, from: Date())
+        let todayWeekday = ScheduleClock.calendar.component(.weekday, from: now)
         let validPeriods = schedule.periods.filter { period in
             guard let start = period.startMinutes, let end = period.endMinutes else { return false }
             return end > start
         }
 
         let days = schedule.dayHeaders.enumerated().map { index, header in
-            let items = validPeriods.compactMap { period -> WidgetCourseInfo? in
+            let items = validPeriods.compactMap { period -> CourseInfo? in
                 period.courses[String(index)]
             }
             return WeekDaySummary(
@@ -277,10 +265,10 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         )
     }
 
-    private func loadSchedule() -> WidgetClassSchedule? {
-        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
-        guard let data = defaults.data(forKey: "classSchedule.v2.cachedData"),
-              let schedule = try? JSONDecoder().decode(WidgetClassSchedule.self, from: data) else {
+    private func loadSchedule() -> ClassSchedule? {
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
+              let data = defaults.data(forKey: "classSchedule.v2.cachedData"),
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
             return nil
         }
         return schedule
@@ -311,16 +299,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         return "\(CampusCalendarDate.calendar.component(.month, from: date))月"
     }
 
-    private func weekdayIndex(from dayHeader: String) -> Int? {
-        if dayHeader.contains("一") { return 2 }
-        if dayHeader.contains("二") { return 3 }
-        if dayHeader.contains("三") { return 4 }
-        if dayHeader.contains("四") { return 5 }
-        if dayHeader.contains("五") { return 6 }
-        if dayHeader.contains("六") { return 7 }
-        if dayHeader.contains("日") || dayHeader.contains("天") { return 1 }
-        return nil
-    }
+    private func weekdayIndex(from dayHeader: String) -> Int? { ScheduleClock.weekday(dayHeader) }
 
     private func shortDayLabel(from header: String) -> String {
         String(header.suffix(1))
@@ -335,7 +314,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
 
         if let upcomingIndex = entries.firstIndex(where: { item in
             guard let startMinutes = minutes(from: item.timeLabel) else { return false }
-            let comps = Calendar.current.dateComponents([.hour, .minute], from: now)
+            let comps = ScheduleClock.calendar.dateComponents([.hour, .minute], from: now)
             guard let hour = comps.hour, let minute = comps.minute else { return false }
             let currentMinutes = hour * 60 + minute
             return startMinutes >= currentMinutes
@@ -1016,12 +995,12 @@ struct NIUWidgetView: View {
 
     private func currentMonthDayLabel() -> String {
         let now = Date()
-        let calendar = Calendar.current
+        let calendar = ScheduleClock.calendar
         return "\(calendar.component(.month, from: now))/\(calendar.component(.day, from: now))"
     }
 
     private func currentWeekRangeLabel() -> String {
-        let calendar = Calendar.current
+        let calendar = ScheduleClock.calendar
         let now = Date()
         let weekday = calendar.component(.weekday, from: now)
         let offsetToMonday = weekday == 1 ? -6 : 2 - weekday
@@ -1035,7 +1014,7 @@ struct NIUWidgetView: View {
     }
 
     private func weekDateLabel(for dayIndex: Int) -> String {
-        let calendar = Calendar.current
+        let calendar = ScheduleClock.calendar
         let now = Date()
         let weekday = calendar.component(.weekday, from: now)
         let offsetToMonday = weekday == 1 ? -6 : 2 - weekday
@@ -1364,68 +1343,6 @@ private struct WeekGridLayout {
         let hour = minutes / 60
         return String(format: "%02d:00", hour)
     }
-}
-
-private struct WidgetClassSchedule: Decodable {
-    let periods: [WidgetClassPeriod]
-    let dayHeaders: [String]
-}
-
-private struct WidgetClassPeriod: Decodable {
-    let id: String
-    let timeRange: String
-    let courses: [String: WidgetCourseInfo]
-
-    var startMinutes: Int? {
-        parseRange().map { $0.0 }
-    }
-
-    var endMinutes: Int? {
-        parseRange().map { $0.1 }
-    }
-
-    var startLabel: String {
-        timeRange.components(separatedBy: CharacterSet(charactersIn: "~-"))
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-
-    var endLabel: String {
-        let parts = timeRange.components(separatedBy: CharacterSet(charactersIn: "~-"))
-        guard parts.count >= 2 else { return "" }
-        return parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    func contains(now: Date) -> Bool {
-        guard let startMinutes, let endMinutes else { return false }
-        let comps = Calendar.current.dateComponents([.hour, .minute], from: now)
-        guard let hour = comps.hour, let minute = comps.minute else { return false }
-        let current = hour * 60 + minute
-        return startMinutes <= current && current < endMinutes
-    }
-
-    private func parseRange() -> (Int, Int)? {
-        let parts = timeRange.components(separatedBy: CharacterSet(charactersIn: "~-"))
-        guard parts.count >= 2 else { return nil }
-        let start = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-        let end = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let s = toMinutes(start), let e = toMinutes(end) else { return nil }
-        return (s, e)
-    }
-
-    private func toMinutes(_ text: String) -> Int? {
-        let split = text.split(separator: ":")
-        guard split.count == 2,
-              let h = Int(split[0]),
-              let m = Int(split[1]) else { return nil }
-        return h * 60 + m
-    }
-}
-
-private struct WidgetCourseInfo: Decodable {
-    let name: String
-    let classroom: String?
-    let teacher: String?
 }
 
 private extension String {
