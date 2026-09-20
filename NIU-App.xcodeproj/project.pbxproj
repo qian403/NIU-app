@@ -1089,7 +1089,8 @@ ABCD01000000000000000000,
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
                 APS_ENVIRONMENT = development;
-                NIU_ACTIVITY_API_BASE_URL = "";
+                APP_ATTEST_ENVIRONMENT = development;
+                NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
@@ -1140,7 +1141,8 @@ ABCD01000000000000000000,
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
                 APS_ENVIRONMENT = production;
-                NIU_ACTIVITY_API_BASE_URL = "";
+                APP_ATTEST_ENVIRONMENT = production;
+                NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;

@@ -1,4 +1,6 @@
 import ActivityKit
+import CryptoKit
+import DeviceCheck
 import Foundation
 import Security
 
@@ -8,6 +10,7 @@ final class LiveActivityRemoteClient {
     static let shared = LiveActivityRemoteClient()
     static let consentKey = "app.liveActivity.remoteConsent.v1"
     private let keychainService = "dev.chien.niuapp.liveactivity.credentials.v1"
+    private let appAttestAccount = "app-attest-key"
     private var task: Task<Void, Never>?
     private var cleanupTask: Task<Void, Never>?
     private var generation = 0
@@ -24,7 +27,24 @@ final class LiveActivityRemoteClient {
         var revision: Int64
         var revoked: Bool
     }
+    private struct AppAttestKey: Codable {
+        let keyID: String
+        var attested: Bool
+    }
     private struct Registration: Decodable { let token: String; let expires_at: TimeInterval }
+    private struct ChallengeRequest: Encodable { let key_id: String }
+    private struct Challenge: Decodable {
+        let challenge_id: String
+        let challenge: String
+        let attestation_required: Bool
+        let expires_at: TimeInterval
+    }
+    private struct AttestedRegistration: Encodable {
+        let challenge_id: String
+        let key_id: String
+        let attestation_object: String?
+        let assertion: String?
+    }
     private struct Upload: Encodable {
         let activity_id: String
         let update_token: String
@@ -142,7 +162,7 @@ final class LiveActivityRemoteClient {
         let endpoint = base.absoluteString
         do {
             if !records.contains(where: { !$0.revoked && $0.activityID == activity.id && $0.endpoint == endpoint && $0.expiresAt > now }) {
-                let data = try await request(endpoint: endpoint, path: "v1/device-sessions", method: "POST")
+                let data = try await createDeviceSession(endpoint: endpoint)
                 let response = try JSONDecoder().decode(Registration.self, from: data)
                 let revoked = current != generation || Task.isCancelled || !Self.enabled
                 records.append(Credential(token: response.token, activityID: activity.id, endpoint: endpoint,
@@ -165,6 +185,86 @@ final class LiveActivityRemoteClient {
         }
     }
 
+    private func createDeviceSession(endpoint: String) async throws -> Data {
+        let service = DCAppAttestService.shared
+        guard service.isSupported else { throw RemoteError.invalidConfiguration }
+        do {
+            return try await createDeviceSession(endpoint: endpoint, service: service, key: try await appAttestKey(service: service), mayReplaceKey: true)
+        } catch {
+            let deviceCheckError = error as NSError
+            guard deviceCheckError.domain == DCErrorDomain,
+                  deviceCheckError.code == DCError.invalidKey.rawValue else { throw error }
+            try deleteAppAttestKeyID()
+            return try await createDeviceSession(endpoint: endpoint, service: service, key: try await appAttestKey(service: service), mayReplaceKey: false)
+        }
+    }
+
+    private func createDeviceSession(endpoint: String, service: DCAppAttestService, key: AppAttestKey, mayReplaceKey: Bool) async throws -> Data {
+        let encoder = JSONEncoder()
+        let challengeData = try await request(
+            endpoint: endpoint,
+            path: "v1/device-attestation/challenges",
+            method: "POST",
+            body: encoder.encode(ChallengeRequest(key_id: key.keyID))
+        )
+        let challenge = try JSONDecoder().decode(Challenge.self, from: challengeData)
+        guard challenge.expires_at > Date().timeIntervalSince1970,
+              let rawChallenge = Data(base64Encoded: challenge.challenge), rawChallenge.count == 32 else {
+            throw RemoteError.response
+        }
+        let clientDataHash = Data(SHA256.hash(data: rawChallenge))
+        let registration: AttestedRegistration
+        if challenge.attestation_required {
+            // Apple keys should only be attested once. If the server no longer knows a
+            // previously attested key, replace it instead of trying to re-attest it.
+            if key.attested, mayReplaceKey {
+                try deleteAppAttestKeyID()
+                return try await createDeviceSession(endpoint: endpoint, service: service, key: try await appAttestKey(service: service), mayReplaceKey: false)
+            }
+            let attestation = try await service.attestKey(key.keyID, clientDataHash: clientDataHash)
+            try writeKeychain(JSONEncoder().encode(AppAttestKey(keyID: key.keyID, attested: true)), account: appAttestAccount)
+            registration = AttestedRegistration(
+                challenge_id: challenge.challenge_id,
+                key_id: key.keyID,
+                attestation_object: attestation.base64EncodedString(),
+                assertion: nil
+            )
+        } else {
+            let assertion = try await service.generateAssertion(key.keyID, clientDataHash: clientDataHash)
+            if !key.attested {
+                try writeKeychain(JSONEncoder().encode(AppAttestKey(keyID: key.keyID, attested: true)), account: appAttestAccount)
+            }
+            registration = AttestedRegistration(
+                challenge_id: challenge.challenge_id,
+                key_id: key.keyID,
+                attestation_object: nil,
+                assertion: assertion.base64EncodedString()
+            )
+        }
+        return try await request(
+            endpoint: endpoint,
+            path: "v1/device-sessions",
+            method: "POST",
+            body: encoder.encode(registration)
+        )
+    }
+
+    private func appAttestKey(service: DCAppAttestService) async throws -> AppAttestKey {
+        if let data = try? readKeychain(account: appAttestAccount) {
+            if let key = try? JSONDecoder().decode(AppAttestKey.self, from: data), !key.keyID.isEmpty { return key }
+            // Upgrade the first local implementation, which stored only the key ID.
+            if let keyID = String(data: data, encoding: .utf8), !keyID.isEmpty {
+                let key = AppAttestKey(keyID: keyID, attested: false)
+                try writeKeychain(JSONEncoder().encode(key), account: appAttestAccount)
+                return key
+            }
+        }
+        let keyID = try await service.generateKey()
+        let key = AppAttestKey(keyID: keyID, attested: false)
+        try writeKeychain(JSONEncoder().encode(key), account: appAttestAccount)
+        return key
+    }
+
     private func request(endpoint: String, path: String, method: String, token: String? = nil, body: Data? = nil) async throws -> Data {
         guard let base = URL(string: endpoint), base.scheme == "https" || (Self.baseURL?.absoluteString == endpoint && base.scheme == "http") else { throw RemoteError.invalidConfiguration }
         var request = URLRequest(url: base.appendingPathComponent(path))
@@ -181,22 +281,36 @@ final class LiveActivityRemoteClient {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: keychainService,
          kSecAttrAccount as String: "activity-sessions"]
     }
+    private func keychainQuery(account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: keychainService,
+         kSecAttrAccount as String: account]
+    }
     private func readKeychain() throws -> Data {
-        var query = keychainQuery; query[kSecReturnData as String] = true
+        try readKeychain(account: "activity-sessions")
+    }
+    private func readKeychain(account: String) throws -> Data {
+        var query = keychainQuery(account: account); query[kSecReturnData as String] = true
         var result: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { throw RemoteError.keychain }
         return data
     }
     private func persist() throws {
         records.removeAll { $0.expiresAt <= Date() }
-        let data = try JSONEncoder().encode(records)
+        try writeKeychain(JSONEncoder().encode(records), account: "activity-sessions")
+    }
+    private func writeKeychain(_ data: Data, account: String) throws {
+        let query = keychainQuery(account: account)
         let update = [kSecValueData as String: data]
-        let status = SecItemUpdate(keychainQuery as CFDictionary, update as CFDictionary)
+        let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
         if status == errSecItemNotFound {
-            var query = keychainQuery; query[kSecValueData as String] = data
-            query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else { throw RemoteError.keychain }
+            var addition = query; addition[kSecValueData as String] = data
+            addition[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            guard SecItemAdd(addition as CFDictionary, nil) == errSecSuccess else { throw RemoteError.keychain }
         } else if status != errSecSuccess { throw RemoteError.keychain }
+    }
+    private func deleteAppAttestKeyID() throws {
+        let status = SecItemDelete(keychainQuery(account: appAttestAccount) as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound { throw RemoteError.keychain }
     }
 }
 
