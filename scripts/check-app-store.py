@@ -44,10 +44,13 @@ for manifest in ['Resources/PrivacyInfo.xcprivacy', 'NIU-LiveActivities/PrivacyI
 state = (root / 'Core/Models/AppState.swift').read_text()
 assert 'your-domain.com' not in state and 'pushType: .token' not in state
 assert 'uploadScheduleToBackend' not in state and 'uploadToken' not in state
-assert state.count('pushType: nil') == 2
+assert state.count('pushType: LiveActivityRemoteClient.enabled ? .token : nil') == 2
+remote_activity = (root / 'Core/Services/LiveActivityRemoteClient.swift').read_text()
+assert 'static let consentKey' in remote_activity
+assert 'UserDefaults.standard.bool(forKey: consentKey)' in remote_activity
 policy_definitions = sum(p.read_text().count('struct PrivacyPolicyView:') for p in (root / 'Features').rglob('*.swift'))
 assert policy_definitions == 1
-print('PASS: app metadata, opaque icons, privacy manifests, local-only activities and shared policy')
+print('PASS: app metadata, opaque icons, privacy manifests, consent-gated activities and shared policy')
 
 if args.archive:
     apps = list((args.archive / 'Products/Applications').glob('*.app'))

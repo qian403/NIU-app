@@ -13,7 +13,7 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(context.state.mode == "current" ? "本節課" : "下一堂")
+                        Text(context.isStale ? "待更新" : (context.state.mode == "current" ? "本節課" : "下一堂"))
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Text(context.state.courseName)
@@ -64,7 +64,7 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                         .font(.caption2)
                 }
             } compactTrailing: {
-                Text(compactTrailingText(context: context))
+                countdown(context: context)
                     .font(.caption2.monospacedDigit())
             } minimal: {
                 if context.state.mode == "current" {
@@ -83,7 +83,7 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
     private func lockScreenView(_ context: ActivityViewContext<ClassLiveActivityAttributes>) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(context.state.mode == "current" ? "本節課：\(context.state.courseName)" : "下一堂：\(context.state.courseName)")
+                Text(context.isStale ? "課程資訊待更新" : (context.state.mode == "current" ? "本節課：\(context.state.courseName)" : "下一堂：\(context.state.courseName)"))
                     .font(.headline)
                     .lineLimit(1)
                 Spacer(minLength: 12)
@@ -116,18 +116,21 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
     }
 
     private func progressText(context: ActivityViewContext<ClassLiveActivityAttributes>) -> String {
+        if context.isStale { return "開啟 App 更新課表" }
         if context.state.mode == "current" {
             return "\(context.state.endDate.formatted(date: .omitted, time: .shortened)) 下課"
         }
         return "\(context.state.startDate.formatted(date: .omitted, time: .shortened)) 開始"
     }
 
-    private func compactTrailingText(context: ActivityViewContext<ClassLiveActivityAttributes>) -> String {
-        if context.state.mode == "current" {
-            let minutes = max(0, Int(context.state.endDate.timeIntervalSinceNow / 60.0.rounded(.down)))
-            return minutes > 0 ? "\(minutes)m" : context.state.endDate.formatted(date: .omitted, time: .shortened)
+    @ViewBuilder
+    private func countdown(context: ActivityViewContext<ClassLiveActivityAttributes>) -> some View {
+        if context.isStale {
+            Text("待更新")
+        } else {
+            let end = context.state.mode == "current" ? context.state.endDate : context.state.startDate
+            Text(timerInterval: min(Date(), end)...end, countsDown: true, showsHours: false)
+                .monospacedDigit()
         }
-        return context.state.startDate.formatted(date: .omitted, time: .shortened)
     }
-
 }

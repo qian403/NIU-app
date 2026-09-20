@@ -54,8 +54,9 @@ struct HomeView: View {
                 }
 
                 if scheduleViewModel.showWebView {
+                    let generation = scheduleViewModel.loadGeneration
                     ClassScheduleWebView { result in
-                        scheduleViewModel.handleWebResult(result)
+                        scheduleViewModel.handleWebResult(result, generation: generation)
                     }
                     .frame(width: 1, height: 1)
                     .opacity(0)
@@ -114,7 +115,7 @@ struct HomeView: View {
     }
 
     private func extractRelevantPeriods(from schedule: ClassSchedule) -> (relevant: [(period: ClassPeriod, course: CourseInfo)], todayHasAnyClasses: Bool) {
-        let weekday = Calendar.current.component(.weekday, from: Date())
+        let weekday = ScheduleClock.calendar.component(.weekday, from: Date())
         let mondayBased = (weekday + 5) % 7
         guard mondayBased < Self.weekdayNames.count else { return ([], false) }
         let todayName = Self.weekdayNames[mondayBased]
@@ -125,7 +126,7 @@ struct HomeView: View {
             return (period, course)
         }
 
-        let now = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        let now = ScheduleClock.calendar.dateComponents([.hour, .minute], from: Date())
         let nowMinutes = (now.hour ?? 0) * 60 + (now.minute ?? 0)
 
         let notEnded = todaysAll.filter { item in

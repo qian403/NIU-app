@@ -49,6 +49,7 @@ final class AppState: ObservableObject {
         // Extract EUNI redirect link while SSO session is still alive
         MoodleSessionManager.shared.fetchEUNILink()
         print("[App] 使用者已登入")
+        Task { await UsageHeartbeatClient.shared.report() }
         Task { await refreshNotificationSchedules() }
         
         if mergedUser.department?.nilIfEmpty == nil || mergedUser.grade?.nilIfEmpty == nil {
@@ -58,6 +59,7 @@ final class AppState: ObservableObject {
 
     func logout() {
         guard !isLoggingOut else { return }
+        LiveActivityRemoteClient.shared.disable()
         isLoggingOut = true
         UserDefaults.standard.set(true, forKey: "app.logoutCleanupPending")
         currentUser = nil
@@ -116,6 +118,7 @@ final class AppState: ObservableObject {
             )
             isAuthenticated = true
             SSOSessionService.shared.enableAutoRefresh()
+            Task { await UsageHeartbeatClient.shared.report() }
             // Try to fetch EUNI link if we don't have one yet
             if SSOEUNISettings.shared.euniFullURL == nil {
                 MoodleSessionManager.shared.fetchEUNILink()
@@ -225,22 +228,37 @@ final class AppState: ObservableObject {
 
     func refreshNotificationSchedules() async {
         guard isAuthenticated else { return }
+        await refreshClassLiveActivitiesIfNeeded()
+        ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
         guard let credentials = LoginRepository.shared.getSavedCredentials() else { return }
         await NotificationScheduler.shared.scheduleAll(
             settings: notificationSettings,
             username: credentials.username,
             password: credentials.password
         )
-        await refreshClassLiveActivitiesIfNeeded()
-        ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
+    }
+
+    func setRemoteLiveActivityEnabled(_ enabled: Bool) async {
+        if enabled {
+            UserDefaults.standard.set(true, forKey: LiveActivityRemoteClient.consentKey)
+        } else {
+            LiveActivityRemoteClient.shared.disable()
+        }
+        await refreshClassLiveActivitiesIfNeeded(forceRebuild: true)
     }
 
     func applicationDidBecomeActive() async {
+        LiveActivityRemoteClient.shared.retryCleanup()
+        if isAuthenticated {
+            Task { await UsageHeartbeatClient.shared.report() }
+        }
+        ClassLiveActivityCoordinator.shared.setForeground(true)
         await refreshClassLiveActivitiesIfNeeded()
         ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
     }
 
     func applicationDidEnterBackground() {
+        ClassLiveActivityCoordinator.shared.setForeground(false)
         ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
     }
 
@@ -269,7 +287,7 @@ final class AppState: ObservableObject {
 
 }
 
-private enum StorageKeys {
+enum StorageKeys {
     static let username = "app.user.username"
     static let name = "app.user.name"
     static let department = "app.user.department"
@@ -614,26 +632,13 @@ extension Notification.Name {
 
 #if canImport(ActivityKit)
 @available(iOS 16.1, *)
-struct ClassLiveActivityAttributes: nonisolated ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        let mode: String // "current" or "upcoming"
-        let courseName: String
-        let classroom: String
-        let teacher: String
-        let periodLabel: String
-        let startDate: Date
-        let endDate: Date
-    }
-
-    let token: String
-}
-
 @MainActor
 final class ClassLiveActivityCoordinator {
     static let shared = ClassLiveActivityCoordinator()
     private let cacheKey = "classSchedule.v2.cachedData"
     private let appGroupIdentifier = "group.dev.chien.niuapp"
-    private let stalePaddingMinutes = 20
+    private var boundaryTask: Task<Void, Never>?
+    private var foreground = false
     private var refreshGeneration = 0
 
     private init() {}
@@ -641,13 +646,15 @@ final class ClassLiveActivityCoordinator {
     func refreshFromScheduleCache(forceRebuild: Bool = false) async {
         refreshGeneration &+= 1
         let generation = refreshGeneration
-        guard #available(iOS 16.1, *) else { return }
+        defer { scheduleBoundary() }
+        guard !Task.isCancelled, NotificationSettings.load().classLiveActivityEnabled,
+              UserDefaults.standard.string(forKey: StorageKeys.username) != nil else { return }
         let now = Date()
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             await endAll()
             return
         }
-        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
         guard let data = defaults.data(forKey: cacheKey),
               let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
               let snapshot = classSnapshot(from: schedule, now: now) else {
@@ -666,11 +673,12 @@ final class ClassLiveActivityCoordinator {
         )
 
         let token = stableToken("class-live-activity")
-        let attributes = ClassLiveActivityAttributes(token: token)
+        let attributes = ClassLiveActivityAttributes(startedAt: now, token: token)
         let staleDate = calendarStaleDate(for: snapshot)
         let content = ActivityContent(state: state, staleDate: staleDate)
 
         if forceRebuild {
+            LiveActivityRemoteClient.shared.stop()
             await endActivities()
             guard generation == refreshGeneration else { return }
         }
@@ -685,11 +693,12 @@ final class ClassLiveActivityCoordinator {
             }
 
             do {
-                _ = try Activity<ClassLiveActivityAttributes>.request(
+                let activity = try Activity<ClassLiveActivityAttributes>.request(
                     attributes: attributes,
                     content: content,
-                    pushType: nil
+                    pushType: LiveActivityRemoteClient.enabled ? .token : nil
                 )
+                LiveActivityRemoteClient.shared.observe(activity)
             } catch {
                 print("[LiveActivity] 重建失敗: \(error.localizedDescription)")
             }
@@ -699,28 +708,32 @@ final class ClassLiveActivityCoordinator {
 
         if let activity = activities.first {
             await activity.update(content)
-
+            guard generation == refreshGeneration else { return }
+            LiveActivityRemoteClient.shared.observe(activity)
             return
         }
 
         do {
-            _ = try Activity<ClassLiveActivityAttributes>.request(
+            let activity = try Activity<ClassLiveActivityAttributes>.request(
                 attributes: attributes,
                 content: content,
-                pushType: nil
+                pushType: LiveActivityRemoteClient.enabled ? .token : nil
             )
+            LiveActivityRemoteClient.shared.observe(activity)
         } catch {
             print("[LiveActivity] 啟動失敗: \(error.localizedDescription)")
         }
     }
 
     func endAll() async {
+        boundaryTask?.cancel()
+        boundaryTask = nil
+        LiveActivityRemoteClient.shared.stop()
         refreshGeneration &+= 1
         await endActivities()
     }
 
     private func endActivities() async {
-        guard #available(iOS 16.1, *) else { return }
         for activity in Activity<ClassLiveActivityAttributes>.activities {
             let final = ActivityContent(state: activity.content.state, staleDate: Date())
             await activity.end(final, dismissalPolicy: .immediate)
@@ -728,7 +741,7 @@ final class ClassLiveActivityCoordinator {
     }
 
     func nextRefreshDate(after now: Date = Date()) -> Date? {
-        let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return nil }
         guard let data = defaults.data(forKey: cacheKey),
               let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
             return nil
@@ -749,7 +762,7 @@ final class ClassLiveActivityCoordinator {
         return nil
     }
 
-    private typealias ClassSession = (courseName: String, classroom: String, teacher: String, periodLabel: String, start: Date, end: Date)
+    private typealias ClassSession = ScheduleSession
 
     private func classSnapshot(from schedule: ClassSchedule, now: Date) -> (mode: String, primary: ClassSession, next: ClassSession?)? {
         let candidates = sessionsForDisplayDays(from: schedule, now: now)
@@ -769,73 +782,27 @@ final class ClassLiveActivityCoordinator {
     }
 
     private func sessionsForDisplayDays(from schedule: ClassSchedule, now: Date) -> [ClassSession] {
-        var candidates: [ClassSession] = []
-        let calendar = Calendar.current
-        let currentWeekday = calendar.component(.weekday, from: now)
-        let startOfToday = calendar.startOfDay(for: now)
-        let targetWeekdays: Set<Int> = {
-            if currentWeekday == 7 || currentWeekday == 1 {
-                // Weekend preview mode: read Monday + Tuesday classes.
-                return [2, 3]
-            }
-            return [currentWeekday]
-        }()
+        schedule.sessions(on: now)
+    }
 
-        for (offset, dayHeader) in schedule.dayHeaders.enumerated() {
-            guard let weekday = weekdayIndex(from: dayHeader), targetWeekdays.contains(weekday) else { continue }
-            for period in schedule.periods {
-                guard let course = period.course(for: offset),
-                      let startMins = period.startMinutes,
-                      let endMins = period.endMinutes else { continue }
+    func setForeground(_ active: Bool) {
+        foreground = active
+        boundaryTask?.cancel()
+        boundaryTask = nil
+        if active { scheduleBoundary() }
+    }
 
-                let duration = endMins - startMins
-                guard duration > 0 else { continue }
-
-                let startDate: Date?
-                if weekday == currentWeekday {
-                    startDate = calendar.date(byAdding: .minute, value: startMins, to: startOfToday)
-                } else {
-                    startDate = nextDateForWeekday(weekday, minutes: startMins, from: now)
-                }
-
-                guard let startDate,
-                      let endDate = calendar.date(byAdding: .minute, value: duration, to: startDate) else {
-                    continue
-                }
-
-                let room = course.classroom?.nilIfEmpty ?? "教室待確認"
-                let teacher = course.teacher?.nilIfEmpty ?? "授課教師待確認"
-                let periodLabel = normalizedPeriodLabel(from: period.id)
-                candidates.append((course.name, room, teacher, periodLabel, startDate, endDate))
-            }
+    private func scheduleBoundary() {
+        boundaryTask?.cancel()
+        guard foreground, let next = nextRefreshDate() else { return }
+        let delay = max(0.1, next.timeIntervalSinceNow)
+        boundaryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard !Task.isCancelled, let self,
+                  NotificationSettings.load().classLiveActivityEnabled,
+                  UserDefaults.standard.string(forKey: StorageKeys.username) != nil else { return }
+            await self.refreshFromScheduleCache()
         }
-
-        return candidates
-    }
-
-    private func nextDateForWeekday(_ weekday: Int, minutes: Int, from now: Date) -> Date? {
-        var comps = DateComponents()
-        comps.weekday = weekday
-        comps.hour = minutes / 60
-        comps.minute = minutes % 60
-
-        return Calendar.current.nextDate(
-            after: now,
-            matching: comps,
-            matchingPolicy: .nextTime,
-            direction: .forward
-        )
-    }
-
-    private func weekdayIndex(from dayHeader: String) -> Int? {
-        if dayHeader.contains("一") { return 2 }
-        if dayHeader.contains("二") { return 3 }
-        if dayHeader.contains("三") { return 4 }
-        if dayHeader.contains("四") { return 5 }
-        if dayHeader.contains("五") { return 6 }
-        if dayHeader.contains("六") { return 7 }
-        if dayHeader.contains("日") || dayHeader.contains("天") { return 1 }
-        return nil
     }
 
     private func stableToken(_ raw: String) -> String {
@@ -848,7 +815,7 @@ final class ClassLiveActivityCoordinator {
 
     private func calendarStaleDate(for snapshot: (mode: String, primary: ClassSession, next: ClassSession?)) -> Date {
         let base = snapshot.mode == "current" ? snapshot.primary.end : snapshot.primary.start
-        return Calendar.current.date(byAdding: .minute, value: stalePaddingMinutes, to: base) ?? base
+        return base
     }
 
     private func normalizedPeriodLabel(from raw: String) -> String {
@@ -871,9 +838,6 @@ final class ClassLiveActivityBackgroundRefreshCoordinator {
     static let identifier = "CHIEN.NIU-APP.classLiveActivityRefresh"
 
     private let minimumDelay: TimeInterval = 60
-    private let shortLeadTime: TimeInterval = 90
-    private let mediumLeadTime: TimeInterval = 5 * 60
-    private let longLeadTime: TimeInterval = 15 * 60
     private var hasRegistered = false
 
     private init() {}
@@ -927,20 +891,17 @@ final class ClassLiveActivityBackgroundRefreshCoordinator {
     private func handle(task: BGAppRefreshTask) {
         scheduleIfNeeded()
 
+        let completion = ClassActivityRefreshCompletion(task)
         let refreshTask = Task { @MainActor in
-            guard NotificationSettings.load().classLiveActivityEnabled, hasAuthenticatedUser else {
-                task.setTaskCompleted(success: true)
-                return
-            }
-
+            defer { completion.finish(success: !Task.isCancelled) }
+            guard !Task.isCancelled, NotificationSettings.load().classLiveActivityEnabled, hasAuthenticatedUser else { return }
             await ClassLiveActivityCoordinator.shared.refreshFromScheduleCache()
+            guard !Task.isCancelled else { return }
             scheduleIfNeeded()
-            task.setTaskCompleted(success: true)
         }
-
         task.expirationHandler = {
             refreshTask.cancel()
-            task.setTaskCompleted(success: false)
+            Task { @MainActor in completion.finish(success: false) }
         }
     }
 
@@ -952,23 +913,24 @@ final class ClassLiveActivityBackgroundRefreshCoordinator {
     }
 
     private func preferredBeginDate(for transitionDate: Date, now: Date) -> Date {
-        let timeUntilTransition = transitionDate.timeIntervalSince(now)
-        let leadTime = preferredLeadTime(for: timeUntilTransition)
-        let targetDate = transitionDate.addingTimeInterval(-leadTime)
-        return max(now.addingTimeInterval(minimumDelay), targetDate)
+        return max(now.addingTimeInterval(minimumDelay), transitionDate)
     }
 
-    private func preferredLeadTime(for timeUntilTransition: TimeInterval) -> TimeInterval {
-        switch timeUntilTransition {
-        case ...(10 * 60):
-            return shortLeadTime
-        case ...(60 * 60):
-            return mediumLeadTime
-        default:
-            return longLeadTime
-        }
+}
+
+@MainActor
+private final class ClassActivityRefreshCompletion {
+    private let task: BGAppRefreshTask
+    private var completed = false
+    init(_ task: BGAppRefreshTask) { self.task = task }
+    func finish(success: Bool) {
+        guard !completed else { return }
+        completed = true
+        task.expirationHandler = nil
+        task.setTaskCompleted(success: success)
     }
 }
+
 #else
 @MainActor
 final class ClassLiveActivityCoordinator {

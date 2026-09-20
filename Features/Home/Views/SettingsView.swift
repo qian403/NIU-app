@@ -471,6 +471,8 @@ private struct NotificationMenuView: View {
                         )
                     )
 
+                    RemoteActivitySettingsRow(appState: appState)
+
                     Button {
                         Task {
                             isRefreshingNotifications = true
@@ -550,5 +552,37 @@ private struct NotificationMenuView: View {
     NavigationStack {
         SettingsView()
             .environmentObject(AppState())
+    }
+}
+
+
+private struct RemoteActivitySettingsRow: View {
+    @ObservedObject var appState: AppState
+    @AppStorage(LiveActivityRemoteClient.consentKey) private var consent = false
+    @State private var showConsent = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("背景即時動態更新", isOn: Binding(
+                get: { consent },
+                set: { enabled in
+                    if enabled { showConsent = true }
+                    else { Task { await appState.setRemoteLiveActivityEnabled(false) } }
+                }
+            ))
+            .disabled(LiveActivityRemoteClient.baseURL == nil || !appState.notificationSettings.classLiveActivityEnabled)
+            Text(LiveActivityRemoteClient.baseURL == nil
+                 ? "遠端更新服務尚未設定；課表與 Widget 仍可使用本機資料。"
+                 : "啟用後傳送本次活動所需的課程名稱、教室、教師、時間與推播識別碼，供背景更新。資料短期保存；可隨時關閉。更新時間受網路與 iOS 排程影響。")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .alert("啟用背景即時動態更新？", isPresented: $showConsent) {
+            Button("取消", role: .cancel) { }
+            Button("同意並啟用") { Task { await appState.setRemoteLiveActivityEnabled(true) } }
+        } message: {
+            Text("本次活動所需的課程資訊與推播識別碼會傳送至服務，經 Apple 推播更新鎖定畫面。活動資料最長保存 24 小時，不傳送學號、密碼或校務登入資訊。關閉不影響本機課表與 Widget。")
+        }
     }
 }
