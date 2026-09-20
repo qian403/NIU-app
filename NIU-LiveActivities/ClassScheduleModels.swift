@@ -127,6 +127,7 @@ nonisolated struct ClassSchedule: Codable {
     let dayCount: Int
     let dayHeaders: [String]  // e.g. ["星期一", "星期二", ...]
     let fetchedAt: Date
+    var ownerSessionID: String?
 
     /// Short single-character day labels (e.g. ["一","二","三","四","五"])
     var shortDayLabels: [String] {

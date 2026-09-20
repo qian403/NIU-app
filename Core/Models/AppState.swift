@@ -40,6 +40,8 @@ final class AppState: ObservableObject {
 
     func login(user: User) {
         guard !isLoggingOut else { return }
+        LiveActivityRemoteClient.shared.stop()
+        UserDefaults.standard.set(UUID().uuidString, forKey: StorageKeys.authSessionID)
         let mergedUser = mergedWithPersistedProfile(user)
         currentUser = mergedUser
         isAuthenticated = true
@@ -108,6 +110,9 @@ final class AppState: ObservableObject {
         if let savedUsername = UserDefaults.standard.string(forKey: StorageKeys.username),
            let savedName = UserDefaults.standard.string(forKey: StorageKeys.name),
            !savedUsername.isEmpty {
+            if UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == nil {
+                UserDefaults.standard.set(UUID().uuidString, forKey: StorageKeys.authSessionID)
+            }
             let savedDepartment = UserDefaults.standard.string(forKey: StorageKeys.department)
             let savedGrade = UserDefaults.standard.string(forKey: StorageKeys.grade)
             currentUser = User(
@@ -138,6 +143,7 @@ final class AppState: ObservableObject {
     }
 
     private func clearAuthState() {
+        UserDefaults.standard.removeObject(forKey: StorageKeys.authSessionID)
         UserDefaults.standard.removeObject(forKey: StorageKeys.username)
         UserDefaults.standard.removeObject(forKey: StorageKeys.name)
         UserDefaults.standard.removeObject(forKey: StorageKeys.department)
@@ -288,6 +294,7 @@ final class AppState: ObservableObject {
 }
 
 enum StorageKeys {
+    static let authSessionID = "app.auth.sessionID"
     static let username = "app.user.username"
     static let name = "app.user.name"
     static let department = "app.user.department"
@@ -644,11 +651,19 @@ final class ClassLiveActivityCoordinator {
     private init() {}
 
     func refreshFromScheduleCache(forceRebuild: Bool = false) async {
+        guard !Task.isCancelled else { return }
         refreshGeneration &+= 1
         let generation = refreshGeneration
-        defer { scheduleBoundary() }
-        guard !Task.isCancelled, NotificationSettings.load().classLiveActivityEnabled,
-              UserDefaults.standard.string(forKey: StorageKeys.username) != nil else { return }
+        defer {
+            if generation == refreshGeneration, !Task.isCancelled { scheduleBoundary() }
+        }
+        guard NotificationSettings.load().classLiveActivityEnabled,
+              UserDefaults.standard.string(forKey: StorageKeys.username) != nil,
+              !UserDefaults.standard.bool(forKey: "app.logoutCleanupPending"),
+              let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else {
+            await endAll()
+            return
+        }
         let now = Date()
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             await endAll()
@@ -657,6 +672,7 @@ final class ClassLiveActivityCoordinator {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
         guard let data = defaults.data(forKey: cacheKey),
               let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              schedule.ownerSessionID == sessionID,
               let snapshot = classSnapshot(from: schedule, now: now) else {
             await endAll()
             return
@@ -672,15 +688,15 @@ final class ClassLiveActivityCoordinator {
             endDate: snapshot.primary.end
         )
 
-        let token = stableToken("class-live-activity")
-        let attributes = ClassLiveActivityAttributes(startedAt: now, token: token)
+        let attributes = ClassLiveActivityAttributes(startedAt: now, token: sessionID)
         let staleDate = calendarStaleDate(for: snapshot)
         let content = ActivityContent(state: state, staleDate: staleDate)
 
-        if forceRebuild {
+        if forceRebuild || Activity<ClassLiveActivityAttributes>.activities.contains(where: { $0.attributes.token != sessionID }) {
             LiveActivityRemoteClient.shared.stop()
             await endActivities()
-            guard generation == refreshGeneration else { return }
+            guard !Task.isCancelled, generation == refreshGeneration,
+                  UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == sessionID else { return }
         }
 
         let activities = Activity<ClassLiveActivityAttributes>.activities
@@ -689,7 +705,8 @@ final class ClassLiveActivityCoordinator {
             for activity in activities {
                 let final = ActivityContent(state: activity.content.state, staleDate: Date())
                 await activity.end(final, dismissalPolicy: .immediate)
-                guard generation == refreshGeneration else { return }
+                guard !Task.isCancelled, generation == refreshGeneration,
+                      UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == sessionID else { return }
             }
 
             do {
@@ -708,7 +725,8 @@ final class ClassLiveActivityCoordinator {
 
         if let activity = activities.first {
             await activity.update(content)
-            guard generation == refreshGeneration else { return }
+            guard !Task.isCancelled, generation == refreshGeneration,
+                  UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == sessionID else { return }
             LiveActivityRemoteClient.shared.observe(activity)
             return
         }
@@ -741,9 +759,11 @@ final class ClassLiveActivityCoordinator {
     }
 
     func nextRefreshDate(after now: Date = Date()) -> Date? {
-        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return nil }
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
+              let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else { return nil }
         guard let data = defaults.data(forKey: cacheKey),
-              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              schedule.ownerSessionID == sessionID else {
             return nil
         }
 
