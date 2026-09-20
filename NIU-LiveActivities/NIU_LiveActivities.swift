@@ -308,8 +308,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
     private func focusedScheduleItems(from entries: [TodayScheduleItem], now: Date) -> [TodayScheduleItem] {
         guard !entries.isEmpty else { return [] }
         if let currentIndex = entries.firstIndex(where: { $0.isCurrent }) {
-            let upperBound = min(entries.count, currentIndex + 2)
-            return Array(entries[currentIndex..<upperBound])
+            return Array(entries[currentIndex...])
         }
 
         if let upcomingIndex = entries.firstIndex(where: { item in
@@ -319,8 +318,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             let currentMinutes = hour * 60 + minute
             return startMinutes >= currentMinutes
         }) {
-            let upperBound = min(entries.count, upcomingIndex + 2)
-            return Array(entries[upcomingIndex..<upperBound])
+            return Array(entries[upcomingIndex...])
         }
 
         return []
@@ -352,6 +350,7 @@ struct NIUCompactWidgetProvider: AppIntentTimelineProvider {
 struct NIUWidgetView: View {
     let entry: NIUWidgetProvider.Entry
     @Environment(\.widgetFamily) private var family
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Group {
@@ -437,9 +436,108 @@ struct NIUWidgetView: View {
                 }
             }
             .padding(12)
+        } else if family == .systemLarge {
+            largeScheduleLayout(summary: summary)
         } else {
             mediumScheduleLayout(summary: summary)
         }
+    }
+
+    private func largeScheduleLayout(summary: TodayScheduleSummary) -> some View {
+        let visibleEntries = visibleLargeScheduleEntries(
+            summary.entries,
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        )
+
+        return VStack(alignment: .leading, spacing: 0) {
+            widgetHeader(icon: "tablecells", title: "當日課表", state: summary.state)
+
+            if visibleEntries.isEmpty {
+                Spacer(minLength: 16)
+                Text(summary.title)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2)
+                Text(summary.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Spacer()
+            } else {
+                Text(visibleEntries.first?.isCurrent == true ? "目前與接下來的課程" : "接下來的課程")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+
+                VStack(spacing: 0) {
+                    ForEach(visibleEntries) { item in
+                        largeScheduleRow(item)
+                        if item.id != visibleEntries.last?.id {
+                            Divider().padding(.leading, largeScheduleTimeColumnWidth + 10)
+                        }
+                    }
+                }
+            }
+
+            Spacer(minLength: 8)
+            HStack(spacing: 10) {
+                Link(destination: CampusDestination.attendance.url) {
+                    Label("快速點名", systemImage: "qrcode.viewfinder")
+                        .frame(maxWidth: .infinity)
+                }
+                Link(destination: CampusDestination.library.url) {
+                    Label("圖書館", systemImage: "qrcode")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.bordered)
+        }
+        .padding(14)
+    }
+
+    private func largeScheduleRow(_ item: TodayScheduleItem) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.timeLabel)
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                Text(normalizedPeriodLabel(item.periodLabel))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+            }
+            .frame(width: largeScheduleTimeColumnWidth, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.courseName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text([item.classroom, item.teacher].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 6)
+            if item.isCurrent {
+                Text("進行中")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tint)
+            } else {
+                Text(item.timeRange)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(minHeight: 42)
+    }
+
+    private var largeScheduleTimeColumnWidth: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 64 : 48
     }
 
     private func mediumScheduleLayout(summary: TodayScheduleSummary) -> some View {
@@ -1121,6 +1219,14 @@ private enum WidgetPayload {
             )
         }
     }
+}
+
+private func largeScheduleEntryLimit(isAccessibilitySize: Bool) -> Int {
+    isAccessibilitySize ? 3 : 5
+}
+
+private func visibleLargeScheduleEntries<Item>(_ entries: [Item], isAccessibilitySize: Bool) -> [Item] {
+    Array(entries.prefix(largeScheduleEntryLimit(isAccessibilitySize: isAccessibilitySize)))
 }
 
 private struct TodayScheduleSummary {

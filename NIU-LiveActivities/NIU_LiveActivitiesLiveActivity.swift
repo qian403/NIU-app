@@ -42,17 +42,20 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "person.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(context.state.teacher)
-                            .font(.caption)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(progressText(context: context))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                    VStack(spacing: 5) {
+                        courseProgress(context: context)
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(context.state.teacher)
+                                .font(.caption)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(progressText(context: context))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             } compactLeading: {
@@ -100,6 +103,8 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            courseProgress(context: context)
+
             HStack(spacing: 8) {
                 Text(progressText(context: context))
                     .font(.caption.monospacedDigit())
@@ -113,6 +118,26 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func courseProgress(context: ActivityViewContext<ClassLiveActivityAttributes>) -> some View {
+        if let configuration = courseProgressConfiguration(
+            mode: context.state.mode,
+            isStale: context.isStale,
+            startDate: context.state.startDate,
+            endDate: context.state.endDate
+        ) {
+            // Keep the timer-backed view mounted while the course is upcoming. Its
+            // value stays at zero until startDate, then advances without an app wake.
+            ProgressView(
+                timerInterval: configuration.interval,
+                countsDown: configuration.countsDown
+            )
+            .progressViewStyle(.linear)
+            .tint(.mint)
+            .accessibilityLabel("課程進度")
+        }
     }
 
     private func progressText(context: ActivityViewContext<ClassLiveActivityAttributes>) -> String {
@@ -133,4 +158,19 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                 .monospacedDigit()
         }
     }
+}
+
+private struct CourseProgressConfiguration {
+    let interval: ClosedRange<Date>
+    let countsDown: Bool
+}
+
+private func courseProgressConfiguration(
+    mode _: String,
+    isStale _: Bool,
+    startDate: Date,
+    endDate: Date
+) -> CourseProgressConfiguration? {
+    guard endDate > startDate else { return nil }
+    return CourseProgressConfiguration(interval: startDate...endDate, countsDown: false)
 }

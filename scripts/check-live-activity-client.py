@@ -18,11 +18,18 @@ def replace_block(text, marker, replacement):
         end += 1
     return text[:start] + replacement + text[end:]
 
-source = source.replace('import ActivityKit\n', '').replace('import Security\n', '')
+source = source.replace('import ActivityKit\n', '').replace('import CryptoKit\n', '').replace('import DeviceCheck\n', '').replace('import Security\n', '')
 source = replace_block(source, '    static var baseURL:', '    static var baseURL: URL? { URL(string: "https://activity.example.test") }')
 source = replace_block(source, '    private func request(', '''    private func request(endpoint: String, path: String, method: String, token: String? = nil, body: Data? = nil) async throws -> Data {
         try await Fixture.request(method: method, path: path, token: token, body: body)
     }''')
+attestation_start = source.index('    private func createDeviceSession(endpoint:')
+request_start = source.index('    private func request(', attestation_start)
+source = source[:attestation_start] + '''    private func createDeviceSession(endpoint: String) async throws -> Data {
+        try await Fixture.request(method: "POST", path: "v1/device-sessions", token: nil, body: nil)
+    }
+
+''' + source[request_start:]
 start = source.index('    private var keychainQuery:')
 source = source[:start] + '''    private func readKeychain() throws -> Data { Fixture.saved }
     private func persist() throws { Fixture.saved = try JSONEncoder().encode(records) }
