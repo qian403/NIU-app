@@ -62,10 +62,10 @@ enum CompactWidgetContentType: String, AppEnum {
 }
 
 struct ConfigurationAppIntent: WidgetConfigurationIntent {
-    static var title: LocalizedStringResource { "NIU 小工具設定" }
+    static var title: LocalizedStringResource { "NIU 大型小工具設定" }
     static var description: IntentDescription { "選擇顯示當日課表、學年行事曆或完整課表" }
 
-    @Parameter(title: "顯示內容", default: .classSchedule)
+    @Parameter(title: "顯示內容", default: .weeklyTimetable)
     var contentType: WidgetContentType
 
     @Parameter(title: "點按開啟", default: .showContent)

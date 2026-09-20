@@ -4,7 +4,15 @@ import SwiftUI
 struct NIUWidgetEntry: TimelineEntry {
     let date: Date
     fileprivate let payload: WidgetPayload
-    var tapAction: WidgetTapAction = .showContent
+    fileprivate let contentType: WidgetContentType
+    let tapAction: WidgetTapAction
+
+    fileprivate init(date: Date, payload: WidgetPayload, tapAction: WidgetTapAction = .showContent) {
+        self.date = date
+        self.payload = payload
+        self.contentType = payload.contentType
+        self.tapAction = tapAction
+    }
 }
 
 struct NIUWidgetProvider: AppIntentTimelineProvider {
@@ -12,7 +20,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> NIUWidgetEntry {
         NIUWidgetEntry(
             date: Date(),
-            payload: .placeholder(for: .classSchedule)
+            payload: .placeholder(for: .weeklyTimetable)
         )
     }
 
@@ -363,6 +371,7 @@ struct NIUWidgetView: View {
                 weekLayout(summary: summary)
             }
         }
+        .id(entry.contentType.rawValue)
         .widgetURL(destinationURL)
         .containerBackground(.fill.tertiary, for: .widget)
     }
@@ -1167,6 +1176,17 @@ private enum WidgetPayload {
     case todaySchedule(TodayScheduleSummary)
     case calendar(CalendarSummary)
     case weeklyTimetable(WeekTimetableSummary)
+
+    var contentType: WidgetContentType {
+        switch self {
+        case .todaySchedule:
+            return .classSchedule
+        case .calendar:
+            return .academicCalendar
+        case .weeklyTimetable:
+            return .weeklyTimetable
+        }
+    }
 
     static func placeholder(for type: WidgetContentType) -> WidgetPayload {
         switch type {
