@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        C01100010000000000000001 /* ConnectionStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000001 /* ConnectionStatusService.swift */; };
+        C01100010000000000000002 /* SettingsConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000002 /* SettingsConnectionViewModel.swift */; };
 		0582D0EB51C8CB4ADCE9A96C /* Features/EventRegistration/Views/AppliedEventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */; };
 		07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */; };
 		0E182344FA814B44AC09A91F /* academic_calendar.json in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */; };
@@ -129,6 +131,8 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        C01100020000000000000001 /* ConnectionStatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Services/ConnectionStatusService.swift; sourceTree = SOURCE_ROOT; };
+        C01100020000000000000002 /* SettingsConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/SettingsConnectionViewModel.swift; sourceTree = SOURCE_ROOT; };
 		0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
 		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		10A32D662F431B8B0009BB45 /* NIU-APP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NIU-APP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -501,6 +505,7 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 		10A32DA32F431F630009BB45 /* Home */ = {
 			isa = PBXGroup;
 			children = (
+				C01100020000000000000002 /* SettingsConnectionViewModel.swift */,
 				10A32DA22F431F630009BB45 /* Views */,
 			);
 			path = Home;
@@ -578,6 +583,7 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 		10A32DC82F4327A60009BB45 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				C01100020000000000000001 /* ConnectionStatusService.swift */,
 				10A32DC62F4327A60009BB45 /* LoginRepository.swift */,
 				10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */,
 				10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */,
@@ -891,6 +897,8 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 				D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */,
 ABCD01000000000000000001,
 				C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */,
+				C01100010000000000000001 /* ConnectionStatusService.swift in Sources */,
+				C01100010000000000000002 /* SettingsConnectionViewModel.swift in Sources */,
 ABCD01000000000000000000,
 				CA1E00010000000000000001 /* AcademicCalendarStore.swift in Sources */,
 				C0ED00010000000000000003 /* SpecialThanksView.swift in Sources */,

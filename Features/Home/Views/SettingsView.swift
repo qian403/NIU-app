@@ -4,6 +4,11 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var connectionModel = SettingsConnectionViewModel(
+        service: ConnectionStatusService(backendURL: UsageHeartbeatClient.baseURL)
+    )
+    @State private var connectionRefreshID = UUID()
 
     @State private var showLogoutConfirm = false
     @State private var showReportFormError = false
@@ -32,6 +37,14 @@ struct SettingsView: View {
         }
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.large)
+        .task(id: connectionTaskID) {
+            guard scenePhase == .active, appState.isAuthenticated, !appState.isLoggingOut else {
+                connectionModel.reset()
+                return
+            }
+            await connectionModel.refresh()
+        }
+        .onDisappear { connectionModel.reset() }
         .alert("無法開啟問題回報表單", isPresented: $showReportFormError) {
             Button("好") {}
         } message: {
@@ -54,6 +67,10 @@ struct SettingsView: View {
                         Text(appState.currentUser?.username ?? "-")
                             .font(.system(size: 14))
                             .foregroundStyle(Color(.secondaryLabel))
+                    }
+
+                    SettingsConnectionIndicators(statuses: connectionModel.statuses) {
+                        connectionRefreshID = UUID()
                     }
 
                     Divider().padding(.vertical, Theme.Spacing.xsmall)
@@ -230,6 +247,22 @@ struct SettingsView: View {
 
     // MARK: - Helpers
 
+    private var connectionTaskID: ConnectionTaskID {
+        ConnectionTaskID(
+            isActive: scenePhase == .active,
+            username: appState.currentUser?.username,
+            isAuthenticated: appState.isAuthenticated && !appState.isLoggingOut,
+            refreshID: connectionRefreshID
+        )
+    }
+
+    private struct ConnectionTaskID: Equatable {
+        let isActive: Bool
+        let username: String?
+        let isAuthenticated: Bool
+        let refreshID: UUID
+    }
+
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 13, weight: .semibold))
@@ -284,6 +317,71 @@ struct SettingsView: View {
         isRefreshingProfile = false
     }
 
+}
+
+struct SettingsConnectionIndicators: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let statuses: [ConnectionService: ConnectionStatus]
+    let refresh: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView(.horizontal) {
+                    connectionButton.fixedSize(horizontal: true, vertical: false)
+                }
+            } else {
+                connectionButton
+            }
+
+            Text(dynamicTypeSize.isAccessibilitySize
+                 ? "連線狀態不代表登入狀態・左右滑動查看，點一下重新檢查"
+                 : "連線狀態不代表登入狀態・點一下重新檢查")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var connectionButton: some View {
+        Button(action: refresh) {
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(ConnectionService.allCases, id: \.self) { service in
+                    let status = statuses[service] ?? .unchecked
+                    VStack(spacing: 5) {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(color(for: status))
+                                .frame(width: 8, height: 8)
+                                .accessibilityHidden(true)
+                            Text(service.title)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.primary)
+                        }
+                        Text(status.title)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("重新檢查三個服務的連線狀態")
+    }
+
+    private func color(for status: ConnectionStatus) -> Color {
+        switch status {
+        case .connected: .green
+        case .checking: .orange
+        case .offline, .timedOut, .unavailable: .red
+        case .unchecked, .notConfigured: .gray
+        }
+    }
 }
 
 // MARK: - Settings Info Row (display only)

@@ -94,7 +94,7 @@ actor UsageHeartbeatClient {
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
-    private static var baseURL: URL? {
+    static var baseURL: URL? {
         var raw = Bundle.main.object(forInfoDictionaryKey: "NIUUsageAPIBaseURL") as? String ?? ""
         #if DEBUG
         raw = ProcessInfo.processInfo.environment["NIU_USAGE_API_URL"] ?? raw
