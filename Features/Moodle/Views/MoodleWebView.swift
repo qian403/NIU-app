@@ -24,6 +24,10 @@ struct MoodleAttendanceWebOutcome: Equatable {
         case .requiresAction, .unknown: return false
         }
     }
+
+    var allowsAttendanceLinkSharing: Bool {
+        kind == .recorded || kind == .alreadyRecorded
+    }
 }
 
 /// Moodle page viewer.

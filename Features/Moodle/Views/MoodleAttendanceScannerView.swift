@@ -81,6 +81,11 @@ struct MoodleAttendanceScannerView: View {
                 )
             }
         }
+        .onChange(of: isShowingAttendance) { _, isPresented in
+            guard !isPresented else { return }
+            attendanceURL = nil
+            debugPreviewOutcome = nil
+        }
         .toolbar {
             #if DEBUG
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -363,6 +368,8 @@ private struct MoodleAttendanceSubmissionView: View {
     @State private var verificationState: VerificationState = .idle
     @State private var isVerificationRequest = false
     @State private var lastResolvedOutcome: MoodleAttendanceWebOutcome?
+    @State private var hasDismissedSharePrompt = false
+    @State private var isShowingShareSheet = false
 
     init(
         attendanceURL: URL,
@@ -393,6 +400,15 @@ private struct MoodleAttendanceSubmissionView: View {
         return showsWebResponse || outcome.opensWebResponseAutomatically
     }
 
+    private var hasConfirmedAttendance: Bool {
+        guard webManager.errorMessage == nil, let outcome else { return false }
+        return outcome.allowsAttendanceLinkSharing
+    }
+
+    private var shouldShowSharePrompt: Bool {
+        hasConfirmedAttendance && !hasDismissedSharePrompt && !shouldShowWebResponse
+    }
+
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
@@ -407,6 +423,17 @@ private struct MoodleAttendanceSubmissionView: View {
             if !shouldShowWebResponse {
                 resultContent
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if shouldShowSharePrompt {
+                sharePrompt
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.28), value: shouldShowSharePrompt)
+        .sheet(isPresented: $isShowingShareSheet) {
+            AttendanceLinkShareSheet(url: attendanceURL)
+                .ignoresSafeArea()
         }
         .navigationTitle("點名結果")
         .navigationBarTitleDisplayMode(.inline)
@@ -476,6 +503,57 @@ private struct MoodleAttendanceSubmissionView: View {
                 )
             }
         }
+    }
+
+    private var sharePrompt: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+            HStack(alignment: .top, spacing: Theme.Spacing.small) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.green)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("你已完成點名")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("要分享這次的點名連結嗎？")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(.secondaryLabel))
+                }
+            }
+
+            HStack(spacing: Theme.Spacing.small) {
+                Button("不用分享") {
+                    withAnimation(.snappy(duration: 0.22)) {
+                        hasDismissedSharePrompt = true
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+
+                Button {
+                    hasDismissedSharePrompt = true
+                    isShowingShareSheet = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Label("分享連結", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(Theme.Spacing.medium)
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.top, Theme.Spacing.small)
+        .padding(.bottom, Theme.Spacing.small)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -770,6 +848,16 @@ private struct AttendanceSubmissionWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+}
+
+private struct AttendanceLinkShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 enum MoodleAttendanceQRCode {
