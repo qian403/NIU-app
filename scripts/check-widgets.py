@@ -10,6 +10,11 @@ root = Path(__file__).resolve().parents[1]
 source = (root / "NIU-LiveActivities/NIU_LiveActivities.swift").read_text()
 live_activity_source = (root / "NIU-LiveActivities/NIU_LiveActivitiesLiveActivity.swift").read_text()
 
+# The schedule model already normalizes period labels to "第…節". Keep the
+# Dynamic Island from adding another prefix/suffix around that display value.
+assert 'Label("第\\(context.state.periodLabel)節"' not in live_activity_source
+assert 'Label(context.state.periodLabel, systemImage: "clock")' in live_activity_source
+
 def block(marker, text=source):
     start = text.index(marker)
     brace = text.index("{", start)
@@ -116,7 +121,7 @@ progress = "import Foundation\n" + progress_helpers + r'''
     static func main() {
         let start = Date(timeIntervalSince1970: 100)
         let end = Date(timeIntervalSince1970: 200)
-        for (mode, isStale) in [("current", false), ("upcoming", false), ("upcoming", true)] {
+        for (mode, isStale) in [("current", false), ("upcoming", false)] {
             let configuration = courseProgressConfiguration(
                 mode: mode,
                 isStale: isStale,
@@ -126,8 +131,14 @@ progress = "import Foundation\n" + progress_helpers + r'''
             precondition(configuration?.interval == start...end)
             precondition(configuration?.countsDown == false)
         }
+        precondition(courseProgressConfiguration(
+            mode: "upcoming",
+            isStale: true,
+            startDate: start,
+            endDate: end
+        ) == nil)
         precondition(courseProgressConfiguration(mode: "current", isStale: false, startDate: end, endDate: start) == nil)
-        print("PASS: elapsed course progress stays mounted across upcoming and stale states")
+        print("PASS: elapsed course progress stays mounted for active/upcoming states; stale state waits for App refresh")
     }
 }
 '''
