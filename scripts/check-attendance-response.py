@@ -54,7 +54,14 @@ check(.unknown, "", url: "https://euni.niu.edu.tw/mod/attendance/view.php?id=8")
 check(.requiresAction, "Choose a status", form: true)
 check(.unknown, "QR code has expired", url: "https://example.org/", codes: ["qr_pass_wrong"])
 for kind in [MoodleAttendanceWebOutcome.Kind.expired, .failed, .recorded, .alreadyRecorded] {
-    precondition(MoodleAttendanceWebOutcome(kind: kind, message: "", courseModuleID: nil).isTerminal)
+    let outcome = MoodleAttendanceWebOutcome(kind: kind, message: "", courseModuleID: nil)
+    precondition(outcome.isTerminal)
+    precondition(outcome.allowsAttendanceLinkSharing == (kind == .recorded || kind == .alreadyRecorded))
+}
+for kind in [MoodleAttendanceWebOutcome.Kind.requiresAction, .unknown] {
+    let outcome = MoodleAttendanceWebOutcome(kind: kind, message: "", courseModuleID: nil)
+    precondition(!outcome.isTerminal)
+    precondition(!outcome.allowsAttendanceLinkSharing)
 }
 print("PASS: \(checks) attendance response cases; only real forms open automatically")
 '''
