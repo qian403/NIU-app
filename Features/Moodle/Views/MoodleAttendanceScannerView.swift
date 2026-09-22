@@ -12,18 +12,9 @@ struct MoodleAttendanceScannerView: View {
     @State private var isShowingAttendance = false
     @State private var validationMessage: String?
     @State private var validationTask: Task<Void, Never>?
-    @State private var preparationTask: Task<Void, Never>?
-    @State private var preparationGeneration = 0
-    @State private var preparationState: AttendancePreparationState = .preparing
     @State private var isVisible = false
     @State private var debugPreviewOutcome: MoodleAttendanceWebOutcome?
     @State private var expiredAttendanceURLs: Set<URL> = []
-
-    private enum AttendancePreparationState: Equatable {
-        case preparing
-        case ready
-        case failed(String)
-    }
 
     var body: some View {
         ZStack {
@@ -61,26 +52,18 @@ struct MoodleAttendanceScannerView: View {
             isVisible = true
             scanner.onCode = handleScannedCode
             scanner.start()
-            scanner.pauseScanning()
-            prepareAttendanceAccess()
         }
         .onDisappear {
             scanner.onCode = nil
             isVisible = false
             validationTask?.cancel()
-            preparationGeneration &+= 1
-            preparationTask?.cancel()
             scanner.stop()
         }
         .onChange(of: scenePhase) { _, phase in
             guard isVisible else { return }
             if phase == .active {
                 scanner.start()
-                if preparationState == .ready {
-                    scanner.resumeScanning()
-                } else {
-                    scanner.pauseScanning()
-                }
+                scanner.resumeScanning()
             } else {
                 scanner.stop()
             }
@@ -165,12 +148,10 @@ struct MoodleAttendanceScannerView: View {
 
     private var instructionHeader: some View {
         VStack(spacing: Theme.Spacing.small) {
-            Text(preparationState == .ready ? "對準老師顯示的 QR Code" : "正在準備快速點名")
+            Text("對準老師顯示的 QR Code")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.white)
-            Text(preparationState == .ready
-                 ? "可雙指縮放，或使用下方滑桿拉近畫面"
-                 : "登入確認完成後即可掃描，不會浪費 QR Code 時效")
+            Text("掃描後會開啟 M 園區點名網址並完成網頁登入")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.78))
 
@@ -180,47 +161,13 @@ struct MoodleAttendanceScannerView: View {
         .padding(.top, Theme.Spacing.large)
     }
 
-    @ViewBuilder
     private var preparationStatus: some View {
-        switch preparationState {
-        case .preparing:
-            HStack(spacing: Theme.Spacing.small) {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.white)
-                Text("正在確認 M 園區登入")
-            }
+        Label("將使用 M 園區網頁登入點名", systemImage: "safari.fill")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(.ultraThinMaterial, in: Capsule())
-
-        case .ready:
-            Label("M 園區已就緒", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(.ultraThinMaterial, in: Capsule())
-
-        case .failed(let message):
-            VStack(spacing: Theme.Spacing.small) {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .multilineTextAlignment(.center)
-                Button("重新確認") {
-                    prepareAttendanceAccess()
-                }
-                .font(.system(size: 13, weight: .bold))
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
     }
 
     private var scanFrame: some View {
@@ -362,12 +309,6 @@ struct MoodleAttendanceScannerView: View {
     }
 
     private func handleScannedCode(_ rawValue: String) {
-        guard preparationState == .ready else {
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            withAnimation { validationMessage = "M 園區登入尚未準備完成" }
-            return
-        }
-
         guard let url = MoodleAttendanceQRCode.validatedURL(from: rawValue) else {
             showScanWarning("這不是有效的 M 園區點名 QR Code")
             return
@@ -392,46 +333,6 @@ struct MoodleAttendanceScannerView: View {
             guard !Task.isCancelled else { return }
             withAnimation { validationMessage = nil }
             scanner.resumeScanning()
-        }
-    }
-
-    private func prepareAttendanceAccess() {
-        preparationGeneration &+= 1
-        let generation = preparationGeneration
-        preparationTask?.cancel()
-        preparationState = .preparing
-        scanner.pauseScanning()
-
-        preparationTask = Task {
-            do {
-                try await MoodleService.shared.prepareForAttendance()
-                try Task.checkCancellation()
-                guard generation == preparationGeneration, isVisible else { return }
-                preparationState = .ready
-                scanner.resumeScanning()
-            } catch is CancellationError {
-                return
-            } catch {
-                guard !Task.isCancelled,
-                      generation == preparationGeneration,
-                      isVisible else { return }
-                scanner.pauseScanning()
-                preparationState = .failed(preparationFailureMessage(for: error))
-            }
-        }
-    }
-
-    private func preparationFailureMessage(for error: Error) -> String {
-        guard let moodleError = error as? MoodleError else {
-            return "無法確認 M 園區登入，請檢查網路後重試"
-        }
-        switch moodleError {
-        case .notAuthenticated:
-            return "找不到登入資訊，請重新登入"
-        case .autologinUnavailable:
-            return "M 園區快速登入未啟用，請重新登入"
-        default:
-            return "無法確認 M 園區登入，請檢查網路後重試"
         }
     }
 

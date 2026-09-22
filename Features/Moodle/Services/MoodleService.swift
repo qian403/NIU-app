@@ -16,7 +16,6 @@ final class MoodleService {
     private let popupNotificationCacheTTL: TimeInterval = 3600
     private let sessionStore = MoodleSessionKeychainStore()
     private var authenticationGeneration = 0
-    private var logoutGeneration = 0
     
     private init() {
         restorePersistedSession()
@@ -94,118 +93,9 @@ final class MoodleService {
         persistSession(username: username)
     }
 
-    /// Makes the mobile-token path ready before a short-lived attendance QR is scanned.
-    ///
-    /// Moodle's browser session can expire independently of its mobile Web Service token.
-    /// We therefore validate the token here and only obtain the one-time autologin key
-    /// after the QR target is known.
-    func prepareForAttendance() async throws {
-        guard let credentials = LoginRepository.shared.getSavedCredentials() else {
-            throw MoodleError.notAuthenticated
-        }
-
-        try await prepareForAttendance(
-            credentials: credentials,
-            startingLogoutGeneration: logoutGeneration,
-            sessionChangeRetries: 1
-        )
-    }
-
-    private func prepareForAttendance(
-        credentials: (username: String, password: String),
-        startingLogoutGeneration: Int,
-        sessionChangeRetries: Int
-    ) async throws {
-        try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
-
-        if token?.isEmpty != false || userId == nil || privateToken?.isEmpty != false {
-            // A previous transient validation failure only clears memory. Reload the last
-            // known session before falling back to a slower password authentication.
-            restorePersistedSession()
-        }
-
-        if token?.isEmpty == false, userId != nil, privateToken?.isEmpty == false {
-            let validatedToken = token!
-            let siteInfo: MoodleSiteInfo
-            do {
-                siteInfo = try await callAPI(
-                    function: "core_webservice_get_site_info",
-                    tokenOverride: validatedToken
-                )
-                try Task.checkCancellation()
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
-                if (error as? URLError)?.code == .cancelled {
-                    throw CancellationError()
-                }
-
-                guard let moodleError = error as? MoodleError,
-                      case .invalidToken = moodleError else {
-                    // Offline, timeout and server failures do not imply token revocation.
-                    // Avoid adding a slower password request during the same outage.
-                    throw error
-                }
-
-                // The server definitively rejected this token. Keep the Keychain copy until
-                // its replacement succeeds, then authenticate while no QR has been consumed.
-                clearSession(clearPersisted: false)
-                try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
-                try await authenticate(username: credentials.username, password: credentials.password)
-                try ensureAutologinIsAvailable()
-                return
-            }
-
-            // Another task replaced the session while this request was in flight. Validate
-            // that newer session instead of publishing stale site information.
-            try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
-            guard token == validatedToken else {
-                guard sessionChangeRetries > 0 else { throw MoodleError.serverError }
-                try await prepareForAttendance(
-                    credentials: credentials,
-                    startingLogoutGeneration: startingLogoutGeneration,
-                    sessionChangeRetries: sessionChangeRetries - 1
-                )
-                return
-            }
-
-            guard siteInfo.username.caseInsensitiveCompare(credentials.username) == .orderedSame else {
-                clearSession(clearPersisted: true)
-                try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
-                try await authenticate(username: credentials.username, password: credentials.password)
-                try ensureAutologinIsAvailable()
-                return
-            }
-
-            userId = siteInfo.userid
-            userContextId = siteInfo.usercontextid
-            persistSession(username: credentials.username)
-            return
-        }
-
-        try checkAttendancePreparationIsCurrent(startingLogoutGeneration)
-        try await authenticate(username: credentials.username, password: credentials.password)
-        try ensureAutologinIsAvailable()
-    }
-
-    private func checkAttendancePreparationIsCurrent(_ startingLogoutGeneration: Int) throws {
-        try Task.checkCancellation()
-        guard startingLogoutGeneration == logoutGeneration else {
-            throw CancellationError()
-        }
-    }
-    
     func logout() {
-        logoutGeneration &+= 1
         authenticationGeneration &+= 1
         clearSession(clearPersisted: true)
-    }
-
-    private func ensureAutologinIsAvailable() throws {
-        guard privateToken?.isEmpty == false, userId != nil else {
-            throw MoodleError.autologinUnavailable
-        }
     }
 
     private func restorePersistedSession() {
@@ -2154,7 +2044,6 @@ enum MoodleError: LocalizedError {
     case serverError
     case apiError(String)
     case decodeFailed(String)
-    case autologinUnavailable
     
     var errorDescription: String? {
         switch self {
@@ -2165,7 +2054,6 @@ enum MoodleError: LocalizedError {
         case .serverError: return "伺服器錯誤"
         case .apiError(let msg): return "API 錯誤：\(msg)"
         case .decodeFailed(let msg): return "資料解析失敗：\(msg)"
-        case .autologinUnavailable: return "M 園區未提供快速登入權限，請重新登入後再試"
         }
     }
 }

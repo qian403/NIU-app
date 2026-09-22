@@ -167,6 +167,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private var webContentRecoveryAttempts = 0
     private var assignmentResolveAttempts = 0
     private var attendanceNavigationGeneration = 0
+    private var attendanceLoginAttempts = 0
     private let maxAssignmentResolveAttempts = 2
 
     private enum Phase {
@@ -190,6 +191,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         self.errorMessage = nil
         self.attendanceOutcome = nil
         self.assignmentResolveAttempts = 0
+        self.attendanceLoginAttempts = 0
 
         let generation = loadGeneration
         loadingTask = Task { [weak self] in
@@ -212,6 +214,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         retriedAfterLoginRedirect = false
         hasTriedSilentRefresh = false
         webContentRecoveryAttempts = 0
+        attendanceLoginAttempts = 0
     }
 
     func retry() {
@@ -265,15 +268,23 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private func targetURLReady(_ resolvedTarget: URL) {
         self.targetURL = resolvedTarget.absoluteString
         self.externalOpenURL = resolvedTarget
+
+        // Attendance is a browser login flow: opening the QR target first lets
+        // Moodle preserve its return URL, then a successful Moodle form login
+        // redirects this same WebView back to the attendance endpoint.
+        if isAttendanceQRTarget {
+            phase = .loadingTarget
+            webView.load(URLRequest(url: resolvedTarget))
+            return
+        }
         
         // Sync cookies from HTTPCookieStorage to WKWebView (like reference project)
         let generation = loadGeneration
         syncCookies { [weak self] in
             guard let self, self.hasStarted, generation == self.loadGeneration else { return }
-            // Attendance QR tokens are short-lived, while IRS is a browser-only
-            // activity. If mobile autologin is available, both should use it
-            // immediately instead of taking an unnecessary SSO portal round trip.
-            if (self.isAttendanceQRTarget || self.isIRSActivityTarget),
+            // IRS is a browser-only activity. If mobile autologin is available,
+            // use it immediately instead of taking an unnecessary SSO round trip.
+            if self.isIRSActivityTarget,
                resolvedTarget.path.lowercased().contains("/admin/tool/mobile/autologin.php") {
                 self.phase = .loadingTarget
                 self.webView.load(URLRequest(url: resolvedTarget))
@@ -305,6 +316,11 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
     
     private func resolveTargetURL(from rawTarget: String) async -> URL {
+        // A Moodle Web Service token is not a browser login. Attendance must
+        // open the QR URL itself so Moodle can retain the post-login return URL.
+        if isAttendanceQRTarget {
+            return URL(string: rawTarget) ?? URL(string: "about:blank")!
+        }
         if rawTarget.contains("/mod/assign/view.php"),
            rawTarget.contains("action=editsubmission") {
             // Assignment upload page is more stable with pure SSO cookie flow.
@@ -460,6 +476,80 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
     private func isLoginPage(_ urlString: String) -> Bool {
         urlString.contains("euni.niu.edu.tw") && urlString.contains("/login")
+    }
+
+    private func handleAttendanceLoginPage(_ webView: WKWebView) {
+        guard attendanceLoginAttempts == 0,
+              let credentials = LoginRepository.shared.getSavedCredentials()
+        else {
+            showAttendanceLoginPage()
+            return
+        }
+
+        attendanceLoginAttempts += 1
+        guard let username = javascriptLiteral(credentials.username),
+              let password = javascriptLiteral(credentials.password) else {
+            showAttendanceLoginPage()
+            return
+        }
+
+        let generation = loadGeneration
+        let script = """
+        (function(username, password) {
+            var form = document.querySelector('form[action*="login/index.php"]')
+                || document.querySelector('form#login');
+            var usernameInput = document.querySelector('input[name="username"], input#username');
+            var passwordInput = document.querySelector('input[name="password"], input#password');
+            if (!form || !usernameInput || !passwordInput) return 'missing-form';
+
+            function setValue(input, value) {
+                input.focus();
+                input.value = value;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            setValue(usernameInput, username);
+            setValue(passwordInput, password);
+
+            var submit = form.querySelector('button[type="submit"], input[type="submit"]');
+            if (form.requestSubmit) {
+                submit ? form.requestSubmit(submit) : form.requestSubmit();
+            } else if (submit) {
+                submit.click();
+            } else {
+                form.submit();
+            }
+            return 'submitted';
+        })(\(username), \(password));
+        """
+
+        webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
+            guard let self, let webView, self.hasStarted,
+                  generation == self.loadGeneration,
+                  webView === self.storedWebView else { return }
+            if result as? String == "submitted" {
+                print("[MoodleAttendance] submitted Moodle web login")
+            } else {
+                self.showAttendanceLoginPage()
+            }
+        }
+    }
+
+    private func javascriptLiteral(_ value: String) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func showAttendanceLoginPage() {
+        phase = .loadingTarget
+        isPageReady = true
+        attendanceOutcome = MoodleAttendanceWebOutcome(
+            kind: .requiresAction,
+            message: "請在 M 園區登入頁完成登入；成功後會自動回到這次點名網址。",
+            courseModuleID: nil
+        )
     }
 
     private func isSSODefaultPage(_ urlString: String) -> Bool {
@@ -809,10 +899,15 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         guard !isAttendanceQRTarget || attendanceOutcome?.isTerminal != true else { return }
         let url = wv.url?.absoluteString ?? ""
         if isAttendanceQRTarget {
-            // QR pass and mobile autologin keys must not appear in diagnostics.
+            // QR pass and login fields must not appear in diagnostics.
             print("[MoodleWeb] didFinish (\(phase)): \(wv.url?.path ?? "")")
         } else {
             print("[MoodleWeb] didFinish (\(phase)): \(URL(string: url)?.path ?? "")")
+        }
+
+        if isAttendanceQRTarget, isLoginPage(url) {
+            handleAttendanceLoginPage(wv)
+            return
         }
 
         switch phase {
