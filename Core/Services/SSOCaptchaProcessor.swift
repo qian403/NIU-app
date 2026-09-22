@@ -12,8 +12,16 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
     private init() {}
 
     public func recognize(from image: CaptchaImage, completion: @escaping (String?) -> Void) {
+        recognize(from: image, expectedLength: 6, completion: completion)
+    }
+
+    public func recognize(
+        from image: CaptchaImage,
+        expectedLength: Int,
+        completion: @escaping (String?) -> Void
+    ) {
         Task {
-            let code = await recognize(from: image)
+            let code = await recognize(from: image, expectedLength: expectedLength)
             await MainActor.run {
                 completion(code)
             }
@@ -22,23 +30,29 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
 
     @concurrent
     public func recognize(from image: CaptchaImage) async -> String? {
+        await recognize(from: image, expectedLength: 6)
+    }
+
+    @concurrent
+    public func recognize(from image: CaptchaImage, expectedLength: Int) async -> String? {
+        guard expectedLength > 0 else { return nil }
         let variants = buildRecognitionVariants(from: image)
         var bestCandidate: OCRCandidate?
 
         for variant in variants {
             guard !Task.isCancelled else { return nil }
-            guard let candidate = await recognizeVariant(variant) else { continue }
+            guard let candidate = await recognizeVariant(variant, expectedLength: expectedLength) else { continue }
             if bestCandidate == nil || candidate.score > (bestCandidate?.score ?? Int.min) {
                 bestCandidate = candidate
             }
-            if candidate.digits.count == 6 {
-                print("[Captcha] selected variant=\(variant.name) digits=\(candidate.digits)")
+            if candidate.digits.count == expectedLength {
+                print("[Captcha] selected variant=\(variant.name) length=\(candidate.digits.count)")
                 return candidate.digits
             }
         }
 
         if let bestCandidate {
-            print("[Captcha] best partial digits=\(bestCandidate.digits) score=\(bestCandidate.score)")
+            print("[Captcha] best partial length=\(bestCandidate.digits.count) score=\(bestCandidate.score)")
         } else {
             print("[Captcha] no OCR candidate")
         }
@@ -170,7 +184,7 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
         return variants
     }
 
-    private func recognizeVariant(_ variant: ImageVariant) async -> OCRCandidate? {
+    private func recognizeVariant(_ variant: ImageVariant, expectedLength: Int) async -> OCRCandidate? {
         guard let cgImage = variant.image.cgImage else {
             print("[Captcha] cgImage nil for \(variant.name)")
             return nil
@@ -215,11 +229,11 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
 
                 let score =
                     digitsOnly.count * 100
-                    - abs(6 - digitsOnly.count) * 80
+                    - abs(expectedLength - digitsOnly.count) * 80
                     + Int(confidence * 100)
                     - max(0, raw.count - digitsOnly.count) * 12
 
-                print("[Captcha] variant=\(variant.name) raw=\(raw) fixed=\(fixed) mapped=\(mapped) digits=\(digitsOnly) score=\(score)")
+                print("[Captcha] variant=\(variant.name) recognizedLength=\(digitsOnly.count) confidence=\(confidence) score=\(score)")
 
                 continuation.resume(returning: OCRCandidate(
                     variantName: variant.name,

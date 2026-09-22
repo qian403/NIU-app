@@ -168,6 +168,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private var assignmentResolveAttempts = 0
     private var attendanceNavigationGeneration = 0
     private var attendanceLoginAttempts = 0
+    private let maxAttendanceLoginAttempts = 3
     private let maxAssignmentResolveAttempts = 2
 
     private enum Phase {
@@ -226,6 +227,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         hasTriedSilentRefresh = false
         assignmentResolveAttempts = 0
         webContentRecoveryAttempts = 0
+        attendanceLoginAttempts = 0
         targetURL = nil
         externalOpenURL = nil
         errorMessage = nil
@@ -242,6 +244,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         attendanceOutcome = nil
         errorMessage = nil
         isPageReady = false
+        attendanceLoginAttempts = 0
         phase = .loadingTarget
         targetURL = originalTargetURL
         externalOpenURL = url
@@ -478,29 +481,217 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         urlString.contains("euni.niu.edu.tw") && urlString.contains("/login")
     }
 
-    private func handleAttendanceLoginPage(_ webView: WKWebView) {
-        guard attendanceLoginAttempts == 0,
-              let credentials = LoginRepository.shared.getSavedCredentials()
-        else {
-            showAttendanceLoginPage()
-            return
-        }
+    private struct AttendanceCaptchaPayload: Decodable {
+        let hasInput: Bool
+        let hasImage: Bool
+        let dataURL: String?
+        let complete: Bool
+        let width: Int
+    }
 
-        attendanceLoginAttempts += 1
-        guard let username = javascriptLiteral(credentials.username),
+    private func handleAttendanceLoginPage(_ webView: WKWebView) {
+        guard attendanceLoginAttempts < maxAttendanceLoginAttempts,
+              let credentials = LoginRepository.shared.getSavedCredentials(),
+              let username = javascriptLiteral(credentials.username),
               let password = javascriptLiteral(credentials.password) else {
             showAttendanceLoginPage()
             return
         }
 
+        attendanceLoginAttempts += 1
+        let attempt = attendanceLoginAttempts
         let generation = loadGeneration
+        let navigationGeneration = attendanceNavigationGeneration
+        captureAttendanceCaptcha(
+            webView,
+            attempt: 1,
+            refreshImage: attempt > 1,
+            generation: generation,
+            navigationGeneration: navigationGeneration
+        ) { [weak self, weak webView] payload, image in
+            guard let self, let webView, self.hasStarted,
+                  generation == self.loadGeneration,
+                  navigationGeneration == self.attendanceNavigationGeneration,
+                  webView === self.storedWebView else { return }
+
+            let hasCaptcha = payload?.hasInput == true || payload?.hasImage == true
+            if hasCaptcha {
+                guard let image else {
+                    self.retryAttendanceLoginPage(
+                        webView,
+                        generation: generation,
+                        navigationGeneration: navigationGeneration
+                    )
+                    return
+                }
+                SSOCaptchaProcessor.shared.recognize(from: image, expectedLength: 5) { [weak self, weak webView] code in
+                    guard let self, let webView, self.hasStarted,
+                          generation == self.loadGeneration,
+                          navigationGeneration == self.attendanceNavigationGeneration,
+                          webView === self.storedWebView else { return }
+                    guard let code, code.count == 5 else {
+                        self.retryAttendanceLoginPage(
+                            webView,
+                            generation: generation,
+                            navigationGeneration: navigationGeneration
+                        )
+                        return
+                    }
+                    self.submitAttendanceLogin(
+                        webView,
+                        username: username,
+                        password: password,
+                        captcha: code,
+                        generation: generation,
+                        navigationGeneration: navigationGeneration
+                    )
+                }
+                return
+            }
+
+            // Some deployments do not inject the captcha. Preserve the old
+            // username/password-only fallback, but never resubmit it forever.
+            if attempt == 1 {
+                self.submitAttendanceLogin(
+                    webView,
+                    username: username,
+                    password: password,
+                    captcha: nil,
+                    generation: generation,
+                    navigationGeneration: navigationGeneration
+                )
+            } else {
+                self.showAttendanceLoginPage()
+            }
+        }
+    }
+
+    private func retryAttendanceLoginPage(
+        _ webView: WKWebView,
+        generation: Int,
+        navigationGeneration: Int
+    ) {
+        guard generation == loadGeneration,
+              navigationGeneration == attendanceNavigationGeneration,
+              webView === storedWebView,
+              attendanceLoginAttempts < maxAttendanceLoginAttempts
+        else {
+            showAttendanceLoginPage()
+            return
+        }
+        print("[MoodleAttendance] retrying M campus login captcha")
+        webView.reload()
+    }
+
+    private func captureAttendanceCaptcha(
+        _ webView: WKWebView,
+        attempt: Int,
+        refreshImage: Bool,
+        generation: Int,
+        navigationGeneration: Int,
+        completion: @escaping (AttendanceCaptchaPayload?, CaptchaImage?) -> Void
+    ) {
         let script = """
-        (function(username, password) {
+        (function() {
+            var input = document.querySelector('#captcha, input[name="captcha"]');
+            var image = document.querySelector('#imgcode, img[src*="/auth/posbosscaptcha/captcha.php"]');
+            var didRefresh = false;
+            if (\(refreshImage ? "true" : "false") && image) {
+                var source = image.getAttribute('src') || '';
+                if (source) {
+                    image.setAttribute('src', source + (source.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now());
+                    didRefresh = true;
+                }
+            }
+            var payload = {
+                hasInput: !!input,
+                hasImage: !!image,
+                dataURL: null,
+                complete: !didRefresh && !!(image && image.complete),
+                width: image ? (image.naturalWidth || 0) : 0
+            };
+            if (didRefresh || !image || !image.complete || !image.naturalWidth) {
+                return JSON.stringify(payload);
+            }
+            try {
+                var canvas = document.createElement('canvas');
+                canvas.width = image.naturalWidth;
+                canvas.height = image.naturalHeight;
+                var context = canvas.getContext('2d');
+                if (context) {
+                    context.drawImage(image, 0, 0);
+                    payload.dataURL = canvas.toDataURL('image/png');
+                }
+            } catch (error) {}
+            return JSON.stringify(payload);
+        })();
+        """
+
+        webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
+            guard let self, let webView, self.hasStarted,
+                  generation == self.loadGeneration,
+                  navigationGeneration == self.attendanceNavigationGeneration,
+                  webView === self.storedWebView else { return }
+            guard let json = result as? String,
+                  let data = json.data(using: .utf8),
+                  let payload = try? JSONDecoder().decode(AttendanceCaptchaPayload.self, from: data)
+            else {
+                completion(nil, nil)
+                return
+            }
+
+            if let dataURL = payload.dataURL,
+               let image = self.decodeCaptchaDataURL(dataURL) {
+                completion(payload, image)
+                return
+            }
+
+            let needsPolling = payload.hasInput || payload.hasImage
+            if needsPolling && attempt < 6 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak webView] in
+                    guard let self, let webView,
+                          generation == self.loadGeneration,
+                          navigationGeneration == self.attendanceNavigationGeneration else { return }
+                    self.captureAttendanceCaptcha(
+                        webView,
+                        attempt: attempt + 1,
+                        refreshImage: false,
+                        generation: generation,
+                        navigationGeneration: navigationGeneration,
+                        completion: completion
+                    )
+                }
+            } else {
+                completion(payload, nil)
+            }
+        }
+    }
+
+    private func decodeCaptchaDataURL(_ dataURL: String) -> CaptchaImage? {
+        guard dataURL.hasPrefix("data:image"),
+              let comma = dataURL.firstIndex(of: ",") else { return nil }
+        let encoded = String(dataURL[dataURL.index(after: comma)...])
+        guard let data = Data(base64Encoded: encoded) else { return nil }
+        return CaptchaImage(data: data)
+    }
+
+    private func submitAttendanceLogin(
+        _ webView: WKWebView,
+        username: String,
+        password: String,
+        captcha: String?,
+        generation: Int,
+        navigationGeneration: Int
+    ) {
+        let captchaLiteral = captcha.flatMap(javascriptLiteral) ?? "null"
+        let script = """
+        (function(username, password, captcha) {
             var form = document.querySelector('form[action*="login/index.php"]')
                 || document.querySelector('form#login');
             var usernameInput = document.querySelector('input[name="username"], input#username');
             var passwordInput = document.querySelector('input[name="password"], input#password');
-            if (!form || !usernameInput || !passwordInput) return 'missing-form';
+            var captchaInput = document.querySelector('#captcha, input[name="captcha"]');
+            if (!form || !usernameInput || !passwordInput || (captchaInput && !captcha)) return 'missing-form';
 
             function setValue(input, value) {
                 input.focus();
@@ -510,6 +701,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             }
             setValue(usernameInput, username);
             setValue(passwordInput, password);
+            if (captchaInput && captcha) setValue(captchaInput, captcha);
 
             var submit = form.querySelector('button[type="submit"], input[type="submit"]');
             if (form.requestSubmit) {
@@ -520,17 +712,58 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 form.submit();
             }
             return 'submitted';
-        })(\(username), \(password));
+        })(\(username), \(password), \(captchaLiteral));
         """
 
         webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
             guard let self, let webView, self.hasStarted,
                   generation == self.loadGeneration,
+                  navigationGeneration == self.attendanceNavigationGeneration,
                   webView === self.storedWebView else { return }
             if result as? String == "submitted" {
-                print("[MoodleAttendance] submitted Moodle web login")
+                print("[MoodleAttendance] submitted M campus web login")
+                self.checkAttendanceLoginSubmission(
+                    webView,
+                    generation: generation,
+                    navigationGeneration: navigationGeneration
+                )
             } else {
-                self.showAttendanceLoginPage()
+                self.retryAttendanceLoginPage(
+                    webView,
+                    generation: generation,
+                    navigationGeneration: navigationGeneration
+                )
+            }
+        }
+    }
+
+    private func checkAttendanceLoginSubmission(
+        _ webView: WKWebView,
+        generation: Int,
+        navigationGeneration: Int
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak webView] in
+            guard let self, let webView, self.hasStarted,
+                  generation == self.loadGeneration,
+                  navigationGeneration == self.attendanceNavigationGeneration,
+                  webView === self.storedWebView else { return }
+            guard !webView.isLoading else { return }
+
+            let script = """
+            !!document.querySelector('form[action*="login/index.php"], form#login')
+            """
+            webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
+                guard let self, let webView, self.hasStarted,
+                      generation == self.loadGeneration,
+                      navigationGeneration == self.attendanceNavigationGeneration,
+                      webView === self.storedWebView else { return }
+                if result as? Bool == true {
+                    self.retryAttendanceLoginPage(
+                        webView,
+                        generation: generation,
+                        navigationGeneration: navigationGeneration
+                    )
+                }
             }
         }
     }
@@ -547,7 +780,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         isPageReady = true
         attendanceOutcome = MoodleAttendanceWebOutcome(
             kind: .requiresAction,
-            message: "請在 M 園區登入頁完成登入；成功後會自動回到這次點名網址。",
+            message: "請在 M 園區登入頁完成登入或輸入驗證碼；成功後會自動回到這次點名網址。",
             courseModuleID: nil
         )
     }
