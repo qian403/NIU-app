@@ -7,8 +7,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../Features/Moodle/Views/MoodleWebView.swift'), 'utf8');
 const captureSection = source.slice(source.indexOf('private func captureAttendanceCaptcha'));
-const captureScript = captureSection.match(/let script = """\n([\s\S]*?)\n\s*"""/)[1]
-    .replace('\\(refreshImage ? "true" : "false")', 'false');
+const captureScript = captureSection.match(/let script = """\n([\s\S]*?)\n\s*"""/)[1];
 const submitSection = source.slice(source.indexOf('private func submitAttendanceLogin'));
 let submitScript = submitSection.match(/let script = """\n([\s\S]*?)\n\s*"""/)[1];
 submitScript = submitScript

@@ -509,7 +509,6 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         captureAttendanceCaptcha(
             webView,
             attempt: 1,
-            refreshImage: attempt > 1,
             generation: generation,
             navigationGeneration: navigationGeneration
         ) { [weak self, weak webView] payload, image in
@@ -518,7 +517,11 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                   navigationGeneration == self.attendanceNavigationGeneration,
                   webView === self.storedWebView else { return }
 
-            let hasCaptcha = payload?.hasInput == true || payload?.hasImage == true
+            guard let payload else {
+                self.showAttendanceLoginPage()
+                return
+            }
+            let hasCaptcha = payload.hasInput || payload.hasImage
             if hasCaptcha {
                 guard let image else {
                     self.retryAttendanceLoginPage(
@@ -590,7 +593,6 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private func captureAttendanceCaptcha(
         _ webView: WKWebView,
         attempt: Int,
-        refreshImage: Bool,
         generation: Int,
         navigationGeneration: Int,
         completion: @escaping (AttendanceCaptchaPayload?, CaptchaImage?) -> Void
@@ -599,22 +601,14 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         (function() {
             var input = document.querySelector('#captcha, input[name="captcha"]');
             var image = document.querySelector('#imgcode, img[src*="/auth/posbosscaptcha/captcha.php"]');
-            var didRefresh = false;
-            if (\(refreshImage ? "true" : "false") && image) {
-                var source = image.getAttribute('src') || '';
-                if (source) {
-                    image.setAttribute('src', source + (source.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now());
-                    didRefresh = true;
-                }
-            }
             var payload = {
                 hasInput: !!input,
                 hasImage: !!image,
                 dataURL: null,
-                complete: !didRefresh && !!(image && image.complete),
+                complete: !!(image && image.complete),
                 width: image ? (image.naturalWidth || 0) : 0
             };
-            if (didRefresh || !image || !image.complete || !image.naturalWidth) {
+            if (!image || !image.complete || !image.naturalWidth) {
                 return JSON.stringify(payload);
             }
             try {
@@ -650,8 +644,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 return
             }
 
-            let needsPolling = payload.hasInput || payload.hasImage
-            if needsPolling && attempt < 6 {
+            // The school's page can add the captcha after didFinish. Wait for
+            // that script before deciding this login form has no captcha.
+            if attempt < 10 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak webView] in
                     guard let self, let webView,
                           generation == self.loadGeneration,
@@ -659,7 +654,6 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                     self.captureAttendanceCaptcha(
                         webView,
                         attempt: attempt + 1,
-                        refreshImage: false,
                         generation: generation,
                         navigationGeneration: navigationGeneration,
                         completion: completion
