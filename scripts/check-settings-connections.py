@@ -22,7 +22,11 @@ final class FixtureProtocol: URLProtocol {
         precondition(request.url?.query == nil)
         precondition(request.httpShouldHandleCookies == false)
         precondition(request.cachePolicy == .reloadIgnoringLocalCacheData)
+        precondition(request.timeoutInterval == 8)
         let host = request.url!.host!
+        if host == "hanging.test" || request.value(forHTTPHeaderField: "X-Fixture-Hang") == "true" {
+            return
+        }
         if host == "offline.test" || host == "timeout.test" || host == "cancelled.test" {
             let code: URLError.Code = host == "offline.test" ? .notConnectedToInternet :
                 (host == "timeout.test" ? .timedOut : .cancelled)
@@ -118,7 +122,56 @@ final class FixtureProtocol: URLProtocol {
         pending.cancel()
         await pending.value
         precondition(slowModel.statuses.isEmpty)
+
+        let hangingService = ConnectionStatusService(
+            backendURL: URL(string: "https://hanging.test"), session: session,
+            checkTimeout: .milliseconds(150)
+        )
+        let hangingModel = SettingsConnectionViewModel(service: hangingService)
+        let started = ContinuousClock.now
+        let hangingRefresh = Task { await hangingModel.refresh() }
+        try await Task.sleep(for: .milliseconds(60))
+        precondition(hangingModel.statuses[.academic] == .connected)
+        precondition(hangingModel.statuses[.moodle] == .connected)
+        precondition(hangingModel.statuses[.backend] == .checking)
+        await hangingRefresh.value
+        precondition(started.duration(to: .now) < .seconds(2), "a silent server must have a bounded wait")
+        precondition(hangingModel.statuses[.backend] == .timedOut)
+
+        let hangingConfiguration = URLSessionConfiguration.ephemeral
+        hangingConfiguration.protocolClasses = [FixtureProtocol.self]
+        hangingConfiguration.httpAdditionalHeaders = ["X-Fixture-Hang": "true"]
+        let hangingSession = URLSession(configuration: hangingConfiguration)
+        defer { hangingSession.invalidateAndCancel() }
+        let allHangingService = ConnectionStatusService(
+            backendURL: URL(string: "https://ready.test"), session: hangingSession,
+            checkTimeout: .milliseconds(150)
+        )
+        let allHangingModel = SettingsConnectionViewModel(service: allHangingService)
+        await allHangingModel.refresh()
+        precondition(allHangingModel.statuses.count == 3)
+        precondition(allHangingModel.statuses.values.allSatisfy { $0 == .timedOut })
+
+        let longHangingService = ConnectionStatusService(
+            backendURL: URL(string: "https://ready.test"), session: hangingSession,
+            checkTimeout: .seconds(10)
+        )
+        let cancelledHangingModel = SettingsConnectionViewModel(service: longHangingService)
+        let abandoned = Task { await cancelledHangingModel.refresh() }
+        try await Task.sleep(for: .milliseconds(30))
+        let cancellationStarted = ContinuousClock.now
+        abandoned.cancel()
+        await abandoned.value
+        precondition(cancellationStarted.duration(to: .now) < .seconds(1))
+        precondition(cancelledHangingModel.statuses.isEmpty, "cancelling a silent request must clear checking states")
+
+        let obsolete = Task { await allHangingModel.refresh() }
+        try await Task.sleep(for: .milliseconds(30))
+        allHangingModel.reset()
+        await obsolete.value
+        precondition(allHangingModel.statuses.isEmpty, "late deadlines must not restore reset statuses")
         print("PASS: three services, backend response validation, offline, timeout, cancellation, stale responses, and anonymous requests")
+        print("PASS: silent requests time out independently; cancellation and reset never leave checking states")
     }
 }
 '''

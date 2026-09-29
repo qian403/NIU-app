@@ -104,6 +104,10 @@
 ABCD01000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000000; };
 ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000001; };
 		C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE10020000000000000001 /* UsageHeartbeatClient.swift */; };
+		3A8A81A3C5A9851967C03C98 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */; };
+		62AD37F2E5383849FA2B6E5D /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */; };
+		9E289C2BD2E28A6F0671725A /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */; };
+		89D0768DA2A7FD7F8E7DEDC9 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -247,6 +251,10 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 ABCD02000000000000000000 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/ClassLiveActivityAttributes.swift"; sourceTree = SOURCE_ROOT; };
 ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Services/LiveActivityRemoteClient.swift"; sourceTree = SOURCE_ROOT; };
 		C0DE10020000000000000001 /* UsageHeartbeatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageHeartbeatClient.swift; sourceTree = "<group>"; };
+		E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift; sourceTree = "<group>"; };
+		62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift; sourceTree = "<group>"; };
+		6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift; sourceTree = "<group>"; };
+		E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -656,6 +664,10 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 				0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */,
 				13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */,
 				DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */,
+				E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */,
+				6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */,
+				62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */,
+				E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -949,6 +961,10 @@ ABCD01000000000000000000,
 				DE1B327C5FC7444289A1258A /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift in Sources */,
 				5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */,
 				07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */,
+				89D0768DA2A7FD7F8E7DEDC9 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift in Sources */,
+				9E289C2BD2E28A6F0671725A /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift in Sources */,
+				62AD37F2E5383849FA2B6E5D /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift in Sources */,
+				3A8A81A3C5A9851967C03C98 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1101,7 +1117,7 @@ ABCD01000000000000000000,
                 NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1153,7 +1169,7 @@ ABCD01000000000000000000,
                 NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1201,7 +1217,7 @@ ABCD01000000000000000000,
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
@@ -1234,7 +1250,7 @@ ABCD01000000000000000000,
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
