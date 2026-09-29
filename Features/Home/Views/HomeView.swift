@@ -463,6 +463,14 @@ struct HomeView: View {
                     color: .teal,
                     destination: GraduationThresholdView()
                 )
+
+                FeatureCard(
+                    icon: "doc.text",
+                    title: "在學證明",
+                    subtitle: "註冊查詢、顯示與列印",
+                    color: .cyan,
+                    destination: EnrollmentCertificateView()
+                )
             }
             .opacity(animateIn ? 1 : 0)
             .animation(Theme.Animation.fast.delay(0.7), value: animateIn)

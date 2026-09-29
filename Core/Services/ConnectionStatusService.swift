@@ -33,9 +33,11 @@ enum ConnectionStatus: Equatable, Sendable {
 actor ConnectionStatusService {
     private let session: URLSession
     private let backendURL: URL?
+    private let checkTimeout: Duration
 
-    init(backendURL: URL?, session: URLSession? = nil) {
+    init(backendURL: URL?, session: URLSession? = nil, checkTimeout: Duration = .seconds(12)) {
         self.backendURL = backendURL
+        self.checkTimeout = checkTimeout
         if let session {
             self.session = session
         } else {
@@ -62,10 +64,11 @@ actor ConnectionStatusService {
         guard let url else { return .notConfigured }
 
         var request = URLRequest(url: url)
+        request.timeoutInterval = 8
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.httpShouldHandleCookies = false
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await data(for: request)
             try Task.checkCancellation()
             guard let response = response as? HTTPURLResponse,
                   response.url?.host == url.host,
@@ -87,6 +90,21 @@ actor ConnectionStatusService {
             case .timedOut: return .timedOut
             default: return .unavailable
             }
+        }
+    }
+
+    private func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await withThrowingTaskGroup(of: (Data, URLResponse).self) { group in
+            defer { group.cancelAll() }
+            group.addTask { [session] in
+                try await session.data(for: request)
+            }
+            group.addTask { [checkTimeout] in
+                try await Task.sleep(for: checkTimeout)
+                throw URLError(.timedOut)
+            }
+            guard let response = try await group.next() else { throw CancellationError() }
+            return response
         }
     }
 

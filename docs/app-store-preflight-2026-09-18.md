@@ -1,5 +1,21 @@
 # NIU-Life 上架前檢查（2026-09-18）
 
+## 2026-09-21 TestFlight 1.0.1 (4)
+
+- 依使用者要求，將連線指示燈逾時修正封存上傳；上傳前已在 App Store Connect 確認先前最新建置為 **1.0 (3)**、處理完成，正式 App Store 版本仍為 1.0「準備提交」。本次採修補版 **1.0.1 (4)**，App／Widget 的 Debug／Release 設定同步更新，未更動 Bundle ID、App Group、最低系統或發行團隊 `G4LXL97NF9`。
+- 設定連線離線回歸、上架檢查、Release Archive、封存 metadata／privacy manifests／extension 版本與 `codesign --verify --deep --strict` 通過；封存 log 無 warning/error。未重做真機完整驗收或 Instruments 長時間量測。
+- Xcode 上傳日誌於台北時間 **2026-09-21 05:57:52** 回報 `Upload succeeded`、`EXPORT SUCCEEDED`。隨後在 App Store Connect 確認 **1.0.1 (4)** 已出現，狀態為「處理中」；截至交付尚未確認處理完成或測試群組可用，不以此上傳結果視為審查通過。
+- 封存保留於 `~/Library/Developer/Xcode/Archives/2026-09-21/NIU-TestFlight-1.0.1-4.xcarchive`；繁體中文測試內容見 `docs/testflight-1.0.1-4.md`。
+- 本次未提交正式 App Store 審查、未發布外部測試、未推送 GitHub；測試文案提供給使用者，未代填或變更通知設定。
+
+## 2026-09-21 TestFlight 更新
+
+- 以目前工作目錄（來源 commit `6667d04`）重新封存並上傳 **1.0 (3)**，App 與 Widget 的 Debug／Release Build 同步由 2 增加為 3；未變更版本號、Bundle ID、App Group 或發行團隊 `G4LXL97NF9`。
+- Release Archive 成功，封存 log 無編譯 warning/error；上架檢查、封存 metadata／privacy manifests／extension 版本與 `codesign --verify --deep --strict` 通過。設定連線與製作名單離線回歸亦通過。
+- Xcode 命令列於台北時間 **2026-09-21 05:41** 回報 `Upload succeeded`、`EXPORT SUCCEEDED`；隨後已在 Arc 的 App Store Connect 確認 **1.0 (3)** 出現，狀態為「處理中」。截至本次檢查，尚未確認處理完成或測試群組可用。
+- 已將含上傳紀錄的封存保留於本機 Xcode Archives：`~/Library/Developer/Xcode/Archives/2026-09-21/NIU-TestFlight-1.0-3.xcarchive`。
+- 本次只上傳 TestFlight，未提交正式 App Store 審查、未發布外部測試、未推送 GitHub；未重做完整真機驗收或 Instruments 長時間量測。
+
 ## 2026-09-19 TestFlight 更新
 
 - App 已建立於 Very Fast Network LTD：Apple ID `6813616626`，Bundle ID `dev.chienniuapp`。

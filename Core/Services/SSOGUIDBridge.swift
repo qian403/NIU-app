@@ -11,13 +11,22 @@ enum SSOGUIDBridge {
     /// Fetches a fresh GUID for the given account. Returns `nil` on failure
     /// (no token, network error, non-200 response, malformed payload).
     static func fetchGUID(account: String) async -> String? {
-        guard let token = SSOTokenStore.shared.token else {
-            print("[SSOGUIDBridge] 無 JWT，無法取得 GUID")
+        do { return try await requestGUID(account: account) }
+        catch {
+            // Error descriptions can contain a credential-bearing URL.
+            print("[SSOGUIDBridge] GUID request failed code=\((error as NSError).code)")
             return nil
+        }
+    }
+
+    /// Throwing variant for callers that distinguish offline/timeout from expired login.
+    static func requestGUID(account: String) async throws -> String {
+        guard let token = SSOTokenStore.shared.token else {
+            throw URLError(.userAuthenticationRequired)
         }
         let acnt = account.lowercased()
         guard let url = URL(string: "https://ccsys1.niu.edu.tw/SSO/API/GUID/\(acnt)") else {
-            return nil
+            throw URLError(.badURL)
         }
 
         var request = URLRequest(url: url)
@@ -26,23 +35,18 @@ enum SSOGUIDBridge {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            guard status == 200 else {
-                print("[SSOGUIDBridge] /SSO/API/GUID status=\(status)")
-                if status == 401 {
-                    SSOTokenStore.shared.clear(ifMatching: token)
-                }
-                return nil
-            }
-            struct Payload: Decodable { let guid: String? }
-            let payload = try JSONDecoder().decode(Payload.self, from: data)
-            return payload.guid?.nilIfEmpty
-        } catch {
-            print("[SSOGUIDBridge] /SSO/API/GUID 失敗: \(error.localizedDescription)")
-            return nil
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Task.checkCancellation()
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status == 401 {
+            SSOTokenStore.shared.clear(ifMatching: token)
+            throw URLError(.userAuthenticationRequired)
         }
+        guard status == 200 else { throw URLError(.badServerResponse) }
+        struct Payload: Decodable { let guid: String? }
+        let payload = try JSONDecoder().decode(Payload.self, from: data)
+        guard let guid = payload.guid?.nilIfEmpty else { throw URLError(.cannotParseResponse) }
+        return guid
     }
 
     /// Builds `https://acade.niu.edu.tw/NIU/Login.aspx?GUID=<guid>`, the
@@ -56,6 +60,7 @@ enum SSOGUIDBridge {
         let host = url.host?.lowercased() ?? ""
         guard ["acade.niu.edu.tw", "ccsys.niu.edu.tw", "ccsys1.niu.edu.tw"].contains(host) else { return false }
         let path = url.path.lowercased()
+        if path == "/sso/login", ["ccsys.niu.edu.tw", "ccsys1.niu.edu.tw"].contains(host) { return true }
         if host == "ccsys1.niu.edu.tw", path == "/sso" || path.hasPrefix("/sso/") {
             return true
         }

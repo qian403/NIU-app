@@ -1,5 +1,10 @@
 # NIU-Life
 
+
+## 已知問題
+- Qrcode 點名後無法確定是否成功
+- Widget 與即時動態更新不穩定
+
 把課表、M 園區與校園常用服務，放進同一個 App。
 
 NIU-Life 是為國立宜蘭大學學生打造的非官方 iOS 校務輔助工具，以 SwiftUI 開發，整合課程查詢、學年度行事曆、快速點名與圖書館通行碼，並提供主畫面小工具、鎖定畫面快捷與課表即時動態。
@@ -8,17 +13,17 @@ NIU-Life 是為國立宜蘭大學學生打造的非官方 iOS 校務輔助工具
 
 ## 功能
 
-| 功能 | 說明 |
-| --- | --- |
-| 我的課表 | 查看每週課程與今日安排，將課程匯出為 iOS 行事曆中的每週重複事件。 |
-| M 園區 | 查閱課程、公告、作業、教材與課程成績。 |
-| 快速點名 | 使用相機掃描課堂 QR Code，進入 M 園區點名流程。 |
-| 圖書館通行碼 | 顯示門禁 QR Code 與借書條碼。 |
-| 學年度行事曆 | 切換月曆／事件模式，依學年度搜尋及分類篩選，查看校方原文與來源 PDF。 |
-| 活動報名 | 瀏覽校園活動與活動詳情，進入報名流程。 |
-| 成績查詢 | 查看歷年成績與 GPA。 |
-| 畢業門檻 | 查詢多元時數、英文與體適能等門檻。 |
-| 小工具與快捷 | 在主畫面查看課表、行事曆，從鎖定畫面或控制中心快速開啟點名與圖書館。 |
+| 功能         | 說明                                                                   |
+| ------------ | ---------------------------------------------------------------------- |
+| 我的課表     | 查看每週課程與今日安排，將課程匯出為 iOS 行事曆中的每週重複事件。      |
+| M 園區       | 查閱課程、公告、作業、教材與課程成績。                                 |
+| 快速點名     | 使用相機掃描課堂 QR Code，進入 M 園區點名流程。                        |
+| 圖書館通行碼 | 顯示門禁 QR Code 與借書條碼。                                          |
+| 學年度行事曆 | 切換月曆／事件模式，依學年度搜尋及分類篩選，查看校方原文與來源 PDF。   |
+| 活動報名     | 瀏覽校園活動與活動詳情，進入報名流程。                                 |
+| 成績查詢     | 查看歷年成績與 GPA。                                                   |
+| 畢業門檻     | 查詢多元時數、英文與體適能等門檻。                                     |
+| 小工具與快捷 | 在主畫面查看課表、行事曆，從鎖定畫面或控制中心快速開啟點名與圖書館。   |
 | 課表即時動態 | 在鎖定畫面與支援裝置的動態島顯示課程資訊；背景遠端更新需另行同意啟用。 |
 
 ## 使用須知
@@ -102,18 +107,18 @@ View 負責呈現與互動，ViewModel 管理畫面狀態，Service／Repository
 
 從版本庫根目錄執行，依修改範圍選擇檢查：
 
-| 範圍 | 指令 |
-| --- | --- |
-| 行事曆 App／Widget 邏輯 | `python3 scripts/check-calendar-client.py` |
-| Widget 與快捷 | `python3 scripts/check-widgets.py` |
-| SSO 登入與儲存 | `node scripts/check-sso-login.js`、`python3 scripts/check-sso-storage.py` |
-| 歷年成績 | `node scripts/check-grade-history.js` |
-| 點名回應解析 | `python3 scripts/check-attendance-response.py` |
-| 特別感謝名單與快取 | `python3 scripts/check-credits.py` |
-| 非同步工作與生命週期 | `python3 scripts/check-lifetimes.py` |
-| 背景即時動態用戶端 | `python3 scripts/check-live-activity-client.py` |
-| 匿名使用統計 | `python3 scripts/check-usage-heartbeat.py` |
-| App Store 發行前靜態檢查 | `python3 scripts/check-app-store.py` |
+| 範圍                     | 指令                                                                      |
+| ------------------------ | ------------------------------------------------------------------------- |
+| 行事曆 App／Widget 邏輯  | `python3 scripts/check-calendar-client.py`                                |
+| Widget 與快捷            | `python3 scripts/check-widgets.py`                                        |
+| SSO 登入與儲存           | `node scripts/check-sso-login.js`、`python3 scripts/check-sso-storage.py` |
+| 歷年成績                 | `node scripts/check-grade-history.js`                                     |
+| 點名回應解析             | `python3 scripts/check-attendance-response.py`                            |
+| 特別感謝名單與快取       | `python3 scripts/check-credits.py`                                        |
+| 非同步工作與生命週期     | `python3 scripts/check-lifetimes.py`                                      |
+| 背景即時動態用戶端       | `python3 scripts/check-live-activity-client.py`                           |
+| 匿名使用統計             | `python3 scripts/check-usage-heartbeat.py`                                |
+| App Store 發行前靜態檢查 | `python3 scripts/check-app-store.py`                                      |
 
 這些檢查不等同校方服務端到端測試，也不能取代模擬器、真機與 Release archive 驗證。請勿以真實 Keychain 憑證或實際點名操作作為自動化回歸資料。
 
