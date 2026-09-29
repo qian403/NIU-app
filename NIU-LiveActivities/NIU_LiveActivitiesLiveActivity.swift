@@ -30,6 +30,7 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                             .font(.title3.monospacedDigit().weight(.semibold))
                             .minimumScaleFactor(0.75)
                             .lineLimit(1)
+                            .frame(width: 76, alignment: .trailing)
                         if !context.isStale {
                             Text(context.state.mode == "current" ? "下課" : "開始")
                                 .font(.caption2)
@@ -71,16 +72,36 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                Image(systemName: activityStatusSymbol(context))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(activityStatusTint(context))
-                    .accessibilityLabel(activityStatusLabel(context))
+                if context.isStale {
+                    Image(systemName: activityStatusSymbol(context))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(activityStatusTint(context))
+                        .accessibilityLabel(activityStatusLabel(context))
+                } else {
+                    Text(context.state.courseName)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(activityStatusTint(context))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 64, alignment: .leading)
+                        .accessibilityLabel("\(activityStatusLabel(context))，\(context.state.courseName)")
+                }
             } compactTrailing: {
-                countdown(context: context)
-                    .font(.caption2.monospacedDigit())
-                    .minimumScaleFactor(0.75)
-                    .lineLimit(1)
-                    .frame(minWidth: 34, alignment: .trailing)
+                VStack(alignment: .trailing, spacing: 0) {
+                    if !context.isStale {
+                        Text(context.state.mode == "current" ? "下課" : "上課")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    countdown(context: context)
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .minimumScaleFactor(0.75)
+                        .lineLimit(1)
+                }
+                // Timer text accepts the proposed width; a minimum alone lets it
+                // stretch the compact island and crowd out the course name.
+                .frame(width: 48, alignment: .trailing)
+                .accessibilityElement(children: .combine)
             } minimal: {
                 Image(systemName: activityStatusSymbol(context))
                     .font(.caption2.weight(.semibold))
