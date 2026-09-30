@@ -40,7 +40,9 @@
 	<key>NSCalendarsWriteOnlyUsageDescription</key>
 	<string>將課表匯出至行事曆，以便在 iOS 行事曆中查看每週課程安排。</string>
 	<key>NSCameraUsageDescription</key>
-	<string>掃描 M 園區課堂點名 QR Code，以快速完成簽到。</string>
+	<string>掃描 M 園區課堂點名 QR Code，或拍攝照片與影片作為郵件附件。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>拍攝含聲音的郵件影片附件時使用麥克風。</string>
 	<key>NIUActivityAPIBaseURL</key>
 	<string>$(NIU_ACTIVITY_API_BASE_URL)</string>
 	<key>NIUUsageAPIBaseURL</key>

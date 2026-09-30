@@ -7,11 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-        C01100010000000000000001 /* ConnectionStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000001 /* ConnectionStatusService.swift */; };
-        C01100010000000000000002 /* SettingsConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000002 /* SettingsConnectionViewModel.swift */; };
+		CA4A11010000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */; };
+		CA4A11010000000000000006 /* Features/Mail/Services/MailBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */; };
+		CA4A11010000000000000001 /* Features/Mail/Models/MailModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */; };
+		CA4A11010000000000000002 /* Features/Mail/Services/MailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000002 /* Features/Mail/Services/MailService.swift */; };
+		CA4A11010000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift */; };
+		CA4A11010000000000000004 /* Features/Mail/Views/MailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000004 /* Features/Mail/Views/MailView.swift */; };
 		0582D0EB51C8CB4ADCE9A96C /* Features/EventRegistration/Views/AppliedEventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */; };
 		07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */; };
-		0E182344FA814B44AC09A91F /* academic_calendar.json in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */; };
 		0E182345FA814B44AC09A920 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */; };
 		0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */; };
 		10A32DB12F431F630009BB45 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 10A32DA52F431F630009BB45 /* Assets.xcassets */; };
@@ -38,15 +41,19 @@
 		10D1F8892F80C57A00034946 /* NIU-LiveActivitiesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */; };
 		2A6F9D26FB8E49BDC6BC0719 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA77F7A401878E68B8284D4 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift */; };
+		3A8A81A3C5A9851967C03C98 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */; };
 		3D5EA0A44D60577AA027C3F3 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A1EF221369347B02B04655 /* Features/AcademicCalendar/ViewModels/AcademicCalendarViewModel.swift */; };
 		533917A63E725B858C832E8F /* Features/EventRegistration/Views/EventRegistration_Tab2_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7887A6F400EF545D630B2778 /* Features/EventRegistration/Views/EventRegistration_Tab2_View.swift */; };
 		54315A98B0455F60883B0DF5 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */; };
 		54A3EFEFEAA844D3923CD159 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */; };
 		5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */; };
 		5CCC1D48EA2F687ABDFA40C4 /* Features/EventRegistration/Views/ModifyRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */; };
+		62AD37F2E5383849FA2B6E5D /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */; };
 		6E8CC309E88345BB93EF517E /* Shared/Components/ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427CCA3AAC41141DAB4616E5 /* Shared/Components/ToastView.swift */; };
 		79E15ABF1868BE5DC2DB8453 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF54E564E0F41D38F6569A8 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift */; };
 		79E5A654058A1E7F384DB426 /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */; };
+		89D0768DA2A7FD7F8E7DEDC9 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */; };
+		9E289C2BD2E28A6F0671725A /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */; };
 		A1B2C3D4E5F60718293A4B5D /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LICENSE */; };
 		A1F235FAF2EF434A85F33837 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */; };
 		A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A9F0C1D2E3F4A5B6C7D8E9E0 /* PrivacyInfo.xcprivacy */; };
@@ -60,6 +67,8 @@
 		AA01BC08AA01BC08AA01BC08 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC18AA01BC18AA01BC18 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift */; };
 		AA01BC09AA01BC09AA01BC09 /* Features/GradeHistory/Views/GradeHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC19AA01BC19AA01BC19 /* Features/GradeHistory/Views/GradeHistoryView.swift */; };
 		AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02BC11AA02BC11AA02BC11 /* SettingsView.swift */; };
+		ABCD01000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift */; };
+		ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift */; };
 		B3FE21C2F45E4762945AE2BC /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */; };
 		BB01MD01BB01MD01BB01MD01 /* Features/Moodle/Models/MoodleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */; };
 		BB01MD02BB01MD02BB01MD02 /* Features/Moodle/Services/MoodleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF02BB01MF02BB01MF02 /* Features/Moodle/Services/MoodleService.swift */; };
@@ -73,6 +82,9 @@
 		BB01MD10BB01MD10BB01MD10 /* Features/Moodle/Views/MoodleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */; };
 		BB01MD11BB01MD11BB01MD11 /* Features/Moodle/Services/MoodleSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */; };
 		BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */; };
+		C01100010000000000000001 /* Core/Services/ConnectionStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000001 /* Core/Services/ConnectionStatusService.swift */; };
+		C01100010000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift */; };
+		C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE10020000000000000001 /* UsageHeartbeatClient.swift */; };
 		C0DEA001C0DEA001C0DEA001 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA002C0DEA002C0DEA002 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift */; };
 		C0DEA011C0DEA011C0DEA011 /* Features/Moodle/Repositories/MoodleRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA012C0DEA012C0DEA012 /* Features/Moodle/Repositories/MoodleRepositories.swift */; };
 		C0DEA013C0DEA013C0DEA013 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA014C0DEA014C0DEA014 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift */; };
@@ -87,7 +99,14 @@
 		C0DEB003C0DEB003C0DEB003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC003C0DEC003C0DEC003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift */; };
 		C0DEB004C0DEB004C0DEB004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC004C0DEC004C0DEC004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift */; };
 		C0DEB005C0DEB005C0DEB005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC005C0DEC005C0DEC005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift */; };
+		C0ED00010000000000000001 /* Features/Home/Services/CreditsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000001 /* Features/Home/Services/CreditsStore.swift */; };
+		C0ED00010000000000000002 /* Features/Home/ViewModels/CreditsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000002 /* Features/Home/ViewModels/CreditsViewModel.swift */; };
+		C0ED00010000000000000003 /* Features/Home/Views/SpecialThanksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000003 /* Features/Home/Views/SpecialThanksView.swift */; };
+		C0ED00010000000000000004 /* app-content/credits.json in Resources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000004 /* app-content/credits.json */; };
 		C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */; };
+		CA1E00010000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift */; };
+		CA1E00010000000000000002 /* Resources/AcademicCalendar in Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* Resources/AcademicCalendar */; };
+		CA1E00010000000000000003 /* Resources/AcademicCalendar in Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* Resources/AcademicCalendar */; };
 		D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C002D031C002D031C002 /* LibraryCodeService.swift */; };
 		D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C004D031C004D031C004 /* LibraryCodeView.swift */; };
 		D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */; };
@@ -102,20 +121,6 @@
 		C0DEB006C0DEB006C0DEB006 /* Features/Moodle/Questions/MoodleQuestionPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC006C0DEC006C0DEC006 /* Features/Moodle/Questions/MoodleQuestionPage.swift */; };
 		C0DEB007C0DEB007C0DEB007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC007C0DEC007C0DEC007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift */; };
 		C0DEB008C0DEB008C0DEB008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC008C0DEC008C0DEC008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift */; };
-		CA1E00010000000000000001 /* AcademicCalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000001 /* AcademicCalendarStore.swift */; };
-		CA1E00010000000000000002 /* AcademicCalendar in App Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* AcademicCalendar */; };
-		CA1E00010000000000000003 /* AcademicCalendar in Widget Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* AcademicCalendar */; };
-		C0ED00010000000000000001 /* CreditsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000001 /* CreditsStore.swift */; };
-		C0ED00010000000000000002 /* CreditsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000002 /* CreditsViewModel.swift */; };
-		C0ED00010000000000000003 /* SpecialThanksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000003 /* SpecialThanksView.swift */; };
-		C0ED00010000000000000004 /* credits.json in Resources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000004 /* credits.json */; };
-ABCD01000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000000; };
-ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000001; };
-		C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE10020000000000000001 /* UsageHeartbeatClient.swift */; };
-		3A8A81A3C5A9851967C03C98 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */; };
-		62AD37F2E5383849FA2B6E5D /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */; };
-		9E289C2BD2E28A6F0671725A /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */; };
-		89D0768DA2A7FD7F8E7DEDC9 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -143,8 +148,12 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-        C01100020000000000000001 /* ConnectionStatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Services/ConnectionStatusService.swift; sourceTree = SOURCE_ROOT; };
-        C01100020000000000000002 /* SettingsConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/SettingsConnectionViewModel.swift; sourceTree = SOURCE_ROOT; };
+		CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailCaptchaRecognizer.swift; sourceTree = SOURCE_ROOT; };
+		CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailBrowser.swift; sourceTree = SOURCE_ROOT; };
+		CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Models/MailModels.swift; sourceTree = SOURCE_ROOT; };
+		CA4A11020000000000000002 /* Features/Mail/Services/MailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailService.swift; sourceTree = SOURCE_ROOT; };
+		CA4A11020000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/ViewModels/MailViewModel.swift; sourceTree = SOURCE_ROOT; };
+		CA4A11020000000000000004 /* Features/Mail/Views/MailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Views/MailView.swift; sourceTree = SOURCE_ROOT; };
 		0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
 		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		10A32D662F431B8B0009BB45 /* NIU-APP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NIU-APP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -197,6 +206,8 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 		427CCA3AAC41141DAB4616E5 /* Shared/Components/ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Components/ToastView.swift; sourceTree = "<group>"; };
 		4FA77F7A401878E68B8284D4 /* Features/AcademicCalendar/Views/AcademicCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarView.swift; sourceTree = "<group>"; };
 		55E4F8FB8DF2C4FA7B8739A0 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
+		62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift; sourceTree = "<group>"; };
+		6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift; sourceTree = "<group>"; };
 		7887A6F400EF545D630B2778 /* Features/EventRegistration/Views/EventRegistration_Tab2_View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistration_Tab2_View.swift; sourceTree = "<group>"; };
 		79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventDetailView.swift; sourceTree = "<group>"; };
 		87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift; sourceTree = "<group>"; };
@@ -219,6 +230,8 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 		AA01BC18AA01BC18AA01BC18 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift; sourceTree = SOURCE_ROOT; };
 		AA01BC19AA01BC19AA01BC19 /* Features/GradeHistory/Views/GradeHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GradeHistory/Views/GradeHistoryView.swift; sourceTree = SOURCE_ROOT; };
 		AA02BC11AA02BC11AA02BC11 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		ABCD02000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/ClassLiveActivityAttributes.swift"; sourceTree = SOURCE_ROOT; };
+		ABCD02000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Services/LiveActivityRemoteClient.swift; sourceTree = SOURCE_ROOT; };
 		BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Models/MoodleModels.swift; sourceTree = "<group>"; };
 		BB01MF02BB01MF02BB01MF02 /* Features/Moodle/Services/MoodleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Services/MoodleService.swift; sourceTree = "<group>"; };
 		BB01MF03BB01MF03BB01MF03 /* Features/Moodle/ViewModels/MoodleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/ViewModels/MoodleViewModel.swift; sourceTree = "<group>"; };
@@ -231,6 +244,9 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 		BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleWebView.swift; sourceTree = "<group>"; };
 		BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Services/MoodleSessionManager.swift; sourceTree = "<group>"; };
 		BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleFileViewer.swift; sourceTree = "<group>"; };
+		C01100020000000000000001 /* Core/Services/ConnectionStatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Services/ConnectionStatusService.swift; sourceTree = SOURCE_ROOT; };
+		C01100020000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/SettingsConnectionViewModel.swift; sourceTree = SOURCE_ROOT; };
+		C0DE10020000000000000001 /* UsageHeartbeatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageHeartbeatClient.swift; sourceTree = "<group>"; };
 		C0DEA002C0DEA002C0DEA002 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleAttendanceScannerView.swift; sourceTree = "<group>"; };
 		C0DEA012C0DEA012C0DEA012 /* Features/Moodle/Repositories/MoodleRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Repositories/MoodleRepositories.swift; sourceTree = "<group>"; };
 		C0DEA014C0DEA014C0DEA014 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceModels.swift; sourceTree = "<group>"; };
@@ -245,12 +261,20 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 		C0DEC003C0DEC003C0DEC003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionsViewModel.swift; sourceTree = "<group>"; };
 		C0DEC004C0DEC004C0DEC004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleCourseQuestionsView.swift; sourceTree = "<group>"; };
 		C0DEC005C0DEC005C0DEC005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift; sourceTree = "<group>"; };
+		C0ED00020000000000000001 /* Features/Home/Services/CreditsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Services/CreditsStore.swift; sourceTree = SOURCE_ROOT; };
+		C0ED00020000000000000002 /* Features/Home/ViewModels/CreditsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/CreditsViewModel.swift; sourceTree = SOURCE_ROOT; };
+		C0ED00020000000000000003 /* Features/Home/Views/SpecialThanksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Views/SpecialThanksView.swift; sourceTree = SOURCE_ROOT; };
+		C0ED00020000000000000004 /* app-content/credits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "app-content/credits.json"; sourceTree = SOURCE_ROOT; };
+		CA1E00020000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/AcademicCalendarStore.swift"; sourceTree = SOURCE_ROOT; };
+		CA1E00020000000000000002 /* Resources/AcademicCalendar */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/AcademicCalendar; sourceTree = SOURCE_ROOT; };
 		D031C002D031C002D031C002 /* LibraryCodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeService.swift; sourceTree = "<group>"; };
 		D031C004D031C004D031C004 /* LibraryCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeView.swift; sourceTree = "<group>"; };
 		D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/CampusNavigation.swift"; sourceTree = SOURCE_ROOT; };
 		D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Models/AcademicCalendarModels.swift; sourceTree = "<group>"; };
 		DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift; sourceTree = "<group>"; };
 		E244B8906CF482139A4AF67C /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
+		E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift; sourceTree = "<group>"; };
+		E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift; sourceTree = "<group>"; };
 		E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift; sourceTree = "<group>"; };
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
 		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
@@ -258,19 +282,6 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 		C0DEC006C0DEC006C0DEC006 /* Features/Moodle/Questions/MoodleQuestionPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionPage.swift; sourceTree = "<group>"; };
 		C0DEC007C0DEC007C0DEC007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift; sourceTree = "<group>"; };
 		C0DEC008C0DEC008C0DEC008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionDetailView.swift; sourceTree = "<group>"; };
-		CA1E00020000000000000001 /* AcademicCalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/AcademicCalendarStore.swift"; sourceTree = SOURCE_ROOT; };
-		CA1E00020000000000000002 /* AcademicCalendar */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/AcademicCalendar; sourceTree = SOURCE_ROOT; };
-		C0ED00020000000000000001 /* CreditsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Services/CreditsStore.swift; sourceTree = SOURCE_ROOT; };
-		C0ED00020000000000000002 /* CreditsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/CreditsViewModel.swift; sourceTree = SOURCE_ROOT; };
-		C0ED00020000000000000003 /* SpecialThanksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Views/SpecialThanksView.swift; sourceTree = SOURCE_ROOT; };
-		C0ED00020000000000000004 /* credits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = app-content/credits.json; sourceTree = SOURCE_ROOT; };
-ABCD02000000000000000000 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/ClassLiveActivityAttributes.swift"; sourceTree = SOURCE_ROOT; };
-ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Services/LiveActivityRemoteClient.swift"; sourceTree = SOURCE_ROOT; };
-		C0DE10020000000000000001 /* UsageHeartbeatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageHeartbeatClient.swift; sourceTree = "<group>"; };
-		E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift; sourceTree = "<group>"; };
-		62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift; sourceTree = "<group>"; };
-		6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift; sourceTree = "<group>"; };
-		E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -323,12 +334,12 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 				10A32DB02F431F630009BB45 /* Shared */,
 				10D1F8792F80C57900034946 /* NIU-LiveActivities */,
 				D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */,
-				CA1E00020000000000000001 /* AcademicCalendarStore.swift */,
-				CA1E00020000000000000002 /* AcademicCalendar */,
-				C0ED00020000000000000004 /* credits.json */,
-				C0ED00020000000000000003 /* SpecialThanksView.swift */,
-				C0ED00020000000000000002 /* CreditsViewModel.swift */,
-				C0ED00020000000000000001 /* CreditsStore.swift */,
+				CA1E00020000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift */,
+				CA1E00020000000000000002 /* Resources/AcademicCalendar */,
+				C0ED00020000000000000004 /* app-content/credits.json */,
+				C0ED00020000000000000003 /* Features/Home/Views/SpecialThanksView.swift */,
+				C0ED00020000000000000002 /* Features/Home/ViewModels/CreditsViewModel.swift */,
+				C0ED00020000000000000001 /* Features/Home/Services/CreditsStore.swift */,
 				10D1F8742F80C57900034946 /* Frameworks */,
 				10A32D672F431B8B0009BB45 /* Products */,
 				10A32DC92F4327A60009BB45 /* Core */,
@@ -529,7 +540,7 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 		10A32DA32F431F630009BB45 /* Home */ = {
 			isa = PBXGroup;
 			children = (
-				C01100020000000000000002 /* SettingsConnectionViewModel.swift */,
+				C01100020000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift */,
 				10A32DA22F431F630009BB45 /* Views */,
 			);
 			path = Home;
@@ -607,7 +618,7 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 		10A32DC82F4327A60009BB45 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				C01100020000000000000001 /* ConnectionStatusService.swift */,
+				C01100020000000000000001 /* Core/Services/ConnectionStatusService.swift */,
 				10A32DC62F4327A60009BB45 /* LoginRepository.swift */,
 				10A32DC72F4327A60009BB45 /* SSOCaptchaProcessor.swift */,
 				10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */,
@@ -688,10 +699,18 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 				0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */,
 				13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */,
 				DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */,
+				CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */,
+				CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */,
+				CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */,
+				CA4A11020000000000000002 /* Features/Mail/Services/MailService.swift */,
+				CA4A11020000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift */,
+				CA4A11020000000000000004 /* Features/Mail/Views/MailView.swift */,
 				E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */,
 				6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */,
 				62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */,
 				E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */,
+				ABCD02000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift */,
+				ABCD02000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -876,8 +895,8 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 			buildActionMask = 2147483647;
 			files = (
 				10A32DB12F431F630009BB45 /* Assets.xcassets in Resources */,
-				CA1E00010000000000000002 /* AcademicCalendar in App Resources */,
-				C0ED00010000000000000004 /* credits.json in Resources */,
+				CA1E00010000000000000002 /* Resources/AcademicCalendar in Resources */,
+				C0ED00010000000000000004 /* app-content/credits.json in Resources */,
 				0E182345FA814B44AC09A920 /* Settings.bundle in Resources */,
 				A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */,
 				A1B2C3D4E5F60718293A4B5D /* LICENSE in Resources */,
@@ -888,7 +907,7 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CA1E00010000000000000003 /* AcademicCalendar in Widget Resources */,
+				CA1E00010000000000000003 /* Resources/AcademicCalendar in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -899,6 +918,12 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CA4A11010000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift in Sources */,
+				CA4A11010000000000000006 /* Features/Mail/Services/MailBrowser.swift in Sources */,
+				CA4A11010000000000000001 /* Features/Mail/Models/MailModels.swift in Sources */,
+				CA4A11010000000000000002 /* Features/Mail/Services/MailService.swift in Sources */,
+				CA4A11010000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift in Sources */,
+				CA4A11010000000000000004 /* Features/Mail/Views/MailView.swift in Sources */,
 				79E5A654058A1E7F384DB426 /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift in Sources */,
 				C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */,
 				0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */,
@@ -931,15 +956,15 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 				10A32DB62F431F630009BB45 /* MinimalTextField.swift in Sources */,
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,
 				D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */,
-ABCD01000000000000000001,
+				ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */,
 				C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */,
-				C01100010000000000000001 /* ConnectionStatusService.swift in Sources */,
-				C01100010000000000000002 /* SettingsConnectionViewModel.swift in Sources */,
-ABCD01000000000000000000,
-				CA1E00010000000000000001 /* AcademicCalendarStore.swift in Sources */,
-				C0ED00010000000000000003 /* SpecialThanksView.swift in Sources */,
-				C0ED00010000000000000002 /* CreditsViewModel.swift in Sources */,
-				C0ED00010000000000000001 /* CreditsStore.swift in Sources */,
+				C01100010000000000000001 /* Core/Services/ConnectionStatusService.swift in Sources */,
+				C01100010000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift in Sources */,
+				ABCD01000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift in Sources */,
+				CA1E00010000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift in Sources */,
+				C0ED00010000000000000003 /* Features/Home/Views/SpecialThanksView.swift in Sources */,
+				C0ED00010000000000000002 /* Features/Home/ViewModels/CreditsViewModel.swift in Sources */,
+				C0ED00010000000000000001 /* Features/Home/Services/CreditsStore.swift in Sources */,
 				10A32DB82F431F630009BB45 /* MinimalCard.swift in Sources */,
 				10A32DB92F431F630009BB45 /* Theme.swift in Sources */,
 				10A32DBA2F431F630009BB45 /* MinimalSecureField.swift in Sources */,
@@ -1141,15 +1166,13 @@ ABCD01000000000000000000,
 		10A32D722F431B8C0009BB45 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_ATTEST_ENVIRONMENT = development;
+				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
-                APS_ENVIRONMENT = development;
-                APP_ATTEST_ENVIRONMENT = development;
-                NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
-				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 10;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1174,7 +1197,9 @@ ABCD01000000000000000000,
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.1.0;
+				NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
+				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				PRODUCT_BUNDLE_IDENTIFIER = dev.chienniuapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1193,15 +1218,13 @@ ABCD01000000000000000000,
 		10A32D732F431B8C0009BB45 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_ATTEST_ENVIRONMENT = production;
+				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
-                APS_ENVIRONMENT = production;
-                APP_ATTEST_ENVIRONMENT = production;
-                NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
-				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 10;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1226,7 +1249,9 @@ ABCD01000000000000000000,
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.1.0;
+				NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
+				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				PRODUCT_BUNDLE_IDENTIFIER = dev.chienniuapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1249,7 +1274,7 @@ ABCD01000000000000000000,
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
@@ -1261,7 +1286,7 @@ ABCD01000000000000000000,
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.chienniuapp.NIU-LiveActivities";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1282,7 +1307,7 @@ ABCD01000000000000000000,
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
@@ -1294,7 +1319,7 @@ ABCD01000000000000000000,
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.chienniuapp.NIU-LiveActivities";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

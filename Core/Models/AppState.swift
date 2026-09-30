@@ -40,6 +40,7 @@ final class AppState: ObservableObject {
 
     func login(user: User) {
         guard !isLoggingOut else { return }
+        MailViewModel.shared.reset()
         LiveActivityRemoteClient.shared.stop()
         UserDefaults.standard.set(UUID().uuidString, forKey: StorageKeys.authSessionID)
         let mergedUser = mergedWithPersistedProfile(user)
@@ -61,6 +62,7 @@ final class AppState: ObservableObject {
 
     func logout() {
         guard !isLoggingOut else { return }
+        MailViewModel.shared.reset()
         LiveActivityRemoteClient.shared.disable()
         isLoggingOut = true
         UserDefaults.standard.set(true, forKey: "app.logoutCleanupPending")
