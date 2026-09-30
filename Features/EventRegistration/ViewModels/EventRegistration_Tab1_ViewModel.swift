@@ -17,13 +17,15 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
     @Published var searchText: String = ""
     
     var filteredEvents: [EventData] {
-        if searchText.isEmpty {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
             return events
         } else {
             return events.filter { event in
-                event.name.localizedCaseInsensitiveContains(searchText) ||
-                event.department.localizedCaseInsensitiveContains(searchText) ||
-                event.eventDetail.localizedCaseInsensitiveContains(searchText)
+                event.eventSerialID.localizedCaseInsensitiveContains(query) ||
+                event.name.localizedCaseInsensitiveContains(query) ||
+                event.department.localizedCaseInsensitiveContains(query) ||
+                event.eventDetail.localizedCaseInsensitiveContains(query)
             }
         }
     }

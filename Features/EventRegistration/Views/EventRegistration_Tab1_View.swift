@@ -6,15 +6,16 @@ struct EventRegistration_Tab1_View: View {
     
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            Color(.systemGroupedBackground).ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // 搜尋框
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.gray)
-                    TextField("搜尋活動名稱、主辦單位或內容", text: $viewModel.searchText)
+                    TextField("搜尋活動編號或關鍵字", text: $viewModel.searchText)
                         .textFieldStyle(PlainTextFieldStyle())
+                        .accessibilityHint("可搜尋活動編號、名稱、主辦單位或內容")
                     
                     if !viewModel.searchText.isEmpty {
                         Button(action: {
@@ -22,11 +23,14 @@ struct EventRegistration_Tab1_View: View {
                         }) {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(.gray)
+                                .frame(minWidth: 44, minHeight: 44)
                         }
+                        .accessibilityLabel("清除搜尋")
                     }
                 }
-                .padding(10)
-                .background(Color(.systemGray6))
+                .frame(minHeight: 44)
+                .padding(.horizontal, 10)
+                .background(Color(.secondarySystemGroupedBackground))
                 .cornerRadius(10)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
@@ -130,6 +134,10 @@ struct EventRow: View {
                     .cornerRadius(4)
             }
             
+            Label("活動編號：\(event.eventSerialID)", systemImage: "number")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
             HStack {
                 Image(systemName: "building.2")
                     .foregroundColor(.secondary)
@@ -163,8 +171,12 @@ struct EventRow: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(12)
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
+        }
         .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
     }
     
