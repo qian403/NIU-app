@@ -465,6 +465,14 @@ struct HomeView: View {
                 )
 
                 FeatureCard(
+                    icon: "envelope.fill",
+                    title: "校園信箱",
+                    subtitle: "收發郵件、附件與信件管理",
+                    color: .blue,
+                    destination: MailView()
+                )
+
+                FeatureCard(
                     icon: "doc.text",
                     title: "在學證明",
                     subtitle: "註冊查詢、顯示與列印",
