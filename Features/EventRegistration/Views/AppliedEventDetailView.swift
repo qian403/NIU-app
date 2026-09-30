@@ -56,7 +56,7 @@ struct AppliedEventDetailView: View {
                             Text("活動說明")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.primary)
-                            Text(event.eventDetail.replacingOccurrences(of: "<br>", with: "\n").replacingOccurrences(of: "<br/>", with: "\n"))
+                            EventLinkedText(event.eventDetail)
                                 .font(.system(size: 14))
                                 .foregroundColor(.primary.opacity(0.85))
                                 .lineLimit(nil)
@@ -81,7 +81,7 @@ struct AppliedEventDetailView: View {
                     
                     // 其他資訊
                     if !event.Related_links.isEmpty {
-                        InfoRow(icon: "link", title: "相關連結", value: event.Related_links)
+                        InfoRow(icon: "link", title: "相關連結", value: event.Related_links, detectsLinks: true)
                     }
                     
                     if !event.Multi_factor_authentication.isEmpty {
@@ -93,7 +93,7 @@ struct AppliedEventDetailView: View {
                             Text("備註")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.primary)
-                            Text(event.Remark.replacingOccurrences(of: "<br>", with: "\n").replacingOccurrences(of: "<br/>", with: "\n"))
+                            EventLinkedText(event.Remark)
                                 .font(.system(size: 14))
                                 .foregroundColor(.primary.opacity(0.85))
                                 .lineLimit(nil)
@@ -108,6 +108,9 @@ struct AppliedEventDetailView: View {
             .navigationTitle("活動詳情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    EventShareMenu(content: event.shareContent)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("關閉") {
                         dismiss()
