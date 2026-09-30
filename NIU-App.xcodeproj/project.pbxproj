@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C0DE90010000000000000003 /* PostalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE90020000000000000003 /* PostalModels.swift */; };
+		C0DE90010000000000000004 /* PostalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE90020000000000000004 /* PostalService.swift */; };
+		C0DE90010000000000000001 /* PostalQueryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE90020000000000000001 /* PostalQueryView.swift */; };
+		C0DE90010000000000000002 /* PostalQueryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE90020000000000000002 /* PostalQueryViewModel.swift */; };
 		CA4A11010000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */; };
 		CA4A11010000000000000006 /* Features/Mail/Services/MailBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */; };
 		CA4A11010000000000000001 /* Features/Mail/Models/MailModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */; };
@@ -148,6 +152,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C0DE90020000000000000003 /* PostalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Postal/Models/PostalModels.swift; sourceTree = SOURCE_ROOT; };
+		C0DE90020000000000000004 /* PostalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Postal/Services/PostalService.swift; sourceTree = SOURCE_ROOT; };
+		C0DE90020000000000000001 /* PostalQueryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Postal/Views/PostalQueryView.swift; sourceTree = SOURCE_ROOT; };
+		C0DE90020000000000000002 /* PostalQueryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Postal/ViewModels/PostalQueryViewModel.swift; sourceTree = SOURCE_ROOT; };
 		CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailCaptchaRecognizer.swift; sourceTree = SOURCE_ROOT; };
 		CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailBrowser.swift; sourceTree = SOURCE_ROOT; };
 		CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Models/MailModels.swift; sourceTree = SOURCE_ROOT; };
@@ -641,6 +649,10 @@
 		10A32DF42F43C76F0009BB45 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
+				C0DE90020000000000000001 /* PostalQueryView.swift */,
+				C0DE90020000000000000002 /* PostalQueryViewModel.swift */,
+				C0DE90020000000000000003 /* PostalModels.swift */,
+				C0DE90020000000000000004 /* PostalService.swift */,
 				8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */,
 				9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */,
 				0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */,
@@ -1009,6 +1021,10 @@
 				D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */,
 				D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */,
 				10A32DBB2F431F630009BB45 /* HomeView.swift in Sources */,
+				C0DE90010000000000000001 /* PostalQueryView.swift in Sources */,
+				C0DE90010000000000000002 /* PostalQueryViewModel.swift in Sources */,
+				C0DE90010000000000000003 /* PostalModels.swift in Sources */,
+				C0DE90010000000000000004 /* PostalService.swift in Sources */,
 				AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */,
 				10A32DBD2F431F630009BB45 /* LoginView.swift in Sources */,
 				10A32DBE2F431F630009BB45 /* LoginViewModel.swift in Sources */,

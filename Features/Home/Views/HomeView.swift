@@ -479,6 +479,14 @@ struct HomeView: View {
                     color: .cyan,
                     destination: EnrollmentCertificateView()
                 )
+
+                FeatureCard(
+                    icon: "shippingbox.fill",
+                    title: "郵件包裹查詢",
+                    subtitle: "查詢收件與領取狀態",
+                    color: .brown,
+                    destination: PostalQueryView()
+                )
             }
             .opacity(animateIn ? 1 : 0)
             .animation(Theme.Animation.fast.delay(0.7), value: animateIn)
