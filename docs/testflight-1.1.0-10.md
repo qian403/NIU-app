@@ -22,8 +22,11 @@
 - 2026-09-30，上傳前於 App Store Connect 確認最新建置為 1.1.0 (9)，上傳處理狀態「完成」；正式 1.0.1「已可發佈」，1.1.0「準備提交」。
 - 維持同一個待發行版本 1.1.0，App／Widget 的 Debug／Release 建置號同步增加至 10。
 - 發行團隊：Very Fast Network LTD（`G4LXL97NF9`）。
+- 程式來源：`5642f26d19854ffaa2954cc585fc5c7d9d68101e`，已推送至 GitHub `main`。
 - Release Archive 成功，編譯日誌無 warning/error。封存檢查確認 App／Widget 同為 1.1.0 (10)、最低 iOS 26.2，隱私宣告完整且不包含 DEBUG 點名控制。
 - 郵件登入與 Widget 離線回歸通過；`codesign --verify --deep --strict` 在系統信任環境通過，團隊識別碼為 `G4LXL97NF9`。
 - 封存：`~/Library/Developer/Xcode/Archives/2026-09-30/NIU-TestFlight-1.1.0-10.xcarchive`。
-- TestFlight 上傳及 Apple 處理結果待完成後記錄。
+- 台北時間 2026-09-30 21:41:43，Xcode 回報 `Upload succeeded` 與 `EXPORT SUCCEEDED`。
+- 上傳後已於 App Store Connect 確認 1.1.0 (10)，建立時間 Sep 30, 2026 9:41 PM；最後核對狀態為「處理中」，尚不能視為已可安裝測試。
+- 未另外修改測試群組、邀請測試人員或送出 Beta 審查。
 - 本次範圍為 GitHub 推送與 TestFlight 上傳，不送 App Store 正式審查。
