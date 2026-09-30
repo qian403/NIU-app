@@ -140,6 +140,8 @@ struct MoodleModule: Codable, Identifiable {
     let modplural: String?
     let url: String?
     let visible: Int?
+    let uservisible: Bool?
+    let availabilityinfo: String?
     let description: String?
     let contents: [MoodleContent]?
     
@@ -154,6 +156,7 @@ struct MoodleModule: Codable, Identifiable {
         case "quiz": return "questionmark.circle"
         case "label": return "tag"
         case "feedback": return "star.bubble"
+        case "questionnaire", "survey": return "list.clipboard"
         case "choice": return "checklist"
         case "attendance": return "person.text.rectangle"
         case "irs": return "hand.raised"

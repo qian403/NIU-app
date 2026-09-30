@@ -5,6 +5,7 @@ struct MoodleCourseDetailView: View {
     @StateObject private var viewModel: MoodleCourseDetailViewModel
     @StateObject private var announcementsViewModel: MoodleAnnouncementsViewModel
     @StateObject private var assignmentsViewModel: MoodleAssignmentsListViewModel
+    @StateObject private var questionsViewModel: MoodleQuestionsViewModel
     @StateObject private var resourcesViewModel: MoodleResourcesViewModel
     @StateObject private var attendanceViewModel: MoodleAttendanceViewModel
     @StateObject private var gradesViewModel: MoodleGradesViewModel
@@ -17,6 +18,9 @@ struct MoodleCourseDetailView: View {
         _viewModel = StateObject(wrappedValue: MoodleCourseDetailViewModel())
         _announcementsViewModel = StateObject(wrappedValue: MoodleAnnouncementsViewModel())
         _assignmentsViewModel = StateObject(wrappedValue: MoodleAssignmentsListViewModel())
+        _questionsViewModel = StateObject(wrappedValue: MoodleQuestionsViewModel(
+            repository: MoodleQuestionsRepository(client: MoodleService.shared)
+        ))
         _resourcesViewModel = StateObject(
             wrappedValue: MoodleResourcesViewModel(repository: resourcesRepository)
         )
@@ -69,38 +73,40 @@ struct MoodleCourseDetailView: View {
     }
 
     private var tabBar: some View {
-        HStack(spacing: 6) {
-            ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        viewModel.selectedTab = tab
+        ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            viewModel.selectedTab = tab
+                        }
+                    }) {
+                        VStack(spacing: 4) {
+                            Image(systemName: tab.iconName)
+                                .font(.body.weight(.semibold))
+                            Text(tab.rawValue)
+                                .font(.caption.weight(.semibold))
+                                .fixedSize()
+                        }
+                        .foregroundStyle(viewModel.selectedTab == tab ? Color.accentColor : Color(.secondaryLabel))
+                        .frame(minWidth: 52, minHeight: 52)
+                        .padding(.horizontal, 6)
+                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
-                }) {
-                    VStack(spacing: 4) {
-                        Image(systemName: tab.iconName)
-                            .font(.system(size: 15, weight: .semibold))
-                        Text(tab.rawValue)
-                            .font(.system(size: 11, weight: .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
-                    .foregroundStyle(viewModel.selectedTab == tab ? Color.accentColor : Color(.secondaryLabel))
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .glassEffect(
+                        viewModel.selectedTab == tab
+                            ? .regular.tint(Color.accentColor.opacity(0.12)).interactive()
+                            : .regular.interactive(),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(viewModel.selectedTab == tab ? .isSelected : [])
                 }
-                .frame(maxWidth: .infinity)
-                .glassEffect(
-                    viewModel.selectedTab == tab
-                        ? .regular.tint(Color.accentColor.opacity(0.12)).interactive()
-                        : .regular.interactive(),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(viewModel.selectedTab == tab ? .isSelected : [])
             }
+            .padding(.horizontal, Theme.Spacing.medium)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, Theme.Spacing.medium)
-        .padding(.vertical, 12)
+        .scrollIndicators(.hidden)
     }
 
     // MARK: - Tab Content
@@ -124,6 +130,8 @@ struct MoodleCourseDetailView: View {
                 viewModel: resourcesViewModel,
                 repository: resourcesRepository
             )
+        case .questions:
+            MoodleCourseQuestionsView(courseId: course.id, viewModel: questionsViewModel)
         case .attendance:
             MoodleCourseAttendanceView(courseId: course.id, viewModel: attendanceViewModel)
         case .grades:

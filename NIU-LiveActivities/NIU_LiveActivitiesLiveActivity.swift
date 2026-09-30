@@ -6,9 +6,12 @@ import SwiftUI
 struct NIU_LiveActivitiesLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ClassLiveActivityAttributes.self) { context in
-            lockScreenView(context)
-                .activityBackgroundTint(Color.black.opacity(0.88))
-                .activitySystemActionForegroundColor(Color.white)
+            ClassLiveActivityContentView(context: context) {
+                lockScreenView(context)
+            }
+            .activityBackgroundTint(Color.black.opacity(0.88))
+            .activitySystemActionForegroundColor(Color.white)
+            .widgetURL(URL(string: "niuapp://class-schedule"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -111,6 +114,7 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
             .widgetURL(URL(string: "niuapp://class-schedule"))
             .keylineTint(activityStatusTint(context))
         }
+        .supplementalActivityFamilies([.small, .medium])
     }
 
     private func activityStatusLabel(_ context: ActivityViewContext<ClassLiveActivityAttributes>) -> String {

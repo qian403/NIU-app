@@ -82,6 +82,11 @@
 		C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */; };
 		C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */; };
 		C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */; };
+		C0DEB001C0DEB001C0DEB001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC001C0DEC001C0DEC001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift */; };
+		C0DEB002C0DEB002C0DEB002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC002C0DEC002C0DEC002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift */; };
+		C0DEB003C0DEB003C0DEB003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC003C0DEC003C0DEC003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift */; };
+		C0DEB004C0DEB004C0DEB004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC004C0DEC004C0DEC004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift */; };
+		C0DEB005C0DEB005C0DEB005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC005C0DEC005C0DEC005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift */; };
 		C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */; };
 		D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C002D031C002D031C002 /* LibraryCodeService.swift */; };
 		D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C004D031C004D031C004 /* LibraryCodeView.swift */; };
@@ -94,6 +99,9 @@
 		E880B97A27A0F77D4C7CFF25 /* Features/EventRegistration/Views/EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */; };
 		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
 		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
+		C0DEB006C0DEB006C0DEB006 /* Features/Moodle/Questions/MoodleQuestionPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC006C0DEC006C0DEC006 /* Features/Moodle/Questions/MoodleQuestionPage.swift */; };
+		C0DEB007C0DEB007C0DEB007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC007C0DEC007C0DEC007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift */; };
+		C0DEB008C0DEB008C0DEB008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC008C0DEC008C0DEC008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift */; };
 		CA1E00010000000000000001 /* AcademicCalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000001 /* AcademicCalendarStore.swift */; };
 		CA1E00010000000000000002 /* AcademicCalendar in App Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* AcademicCalendar */; };
 		CA1E00010000000000000003 /* AcademicCalendar in Widget Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* AcademicCalendar */; };
@@ -232,6 +240,11 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 		C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift; sourceTree = "<group>"; };
 		C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseTabViews.swift; sourceTree = "<group>"; };
 		C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift; sourceTree = "<group>"; };
+		C0DEC001C0DEC001C0DEC001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionActivity.swift; sourceTree = "<group>"; };
+		C0DEC002C0DEC002C0DEC002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionsRepository.swift; sourceTree = "<group>"; };
+		C0DEC003C0DEC003C0DEC003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionsViewModel.swift; sourceTree = "<group>"; };
+		C0DEC004C0DEC004C0DEC004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleCourseQuestionsView.swift; sourceTree = "<group>"; };
+		C0DEC005C0DEC005C0DEC005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift; sourceTree = "<group>"; };
 		D031C002D031C002D031C002 /* LibraryCodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeService.swift; sourceTree = "<group>"; };
 		D031C004D031C004D031C004 /* LibraryCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeView.swift; sourceTree = "<group>"; };
 		D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/CampusNavigation.swift"; sourceTree = SOURCE_ROOT; };
@@ -242,6 +255,9 @@ ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sour
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
 		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
+		C0DEC006C0DEC006C0DEC006 /* Features/Moodle/Questions/MoodleQuestionPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionPage.swift; sourceTree = "<group>"; };
+		C0DEC007C0DEC007C0DEC007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift; sourceTree = "<group>"; };
+		C0DEC008C0DEC008C0DEC008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionDetailView.swift; sourceTree = "<group>"; };
 		CA1E00020000000000000001 /* AcademicCalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/AcademicCalendarStore.swift"; sourceTree = SOURCE_ROOT; };
 		CA1E00020000000000000002 /* AcademicCalendar */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/AcademicCalendar; sourceTree = SOURCE_ROOT; };
 		C0ED00020000000000000001 /* CreditsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Services/CreditsStore.swift; sourceTree = SOURCE_ROOT; };
@@ -659,6 +675,14 @@ ABCD02000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourceco
 				C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */,
 				C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */,
 				C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */,
+				C0DEC005C0DEC005C0DEC005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift */,
+				C0DEC008C0DEC008C0DEC008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift */,
+				C0DEC007C0DEC007C0DEC007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift */,
+				C0DEC006C0DEC006C0DEC006 /* Features/Moodle/Questions/MoodleQuestionPage.swift */,
+				C0DEC004C0DEC004C0DEC004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift */,
+				C0DEC003C0DEC003C0DEC003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift */,
+				C0DEC002C0DEC002C0DEC002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift */,
+				C0DEC001C0DEC001C0DEC001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift */,
 				8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */,
 				F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */,
 				0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */,
@@ -949,6 +973,14 @@ ABCD01000000000000000000,
 				C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */,
 				C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */,
 				C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */,
+				C0DEB005C0DEB005C0DEB005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift in Sources */,
+				C0DEB008C0DEB008C0DEB008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift in Sources */,
+				C0DEB007C0DEB007C0DEB007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift in Sources */,
+				C0DEB006C0DEB006C0DEB006 /* Features/Moodle/Questions/MoodleQuestionPage.swift in Sources */,
+				C0DEB004C0DEB004C0DEB004 /* Features/Moodle/Questions/MoodleCourseQuestionsView.swift in Sources */,
+				C0DEB003C0DEB003C0DEB003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift in Sources */,
+				C0DEB002C0DEB002C0DEB002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift in Sources */,
+				C0DEB001C0DEB001C0DEB001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift in Sources */,
 				D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */,
 				D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */,
 				10A32DBB2F431F630009BB45 /* HomeView.swift in Sources */,

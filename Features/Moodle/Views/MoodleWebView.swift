@@ -143,6 +143,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var externalOpenURL: URL?
     @Published var errorMessage: String?
     @Published private(set) var attendanceOutcome: MoodleAttendanceWebOutcome?
+    @Published private(set) var questionNeedsWebInteraction = false
 
     private var storedWebView: WKWebView?
     var webView: WKWebView {
@@ -155,15 +156,19 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
+        if isQuestionActivityTarget { webView.uiDelegate = questionUIDelegate }
         webView.allowsBackForwardNavigationGestures = true
         storedWebView = webView
         return webView
     }
     private var targetURL: String?
     private var originalTargetURL: String?
+    private let questionUIDelegate = MoodleQuestionWebUIDelegate()
     private var phase: Phase = .idle
     private var hasStarted = false
     private var loadingTask: Task<Void, Never>?
+    private var questionTimeoutTask: Task<Void, Never>?
+    private var attemptedQuestionLogin = false
     private var loadGeneration = 0
     private var retriedAfterLoginRedirect = false
     private var isAutologinSupported = true
@@ -193,10 +198,23 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         storedWebView?.navigationDelegate = self
         isPageReady = false
         self.originalTargetURL = targetURL
+        questionNeedsWebInteraction = false
+        attemptedQuestionLogin = false
+        storedWebView?.uiDelegate = isQuestionActivityTarget ? questionUIDelegate : nil
         self.errorMessage = nil
         self.attendanceOutcome = nil
         self.assignmentResolveAttempts = 0
         self.attendanceLoginAttempts = 0
+
+        if isQuestionActivityTarget, let url = URL(string: targetURL) {
+            // A persistent Moodle cookie is reusable; mobile autologin keys are not.
+            self.targetURL = targetURL
+            externalOpenURL = url
+            phase = .loadingTarget
+            startQuestionTimeout()
+            webView.load(URLRequest(url: url, timeoutInterval: 20))
+            return
+        }
 
         let generation = loadGeneration
         loadingTask = Task { [weak self] in
@@ -210,16 +228,21 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     func cancel() {
         loadGeneration &+= 1
         attendanceNavigationGeneration &+= 1
+        questionUIDelegate.cancel()
+        questionTimeoutTask?.cancel()
+        questionTimeoutTask = nil
         loadingTask?.cancel()
         loadingTask = nil
         storedWebView?.stopLoading()
         storedWebView?.navigationDelegate = nil
+        storedWebView?.uiDelegate = nil
         hasStarted = false
         phase = .idle
         retriedAfterLoginRedirect = false
         hasTriedSilentRefresh = false
         webContentRecoveryAttempts = 0
         attendanceLoginAttempts = 0
+        questionNeedsWebInteraction = false
     }
 
     func retry() {
@@ -265,11 +288,57 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         return MoodleAttendanceQRCode.validatedURL(from: originalTargetURL) != nil
     }
 
-    private var isIRSActivityTarget: Bool {
+    private var isQuestionActivityTarget: Bool {
         guard let originalTargetURL,
-              let components = URLComponents(string: originalTargetURL) else { return false }
-        return components.host?.lowercased() == "euni.niu.edu.tw"
-            && components.path.lowercased() == "/mod/irs/view.php"
+              let url = URL(string: originalTargetURL) else { return false }
+        return MoodleQuestionActivityKind.matches(url)
+    }
+
+    private func startQuestionTimeout() {
+        questionTimeoutTask?.cancel()
+        let generation = loadGeneration
+        questionTimeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(25)) }
+            catch { return }
+            guard let self, hasStarted, generation == loadGeneration else { return }
+            loadingTask?.cancel()
+            storedWebView?.stopLoading()
+            failTargetLoad("問答載入逾時，請檢查網路後重試。")
+        }
+    }
+
+    private func recoverQuestionLogin() {
+        guard let originalTargetURL else { return }
+        attemptedQuestionLogin = true
+        isPageReady = false
+        let generation = loadGeneration
+        startQuestionTimeout()
+        loadingTask?.cancel()
+        loadingTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let url = try await MoodleService.shared.autologinURL(for: originalTargetURL)
+                guard !Task.isCancelled, generation == loadGeneration else { return }
+                // No private token means there is no automatic browser-login route.
+                guard url.absoluteString != originalTargetURL else {
+                    showQuestionLogin()
+                    return
+                }
+                phase = .loadingTarget
+                webView.load(URLRequest(url: url, timeoutInterval: 20))
+            } catch {
+                guard !Task.isCancelled, generation == loadGeneration else { return }
+                showQuestionLogin()
+            }
+        }
+    }
+
+    private func showQuestionLogin() {
+        questionTimeoutTask?.cancel()
+        questionTimeoutTask = nil
+        questionNeedsWebInteraction = true
+        isPageReady = true
+        errorMessage = nil
     }
     
     private func targetURLReady(_ resolvedTarget: URL) {
@@ -289,9 +358,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         let generation = loadGeneration
         syncCookies { [weak self] in
             guard let self, self.hasStarted, generation == self.loadGeneration else { return }
-            // IRS is a browser-only activity. If mobile autologin is available,
+            // If activity mobile autologin is available,
             // use it immediately instead of taking an unnecessary SSO round trip.
-            if self.isIRSActivityTarget,
+            if self.isQuestionActivityTarget,
                resolvedTarget.path.lowercased().contains("/admin/tool/mobile/autologin.php") {
                 self.phase = .loadingTarget
                 self.webView.load(URLRequest(url: resolvedTarget))
@@ -799,6 +868,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     private func finishLoading() {
+        questionTimeoutTask?.cancel()
+        questionTimeoutTask = nil
         phase = .done
         isPageReady = true
     }
@@ -1033,6 +1104,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     private func failTargetLoad(_ message: String) {
+        questionTimeoutTask?.cancel()
+        questionTimeoutTask = nil
         phase = .done
         isPageReady = false
         errorMessage = message
@@ -1139,6 +1212,22 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         if isAttendanceQRTarget, isLoginPage(url) {
             handleAttendanceLoginPage(wv)
             return
+        }
+        if isQuestionActivityTarget, isLoginPage(url) {
+            // Keep an initial SSO handoff pending so a login that returns to
+            // Moodle's home page still opens the selected activity once.
+            if phase == .resolvingEuni { phase = .ssoRedirect }
+            if !attemptedQuestionLogin {
+                recoverQuestionLogin()
+            } else {
+                showQuestionLogin()
+            }
+            return
+        }
+        if isQuestionActivityTarget {
+            questionTimeoutTask?.cancel()
+            questionTimeoutTask = nil
+            questionNeedsWebInteraction = false
         }
 
         switch phase {
@@ -1272,6 +1361,11 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        if isQuestionActivityTarget {
+            questionUIDelegate.cancel()
+            failTargetLoad("問答頁面已中斷，尚無法確認答案是否送出。請重新開啟活動並查看 M 園區的作答紀錄。")
+            return
+        }
         if isAttendanceQRTarget {
             // Reloading a submission may reuse an expired code or submit it again.
             guard attendanceOutcome?.isTerminal != true else { return }

@@ -9,6 +9,7 @@ final class MoodleCourseDetailViewModel: ObservableObject {
     enum Tab: String, CaseIterable {
         case announcements = "公告"
         case assignments = "作業"
+        case questions = "問答"
         case resources = "資源"
         case attendance = "出缺席"
         case grades = "成績"
@@ -17,6 +18,7 @@ final class MoodleCourseDetailViewModel: ObservableObject {
             switch self {
             case .announcements: "megaphone"
             case .assignments: "checklist"
+            case .questions: "questionmark.bubble"
             case .resources: "folder"
             case .attendance: "person.badge.clock"
             case .grades: "chart.bar"
