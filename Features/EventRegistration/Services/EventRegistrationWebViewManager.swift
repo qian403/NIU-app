@@ -2,6 +2,7 @@ import Foundation
 import WebKit
 
 /// 管理活動報名 WebView 的共享配置，確保所有 Tab 共享登入狀態
+@MainActor
 final class EventRegistrationWebViewManager {
     static let shared = EventRegistrationWebViewManager()
     
@@ -47,9 +48,9 @@ final class EventRegistrationWebViewManager {
         }
     }
     
-    /// 只要任一 tab 已到達可視為登入成功的頁面，就可結束登入鎖，避免跨 tab 卡死
+    /// 只有登入擁有者可釋放鎖；公開活動列表不代表另一分頁已登入。
     func completeLoginIfNeeded(requesterID: String) {
-        guard isLoggingIn else { return }
+        guard isLoggingIn, activeLoginRequesterID == requesterID else { return }
         print("[EventRegistration] 收到登入完成訊號 requester=\(requesterID), active=\(activeLoginRequesterID ?? "nil")")
         notifyLoginCompleted()
     }
@@ -62,11 +63,9 @@ final class EventRegistrationWebViewManager {
         let handlers = Array(loginCompletionHandlers.values)
         loginCompletionHandlers.removeAll()
         
-        // 稍微延遲讓 Cookie 寫入完成，避免不必要的等待
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            print("[EventRegistration] 執行 \(handlers.count) 個等待的 completion handler")
-            handlers.forEach { $0() }
-        }
+        // 同一個 WKWebsiteDataStore 已共用 Cookie；同步釋放等待者，
+        // 避免延遲閉包在登出重置後重新啟動舊登入。
+        handlers.forEach { $0() }
     }
     
     /// Remove this page's waiter and release ownership if its navigation was cancelled.

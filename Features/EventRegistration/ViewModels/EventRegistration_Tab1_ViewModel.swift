@@ -258,7 +258,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
     @MainActor
     func manualRefresh() async {
         guard !Task.isCancelled else { return }
-        EventRegistrationWebViewManager.shared.resetLoginState()
+        EventRegistrationWebViewManager.shared.cancelLogin(requesterID: loginRequesterID)
         loadEventList()
         let generation = loadGeneration
 
@@ -297,12 +297,8 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
 
     private func refresh() {
         guard !loadingCancelled else { return }
-        let generation = loadGeneration
-        // 延遲確保頁面完全載入
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
-            self.executeRefresh(retryCount: 0)
-        }
+        // didFinish 已完成 DOM 載入；僅解析失敗時才延遲重試。
+        executeRefresh(retryCount: 0)
     }
     
     private func executeRefresh(retryCount: Int) {
@@ -325,9 +321,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                 } else {
                     Task { @MainActor in
                         guard !self.loadingCancelled, generation == self.loadGeneration else { return }
-                        self.isOverlayVisible = false
-                        self.toastMessage = "載入活動失敗，請重新整理"
-                        self.showToast = true
+                        self.failLoading("載入活動失敗，請重新整理")
                     }
                 }
                 return
@@ -341,16 +335,6 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                         throw NSError(domain: "EventRegistration", code: -1, userInfo: [NSLocalizedDescriptionKey: "JSON 編碼失敗"])
                     }
                     if let jsonArray = try JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] {
-                        
-                        // 如果沒有活動資料且重試次數未達上限，重試
-                        if jsonArray.isEmpty && retryCount < 3 {
-                            print("[EventRegistration] 沒有活動資料，重試 (\(retryCount + 1)/3)")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                                guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
-                                self.executeRefresh(retryCount: retryCount + 1)
-                            }
-                            return
-                        }
                         
                         let decodedEvents = jsonArray.compactMap { dict -> EventData? in
                             guard
@@ -390,15 +374,23 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                             )
                         }
                         
+                        guard decodedEvents.count == jsonArray.count else {
+                            self.failLoading("活動資料格式異常，請重新整理")
+                            return
+                        }
                         Task { @MainActor in
                             guard !self.loadingCancelled, generation == self.loadGeneration else { return }
                             self.events = decodedEvents
                             self.showPage()
                         }
+                    } else {
+                        self.failLoading("活動資料格式異常，請重新整理")
                     }
                 } catch {
-                    print("JSON 解析錯誤: \(error)")
+                    self.failLoading("活動資料解析失敗，請重新整理")
                 }
+            } else {
+                self.failLoading("無法讀取活動資料，請重新整理")
             }
         }
     }
@@ -438,7 +430,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
     
     private func handlePageFinished(url: String) {
         guard !loadingCancelled else { return }
-        print("[EventRegistration] 頁面載入完成: \(url)")
+        print("[EventRegistration] 頁面載入完成: \(webView?.url?.path ?? "")")
         
         if url.contains("/MvcTeam/Account/Login") {
             // 被重定向到登入頁面，表示未登入，執行登入
@@ -478,10 +470,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                 if bodyText.contains("帳號或密碼錯誤") || bodyText.contains("登入失敗") {
                     Task { @MainActor in
                         guard !self.loadingCancelled, generation == self.loadGeneration else { return }
-                        self.isSubmittingLogin = false
-                        self.isOverlayVisible = false
-                        self.toastMessage = "帳號或密碼錯誤"
-                        self.showToast = true
+                        self.failLoading("帳號或密碼錯誤")
                     }
                     return
                 }
@@ -492,10 +481,7 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
                 print("[EventRegistration] 已達登入重試上限，停止重試")
                 Task { @MainActor in
                     guard !self.loadingCancelled, generation == self.loadGeneration else { return }
-                    self.isSubmittingLogin = false
-                    self.isOverlayVisible = false
-                    self.toastMessage = "登入失敗，請檢查帳號密碼"
-                    self.showToast = true
+                    self.failLoading("登入失敗，請檢查帳號密碼")
                 }
                 return
             }
@@ -533,166 +519,154 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
 
         // 從 LoginRepository 取得帳號密碼
         guard let credentials = LoginRepository.shared.getSavedCredentials() else {
-            isOverlayVisible = false
-            toastMessage = "無法取得登入資訊"
-            showToast = true
+            failLoading("無法取得登入資訊")
             return
         }
-        
+
         overlayText = "正在登入活動系統"
         let escapedUsername = escapeForSingleQuotedJavaScript(credentials.username)
         let escapedPassword = escapeForSingleQuotedJavaScript(credentials.password)
         isSubmittingLogin = true
         loginSubmitTimestamp = Date()
-        
-        // 延遲確保頁面載入完成
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
-            
-            // 填入帳號密碼並提交
-            let loginScript = """
-            (function() {
-                if (window.location.href.indexOf('/MvcTeam/Account/Login') === -1) {
-                    return 'not_login_page';
+
+        // 頁面已載入，立即填入並提交；欄位未就緒時仍有有上限的重試。
+        let loginScript = """
+        (function() {
+            if (window.location.href.indexOf('/MvcTeam/Account/Login') === -1) {
+                return 'not_login_page';
+            }
+
+            function pick(selectors) {
+                for (var i = 0; i < selectors.length; i++) {
+                    var el = document.querySelector(selectors[i]);
+                    if (el) { return el; }
                 }
+                return null;
+            }
 
-                function pick(selectors) {
-                    for (var i = 0; i < selectors.length; i++) {
-                        var el = document.querySelector(selectors[i]);
-                        if (el) { return el; }
-                    }
-                    return null;
+            var usernameField = pick([
+                'input[name="Account"]',
+                '#Account',
+                'input[id*="Account"]',
+                'input[name*="account" i]',
+                'input[type="text"]',
+                'input[type="email"]'
+            ]);
+            var passwordField = pick([
+                'input[name="Password"]',
+                '#Password',
+                'input[id*="Password"]',
+                'input[name*="password" i]',
+                'input[type="password"]'
+            ]);
+
+            if (!usernameField || !passwordField) {
+                var pwdCount = document.querySelectorAll('input[type="password"]').length;
+                var inputCount = document.querySelectorAll('input').length;
+                var formCount = document.querySelectorAll('form').length;
+                return 'missing_fields|ready=' + document.readyState + '|forms=' + formCount + '|inputs=' + inputCount + '|pwd=' + pwdCount;
+            }
+
+            usernameField.focus();
+            usernameField.value = '\(escapedUsername)';
+            usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+            usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+
+            passwordField.focus();
+            passwordField.value = '\(escapedPassword)';
+            passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+            passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+
+            var form = usernameField.closest('form') || passwordField.closest('form') || document.querySelector('form');
+            if (form) {
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.submit();
                 }
+                return 'submitted';
+            }
 
-                var usernameField = pick([
-                    'input[name="Account"]',
-                    '#Account',
-                    'input[id*="Account"]',
-                    'input[name*="account" i]',
-                    'input[type="text"]',
-                    'input[type="email"]'
-                ]);
-                var passwordField = pick([
-                    'input[name="Password"]',
-                    '#Password',
-                    'input[id*="Password"]',
-                    'input[name*="password" i]',
-                    'input[type="password"]'
-                ]);
+            var submitBtn = pick([
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'button.btn-primary',
+                'button'
+            ]);
+            if (submitBtn) {
+                submitBtn.click();
+                return 'submitted';
+            }
 
-                if (!usernameField || !passwordField) {
-                    var pwdCount = document.querySelectorAll('input[type="password"]').length;
-                    var inputCount = document.querySelectorAll('input').length;
-                    var formCount = document.querySelectorAll('form').length;
-                    return 'missing_fields|ready=' + document.readyState + '|forms=' + formCount + '|inputs=' + inputCount + '|pwd=' + pwdCount + '|url=' + window.location.href;
-                }
+            return 'missing_submit';
+        })();
+        """
 
-                usernameField.focus();
-                usernameField.value = '\(escapedUsername)';
-                usernameField.dispatchEvent(new Event('input', { bubbles: true }));
-                usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+        self.webView?.evaluateJavaScript(loginScript) { [weak self] result, error in
+            Task { @MainActor in
+                guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
+                if let resultString = result as? String {
+                    print("[EventRegistration] 登入提交結果: \(resultString)")
 
-                passwordField.focus();
-                passwordField.value = '\(escapedPassword)';
-                passwordField.dispatchEvent(new Event('input', { bubbles: true }));
-                passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+                    let isMissingFields = resultString.hasPrefix("missing_fields")
+                    let isMissingSubmit = resultString.hasPrefix("missing_submit")
 
-                var form = usernameField.closest('form') || passwordField.closest('form') || document.querySelector('form');
-                if (form) {
-                    if (typeof form.requestSubmit === 'function') {
-                        form.requestSubmit();
-                    } else {
-                        form.submit();
-                    }
-                    return 'submitted';
-                }
+                    switch resultString {
+                    case "submitted":
+                        self.loginFieldRetryCount = 0
+                        self.loginPageReloadCount = 0
+                        self.emptyLoginDOMCount = 0
+                        self.scheduleLoginRecoveryIfNeeded()
 
-                var submitBtn = pick([
-                    'button[type="submit"]',
-                    'input[type="submit"]',
-                    'button.btn-primary',
-                    'button'
-                ]);
-                if (submitBtn) {
-                    submitBtn.click();
-                    return 'submitted';
-                }
-
-                return 'missing_submit';
-            })();
-            """
-            
-            self.webView?.evaluateJavaScript(loginScript) { [weak self] result, error in
-                Task { @MainActor in
-                    guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
-                    if let resultString = result as? String {
-                        print("[EventRegistration] 登入提交結果: \(resultString)")
-
-                        let isMissingFields = resultString.hasPrefix("missing_fields")
-                        let isMissingSubmit = resultString.hasPrefix("missing_submit")
-
-                        switch resultString {
-                        case "submitted":
-                            self.loginFieldRetryCount = 0
-                            self.loginPageReloadCount = 0
-                            self.emptyLoginDOMCount = 0
-                            self.scheduleLoginRecoveryIfNeeded()
-
-                        case let value where isMissingFields || isMissingSubmit:
-                            self.isSubmittingLogin = false
-                            if isMissingFields,
-                               value.contains("|forms=0|"),
-                               value.contains("|inputs=0|") {
-                                self.emptyLoginDOMCount += 1
-                                if self.emptyLoginDOMCount >= self.maxEmptyLoginDOMBeforeRecreate {
-                                    self.emptyLoginDOMCount = 0
-                                    self.loginFieldRetryCount = 0
-                                    self.recreateWebViewForLoginRecovery()
-                                    self.loadCanonicalLoginPage()
-                                    return
-                                }
-                            } else {
-                                self.emptyLoginDOMCount = 0
-                            }
-
-                            if self.loginFieldRetryCount < self.maxLoginFieldRetries {
-                                self.loginFieldRetryCount += 1
-                                if isMissingFields {
-                                    print("[EventRegistration] 登入欄位未就緒詳情: \(value)")
-                                }
-                                print("[EventRegistration] 登入欄位未就緒，等待重試 (\(self.loginFieldRetryCount)/\(self.maxLoginFieldRetries))")
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                                    guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
-                                    self.performEventSystemLogin()
-                                }
-                            } else if self.loginPageReloadCount < self.maxLoginPageReloads {
-                                self.loginPageReloadCount += 1
-                                self.loginFieldRetryCount = 0
-                                print("[EventRegistration] 登入頁疑似未完整載入，重新載入固定登入頁 (\(self.loginPageReloadCount)/\(self.maxLoginPageReloads))")
-                                self.loadCanonicalLoginPage()
-                            } else {
-                                self.isOverlayVisible = false
-                                self.toastMessage = "登入頁面載入失敗"
-                                self.showToast = true
-                            }
-
-                        case "not_login_page":
-                            self.isSubmittingLogin = false
-                            if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act") {
-                                self.webView?.load(URLRequest(url: url))
-                            }
-
-                        default:
-                            self.isSubmittingLogin = false
-                            self.loadCanonicalLoginPage()
-                        }
-                    } else if let error = error {
-                        print("[EventRegistration] 登入錯誤: \(error)")
+                    case let value where isMissingFields || isMissingSubmit:
                         self.isSubmittingLogin = false
-                        self.isOverlayVisible = false
-                        self.toastMessage = "登入失敗"
-                        self.showToast = true
+                        if isMissingFields,
+                           value.contains("|forms=0|"),
+                           value.contains("|inputs=0|") {
+                            self.emptyLoginDOMCount += 1
+                            if self.emptyLoginDOMCount >= self.maxEmptyLoginDOMBeforeRecreate {
+                                self.emptyLoginDOMCount = 0
+                                self.loginFieldRetryCount = 0
+                                self.recreateWebViewForLoginRecovery()
+                                self.loadCanonicalLoginPage()
+                                return
+                            }
+                        } else {
+                            self.emptyLoginDOMCount = 0
+                        }
+
+                        if self.loginFieldRetryCount < self.maxLoginFieldRetries {
+                            self.loginFieldRetryCount += 1
+                            if isMissingFields {
+                                print("[EventRegistration] 登入欄位未就緒詳情: \(value)")
+                            }
+                            print("[EventRegistration] 登入欄位未就緒，等待重試 (\(self.loginFieldRetryCount)/\(self.maxLoginFieldRetries))")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                                guard let self, !self.loadingCancelled, generation == self.loadGeneration else { return }
+                                self.performEventSystemLogin()
+                            }
+                        } else if self.loginPageReloadCount < self.maxLoginPageReloads {
+                            self.loginPageReloadCount += 1
+                            self.loginFieldRetryCount = 0
+                            print("[EventRegistration] 登入頁疑似未完整載入，重新載入固定登入頁 (\(self.loginPageReloadCount)/\(self.maxLoginPageReloads))")
+                            self.loadCanonicalLoginPage()
+                        } else {
+                            self.failLoading("登入頁面載入失敗")
+                        }
+
+                    case "not_login_page":
+                        self.isSubmittingLogin = false
+                        if let url = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act") {
+                            self.webView?.load(URLRequest(url: url))
+                        }
+
+                    default:
+                        self.isSubmittingLogin = false
+                        self.loadCanonicalLoginPage()
                     }
+                } else if let error = error {
+                    print("[EventRegistration] 登入錯誤: \(error)")
+                    self.failLoading("登入失敗")
                 }
             }
         }
