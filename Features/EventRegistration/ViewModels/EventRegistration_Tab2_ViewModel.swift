@@ -16,14 +16,16 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     @Published var searchText: String = ""
     
     var filteredEvents: [EventData_Apply] {
-        if searchText.isEmpty {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
             return events
         } else {
             return events.filter { event in
-                event.name.localizedCaseInsensitiveContains(searchText) ||
-                event.department.localizedCaseInsensitiveContains(searchText) ||
-                event.eventDetail.localizedCaseInsensitiveContains(searchText) ||
-                event.state.localizedCaseInsensitiveContains(searchText)
+                event.eventSerialID.localizedCaseInsensitiveContains(query) ||
+                event.name.localizedCaseInsensitiveContains(query) ||
+                event.department.localizedCaseInsensitiveContains(query) ||
+                event.eventDetail.localizedCaseInsensitiveContains(query) ||
+                event.state.localizedCaseInsensitiveContains(query)
             }
         }
     }

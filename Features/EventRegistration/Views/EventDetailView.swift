@@ -33,6 +33,8 @@ struct EventDetailView: View {
                     
                     // 活動資訊
                     VStack(alignment: .leading, spacing: 16) {
+                        InfoRow(icon: "number", title: "活動編號", value: event.eventSerialID)
+                            .textSelection(.enabled)
                         InfoRow(icon: "building.2", title: "主辦單位", value: event.department)
                         InfoRow(icon: "calendar", title: "活動時間", value: event.eventTime)
                         InfoRow(icon: "mappin.and.ellipse", title: "活動地點", value: event.eventLocation)
