@@ -139,6 +139,16 @@ private struct ModuleRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .buttonStyle(PlainButtonStyle())
+            } else if module.questionActivityKind != nil {
+                if module.questionActivityURL != nil {
+                    NavigationLink(destination: MoodleQuestionDetailView(module: module)) {
+                        moduleContent
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    moduleContent
+                        .accessibilityHint("尚未開放或未符合存取條件")
+                }
             } else if module.modname == "assign" {
                 NavigationLink(destination: MoodleModuleAssignmentView(courseId: courseId, module: module)) {
                     moduleContent
@@ -207,16 +217,11 @@ private struct ModuleRow: View {
         return (nil, cmid)
     }
 
-    /// Some locally-installed Moodle activities do not expose `url` through
-    /// `core_course_get_contents`, even though their regular `view.php` page
-    /// is available. IRS is one of those browser-only activities, so keep it
-    /// actionable by reconstructing the canonical course-module URL.
     private var browserTargetURL: String? {
         if let url = module.url, !url.isEmpty {
             return url
         }
-        guard module.modname.lowercased() == "irs" else { return nil }
-        return "https://euni.niu.edu.tw/mod/irs/view.php?id=\(module.id)"
+        return nil
     }
 
     /// For resource modules, build a token-authenticated download URL
@@ -247,14 +252,19 @@ private struct ModuleRow: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
-                Text(module.modname)
+                Text(module.questionActivityKind?.title ?? module.modname)
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
+                if module.questionActivityKind != nil, module.questionActivityURL == nil {
+                    Label("尚未開放或未符合存取條件", systemImage: "lock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
 
-            Image(systemName: "chevron.right")
+            Image(systemName: module.questionActivityKind != nil && module.questionActivityURL == nil ? "lock" : "chevron.right")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
         }

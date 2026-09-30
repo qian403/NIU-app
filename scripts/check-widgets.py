@@ -143,12 +143,56 @@ progress = "import Foundation\n" + progress_helpers + r'''
 }
 '''
 
+watch_source = root / "NIU-LiveActivities/ClassWatchActivityPresentation.swift"
+attributes_source = (root / "NIU-LiveActivities/ClassLiveActivityAttributes.swift").read_text()
+watch = "import Foundation\nenum ClassLiveActivityAttributes {\n" + block(
+    "public struct ContentState", attributes_source
+) + "\n}\n" + r'''
+@main struct CheckWatchPresentation {
+    static func main() {
+        let start = Date(timeIntervalSince1970: 100)
+        let end = Date(timeIntervalSince1970: 3700)
+        func presentation(mode: String = "current", stale: Bool = false,
+                          name: String = "資訊安全導論", room: String = "工102",
+                          period: String = "第3節", from: Date = start,
+                          to: Date = end) -> ClassWatchActivityPresentation {
+            .init(state: .init(mode: mode, courseName: name, classroom: room,
+                               teacher: "合成教師", periodLabel: period,
+                               startDate: from, endDate: to), isStale: stale)
+        }
+        let current = presentation()
+        precondition(current.statusLabel == "上課中")
+        precondition(current.countdownEnd == end && current.countdownLabel == "下課")
+        precondition(current.progressInterval == start...end)
+        precondition(current.periodLabel == "第3節", "No duplicate period prefix")
+        let upcoming = presentation(mode: "upcoming")
+        precondition(upcoming.statusLabel == "下一堂課")
+        precondition(upcoming.countdownEnd == start && upcoming.countdownLabel == "上課")
+        precondition(upcoming.progressInterval == start...end, "Course progress remains timer-backed")
+        for invalid in [presentation(stale: true), presentation(mode: "unknown"),
+                        presentation(from: end, to: start), presentation(from: start, to: start)] {
+            precondition(invalid.needsRefresh && invalid.statusLabel == "課表待更新")
+            precondition(invalid.countdownEnd == nil && invalid.progressInterval == nil,
+                         "Stale or malformed state must not show a running countdown")
+            precondition(invalid.courseName == "資訊安全導論", "Keep context when asking to refresh")
+        }
+        let missing = presentation(name: " \n", room: "  ", period: "\n")
+        precondition(missing.courseName == "課程名稱未提供")
+        precondition(missing.classroom == "教室未提供")
+        precondition(missing.periodLabel == nil)
+        precondition(presentation(name: "  課程  ", room: " 工102\n").courseName == "課程")
+        print("PASS: Watch current/upcoming deadlines, stale/invalid state, missing fields and period labels")
+    }
+}
+'''
+
 with tempfile.TemporaryDirectory(prefix="niu-widget-check-") as directory:
     temporary = Path(directory)
     for name, code, sources in [
         ("navigation", navigation, [str(root / "NIU-LiveActivities/CampusNavigation.swift")]),
         ("schedule", schedule, [str(root / "NIU-LiveActivities/ClassScheduleModels.swift")]),
         ("progress", progress, []),
+        ("watch", watch, [str(watch_source)]),
     ]:
         swift = temporary / (name + ".swift")
         binary = temporary / name

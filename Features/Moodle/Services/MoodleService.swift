@@ -26,6 +26,8 @@ final class MoodleService {
     var isAuthenticated: Bool {
         token != nil && userId != nil
     }
+
+    var sessionRevision: Int { authenticationGeneration }
     
     /// Expose token for file URL rewriting (webservice/pluginfile.php)
     var currentToken: String? {
@@ -721,6 +723,7 @@ final class MoodleService {
     /// Get an auto-login URL that will authenticate and redirect to the target page.
     /// Uses Moodle's `tool_mobile_get_autologin_key` to get a one-time key.
     func autologinURL(for targetURL: String) async throws -> URL {
+        let generation = authenticationGeneration
         guard let privateKey = privateToken else {
             // Fallback: just return the original URL
             guard let url = URL(string: targetURL) else { throw MoodleError.invalidURL }
@@ -728,6 +731,8 @@ final class MoodleService {
         }
         
         let response: MoodleAutologinResponse = try await callAutologinKey(privateToken: privateKey)
+        try Task.checkCancellation()
+        guard generation == authenticationGeneration else { throw CancellationError() }
         
         let key = response.key
         let autologinURLStr = "\(baseURL)/admin/tool/mobile/autologin.php?userid=\(userId ?? 0)&key=\(key)&urltogo=\(targetURL.urlEncoded)"
@@ -805,8 +810,10 @@ final class MoodleService {
         request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
         applyMoodleMobileHeaders(to: &request)
         request.httpBody = "privatetoken=\(privateToken.urlEncoded)".data(using: .utf8)
+        request.timeoutInterval = 15
 
         let (data, response) = try await URLSession.shared.data(for: request)
+        try Task.checkCancellation()
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             throw MoodleError.serverError
         }
