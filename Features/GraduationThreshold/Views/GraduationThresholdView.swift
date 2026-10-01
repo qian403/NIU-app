@@ -4,42 +4,40 @@ struct GraduationThresholdView: View {
     @StateObject private var vm = GraduationThresholdViewModel()
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(.systemBackground),
-                        Color(.systemGroupedBackground)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(.systemBackground),
+                    Color(.systemGroupedBackground)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-                switch vm.loadState {
-                case .idle, .loading:
-                    ProgressView("載入畢業門檻資料…")
-                        .progressViewStyle(.circular)
-                        .tint(.primary)
+            switch vm.loadState {
+            case .idle, .loading:
+                ProgressView("載入畢業門檻資料…")
+                    .progressViewStyle(.circular)
+                    .tint(.primary)
 
-                case .error(let message):
-                    errorView(message: message)
+            case .error(let message):
+                errorView(message: message)
 
-                case .loaded:
-                    if let data = vm.graduationData {
-                        contentView(data: data)
-                    }
+            case .loaded:
+                if let data = vm.graduationData {
+                    contentView(data: data)
                 }
             }
-            .navigationTitle("畢業門檻")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if vm.graduationData != nil {
-                        Button(action: vm.toggleWebView) {
-                            Image(systemName: vm.isWebVisible ? "doc.text" : "globe")
-                                .font(.system(size: 16, weight: .light))
-                        }
+        }
+        .navigationTitle("畢業門檻")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if vm.graduationData != nil {
+                    Button(action: vm.toggleWebView) {
+                        Image(systemName: vm.isWebVisible ? "doc.text" : "globe")
+                            .font(.system(size: 16, weight: .light))
                     }
                 }
             }
