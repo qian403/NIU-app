@@ -5,6 +5,7 @@ struct AppliedEventDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let onCancel: (String) -> Void
     let onModify: (EventData_Apply) -> Void
+    @State private var confirmingCancellation = false
     
     var body: some View {
         NavigationStack {
@@ -13,27 +14,16 @@ struct AppliedEventDetailView: View {
                     // 活動標題
                     VStack(alignment: .leading, spacing: 8) {
                         Text(event.name)
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.title2.bold())
                             .foregroundColor(.primary)
                         
-                        HStack {
-                            Text(event.state)
-                                .font(.caption)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.green.opacity(0.2))
-                                .foregroundColor(.green)
-                                .cornerRadius(8)
-                            
-                            Text(event.event_state)
-                                .font(.caption)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(eventStateColor.opacity(0.2))
-                                .foregroundColor(eventStateColor)
-                                .cornerRadius(8)
-                            
-                            Spacer()
+                        HStack(spacing: 8) {
+                            if !event.state.isEmpty {
+                                EventStatusBadge(text: event.state, color: event.registrationStateColor)
+                            }
+                            if !event.eventStateLabel.isEmpty {
+                                EventStatusBadge(text: event.eventStateLabel, color: event.eventStateColor)
+                            }
                         }
                     }
                     .padding(.bottom, 8)
@@ -56,11 +46,11 @@ struct AppliedEventDetailView: View {
                     if !event.eventDetail.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("活動說明")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.headline)
                                 .foregroundColor(.primary)
                             EventLinkedText(event.eventDetail)
-                                .font(.system(size: 14))
-                                .foregroundColor(.primary.opacity(0.85))
+                                .font(.body)
+                                .foregroundStyle(.primary)
                                 .lineLimit(nil)
                                 .multilineTextAlignment(.leading)
                                 .textSelection(.enabled)
@@ -72,7 +62,7 @@ struct AppliedEventDetailView: View {
                     // 聯絡資訊
                     VStack(alignment: .leading, spacing: 8) {
                         Text("聯絡資訊")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.headline)
                             .foregroundColor(.primary)
                         InfoRow(icon: "person.fill", title: "聯絡人", value: event.contactInfoName)
                         TappableInfoRow(icon: "phone.fill", title: "電話", value: event.contactInfoTel, urlScheme: "tel:")
@@ -93,11 +83,11 @@ struct AppliedEventDetailView: View {
                     if !event.Remark.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("備註")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.headline)
                                 .foregroundColor(.primary)
                             EventLinkedText(event.Remark)
-                                .font(.system(size: 14))
-                                .foregroundColor(.primary.opacity(0.85))
+                                .font(.body)
+                                .foregroundStyle(.primary)
                                 .lineLimit(nil)
                                 .multilineTextAlignment(.leading)
                                 .textSelection(.enabled)
@@ -121,71 +111,59 @@ struct AppliedEventDetailView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 12) {
-                    // 修改報名資訊按鈕
-                    if canModify {
-                        Button(action: {
-                            onModify(event)
-                            dismiss()
-                        }) {
-                            HStack {
-                                Image(systemName: "pencil")
-                                Text("修改報名資訊")
-                                    .fontWeight(.semibold)
+                if canModify || canCancel {
+                    VStack(spacing: 12) {
+                        if canModify {
+                            Button {
+                                onModify(event)
+                                dismiss()
+                            } label: {
+                                Label("修改報名資訊", systemImage: "pencil")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                        }
+
+                        if canCancel {
+                            Button(role: .destructive) {
+                                confirmingCancellation = true
+                            } label: {
+                                Label("取消報名", systemImage: "xmark.circle")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
                         }
                     }
-                    
-                    // 取消報名按鈕
-                    if canCancel {
-                        Button(action: {
-                            onCancel(event.eventSerialID)
-                            dismiss()
-                        }) {
-                            HStack {
-                                Image(systemName: "xmark.circle")
-                                Text("取消報名")
-                                    .fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                        }
-                    }
+                    .padding()
+                    .background(.bar)
                 }
-                .padding()
-                .background(Color(.systemBackground))
+            }
+            .confirmationDialog("確定要取消報名？", isPresented: $confirmingCancellation, titleVisibility: .visible) {
+                Button("取消報名", role: .destructive) {
+                    onCancel(event.eventSerialID)
+                    dismiss()
+                }
+                Button("保留報名", role: .cancel) {}
+            } message: {
+                Text("「\(event.name)」取消後可能無法再報名，App 會再到已報名列表確認結果。")
             }
         }
     }
     
-    // 是否可以修改
+    // 校方列出「修改資料」按鈕，或活動尚未結束時才能修改
     private var canModify: Bool {
-        // 活動進行中或未開始才能修改
-        !event.event_state.contains("已結束")
+        event.offersModification || !event.hasEnded
     }
-    
-    // 是否可以取消
+
+    // 校方列出「取消報名」按鈕，或報名狀態仍有效時才能取消（例如已報名、正取、候補）
     private var canCancel: Bool {
-        // 報名狀態為已報名才能取消
-        event.state.contains("已報名") || event.state.contains("報名成功")
+        guard !event.hasEnded, !event.state.contains("取消") else { return false }
+        return event.offersCancellation
+            || ["已報名", "報名成功", "正取", "備取", "候補"].contains(where: event.state.contains)
     }
     
-    private var eventStateColor: Color {
-        switch event.event_state {
-        case let state where state.contains("進行中"):
-            return .green
-        case let state where state.contains("已結束"):
-            return .gray
-        default:
-            return .blue
-        }
-    }
 }

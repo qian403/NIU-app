@@ -1,166 +1,218 @@
 #!/usr/bin/env python3
-"""Run the production refresh cancellation/login arbitration methods offline."""
+"""Run the production activity ViewModels offline against a scripted service: one load per visit,
+stale responses, cancellation and release, failure versus empty lists, and mutations that keep
+running after the page stops loading."""
 from pathlib import Path
 import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
+feature = root / "Features/EventRegistration"
 
-def method(source, signature):
-    start = source.index(signature)
-    brace = source.index('{', start)
-    depth = 1
-    end = brace + 1
-    while depth:
-        depth += (source[end] == '{') - (source[end] == '}')
-        end += 1
-    return source[start:end]
+fixture = r'''
+import Foundation
+import WebKit
 
-manager = (root / 'Features/EventRegistration/Services/EventRegistrationWebViewManager.swift').read_text()
-fixture = '''import Foundation
-@MainActor final class EventRegistrationWebViewManager {
-    static let shared = EventRegistrationWebViewManager()
-    private var isLoggingIn = false
-    private var activeLoginRequesterID: String?
-    private var loginCompletionHandlers: [String: () -> Void] = [:]
-'''
-for name in ['requestLogin', 'completeLoginIfNeeded', 'notifyLoginCompleted', 'cancelLogin', 'resetLoginState']:
-    fixture += method(manager, 'func ' + name + '(') + '\n'
-fixture += '}\n'
-fixture += (root / 'Features/EventRegistration/Models/EventRegistrationModels.swift').read_text() + '\n'
-for tab in (1, 2):
-    source = (root / f'Features/EventRegistration/ViewModels/EventRegistration_Tab{tab}_ViewModel.swift').read_text()
-    fixture += f'@MainActor final class Model{tab} {{\n'
-    fixture += '''var isOverlayVisible = false
-    var loadGeneration = 0
-    var loadingCancelled = false
-    var hasInitialized = false
-    let loginRequesterID = UUID().uuidString
-    var cancellations = 0
-    var starts = 0
-    var reads = 0
-    var events: [EVENT_TYPE] = []
-    var jsGetData = ""
-    var webView: FakeWebView? = FakeWebView()
-    func startLogin() { starts += 1; loadingCancelled = false; isOverlayVisible = true }
-    func resetLoginProgress() { cancellations += 1 }
-    func loadEventList() { loadGeneration += 1; loadingCancelled = false; isOverlayVisible = true }
-    func failLoading(_ message: String) { cancelLoading() }
-'''
-    fixture = fixture.replace('EVENT_TYPE', 'EventData' if tab == 1 else 'EventData_Apply')
-    fixture += method(source, 'private func executeRefresh(retryCount: Int)').replace('private func', 'func').replace('let generation = loadGeneration', 'let generation = loadGeneration; reads += 1') + '\n'
-    fixture += method(source, 'private func showPage()') + '\n'
-    fixture += method(source, 'func manualRefresh()') + '\n'
-    fixture += method(source, 'func cancelLoading()') + '\n'
-    fixture += method(source, 'func onViewAppear()') + '\n'
-    fixture += method(source, 'func prewarmLoginIfNeeded()') + '\n'
-    fixture += method(source, 'private func refresh()').replace('private func', 'func') + '\n}\n'
-fixture += '''@MainActor final class FakeWebView {
-    var result: Any? = "[]"
-    var error: Error?
-    func stopLoading() {}
-    func evaluateJavaScript(_ script: String, completionHandler: (Any?, Error?) -> Void) {
-        completionHandler(result, error)
+@MainActor final class LoginRepository {
+    static let shared = LoginRepository()
+    func getSavedCredentials() -> (username: String, password: String)? {
+        fatalError("Keychain access is forbidden in this fixture")
     }
 }
-@main struct Checks {
-    @MainActor static func main() async throws {
-'''
-for tab in (1, 2):
-    fixture += f'''
-        do {{
-            let appearing = Model{tab}()
-            appearing.prewarmLoginIfNeeded()
-            appearing.onViewAppear()
-            precondition(appearing.starts == 1 && appearing.loadGeneration == 0,
-                         "appearing during login must not restart the request")
-            appearing.isOverlayVisible = false
-            appearing.onViewAppear()
-            precondition(appearing.starts == 1 && appearing.loadGeneration == 0,
-                         "a valid empty list must not restart login")
-            appearing.refresh()
-            precondition(appearing.reads == 1, "ready DOM must be read immediately")
-            appearing.cancelLoading()
-            appearing.refresh()
-            precondition(appearing.reads == 1, "cancelled page must not read DOM")
-            appearing.onViewAppear()
-            precondition(appearing.starts == 2, "returning after cancellation must restart")
 
-            let failed = Model{tab}()
-            failed.prewarmLoginIfNeeded()
-            failed.webView?.error = NSError(domain: "offline-test", code: 1)
-            failed.executeRefresh(retryCount: 3)
-            try await Task.sleep(for: .milliseconds(20))
-            precondition(!failed.hasInitialized && !failed.isOverlayVisible,
-                         "exhausted parsing retries must allow reentry")
-            failed.onViewAppear()
-            precondition(failed.starts == 2)
-            failed.webView?.error = nil
-            failed.webView?.result = "invalid JSON"
-            failed.executeRefresh(retryCount: 0)
-            precondition(!failed.hasInitialized, "invalid JSON must finish as failure")
+func event(_ id: String) -> EventData {
+    EventData(name: "活動 \(id)", department: "測試單位", event_state: "報名中", eventSerialID: id,
+              eventTime: "", eventLocation: "", eventRegisterTime: "", eventDetail: "", contactInfoName: "",
+              contactInfoTel: "", contactInfoMail: "", Related_links: "", Multi_factor_authentication: "",
+              eventPeople: "", Remark: "")
+}
 
-            var model: Model{tab}? = Model{tab}()
-            weak var weakModel = model
-            var task: Task<Void, Never>? = Task {{ [model = model!] in await model.manualRefresh() }}
-            try await Task.sleep(for: .milliseconds(20))
-            let start = ContinuousClock.now
-            task?.cancel()
-            await task?.value
-            precondition(start.duration(to: .now) < .seconds(1), "cancel must not spin")
-            precondition(model?.isOverlayVisible == false)
-            task = nil
-            model = nil
-            precondition(weakModel == nil, "cancelled refresh must release model")
+@MainActor final class ScriptedService: EventRegistrationServing {
+    var availableCalls = 0
+    var appliedCalls = 0
+    var registerCalls = 0
+    var pending: [CheckedContinuation<[EventData], Error>?] = []
+    var hold = false
+    /// false simulates a response that arrives after the caller has moved on.
+    var honorsCancellation = true
+    var failure: Error?
+    var result: [EventData] = []
+    var outcome: EventActionOutcome = .confirmed("已完成報名。")
+    var registerGate: CheckedContinuation<Void, Never>?
+    var holdRegister = false
 
-            let restarted = Model{tab}()
-            let old = Task {{ await restarted.manualRefresh() }}
-            try await Task.sleep(for: .milliseconds(20))
-            let new = Task {{ await restarted.manualRefresh() }}
-            try await Task.sleep(for: .milliseconds(20))
-            old.cancel()
-            await old.value
-            precondition(restarted.isOverlayVisible, "old waiter must not cancel new refresh")
-            restarted.isOverlayVisible = false
-            await new.value
-            print("PASS: tab {tab} cancellation, release, superseded waiter, completion")
-        }}
-'''
-fixture += '''
-        let manager = EventRegistrationWebViewManager.shared
-        manager.resetLoginState()
-        var firstStarted = false
-        var waitingStarted = false
-        var cancelledWaiterRan = false
-        manager.requestLogin(requesterID: "owner", loginAction: { firstStarted = true }, waitCompletion: {})
-        manager.requestLogin(requesterID: "waiter", loginAction: {}, waitCompletion: {
-            manager.requestLogin(requesterID: "waiter", loginAction: { waitingStarted = true }, waitCompletion: {})
-        })
-        manager.requestLogin(requesterID: "cancelled", loginAction: {}, waitCompletion: { cancelledWaiterRan = true })
-        manager.cancelLogin(requesterID: "cancelled")
-        manager.completeLoginIfNeeded(requesterID: "unrelated-public-list")
-        precondition(!waitingStarted, "public list must not release another tab's login lock")
-        manager.cancelLogin(requesterID: "owner")
-        precondition(waitingStarted, "ready waiter should resume without a fixed delay")
-        try await Task.sleep(for: .milliseconds(350))
-        precondition(firstStarted && waitingStarted && !cancelledWaiterRan)
-        manager.cancelLogin(requesterID: "waiter")
-        var reopened = false
-        manager.requestLogin(requesterID: "reopened", loginAction: { reopened = true }, waitCompletion: {})
-        precondition(reopened, "cancelled owner must release lock")
-        var resetWaiterRan = false
-        manager.requestLogin(requesterID: "reset-waiter", loginAction: {}, waitCompletion: { resetWaiterRan = true })
-        manager.resetLoginState()
-        manager.completeLoginIfNeeded(requesterID: "reopened")
-        try await Task.sleep(for: .milliseconds(350))
-        precondition(!resetWaiterRan, "logout reset must discard old waiters")
-        print("PASS: cancelled login owner/waiter and page reentry")
+    func availableEvents() async throws -> [EventData] {
+        availableCalls += 1
+        if hold {
+            let index = pending.count
+            pending.append(nil)
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { pending[index] = $0 }
+            } onCancel: {
+                Task { @MainActor in
+                    guard self.honorsCancellation, index < self.pending.count,
+                          let waiting = self.pending[index] else { return }
+                    self.pending[index] = nil
+                    waiting.resume(throwing: CancellationError())
+                }
+            }
+        }
+        if let failure { throw failure }
+        return result
+    }
+    func drain() {
+        pending.compactMap { $0 }.forEach { $0.resume(throwing: CancellationError()) }
+        pending.removeAll()
+    }
+    func appliedEvents() async throws -> [EventData_Apply] { appliedCalls += 1; return [] }
+    func register(eventID: String) async throws -> EventActionOutcome {
+        registerCalls += 1
+        if holdRegister { await withCheckedContinuation { registerGate = $0 } }
+        return outcome
+    }
+    func cancelRegistration(eventID: String) async throws -> EventActionOutcome { .confirmed("已取消報名。") }
+    func registrationForm(eventID: String) async throws -> EventRegistrationForm {
+        EventRegistrationForm(tel: "0900", mail: "a@example.com")
+    }
+    func modifyRegistration(eventID: String, form: EventRegistrationForm) async throws -> EventActionOutcome {
+        .confirmed("已更新報名資料。")
+    }
+}
+
+@MainActor func settle(_ condition: @MainActor () -> Bool, _ message: String) async {
+    for _ in 0..<400 {
+        if condition() { return }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    print("FAIL: \(message)")
+    exit(1)
+}
+
+@MainActor func expect(_ condition: Bool, _ message: String) {
+    if !condition { print("FAIL: \(message)"); exit(1) }
+}
+
+@MainActor enum Checks {
+    static func run() async {
+        let service = ScriptedService()
+        let model = EventRegistration_Tab1_ViewModel(service: service)
+        service.result = [event("1")]
+        model.loadIfNeeded()
+        model.loadIfNeeded()
+        await settle({ model.phase == .loaded }, "first load finishes")
+        model.loadIfNeeded()
+        expect(service.availableCalls == 1, "appearing again does not restart a loaded list")
+
+        service.failure = EventRegistrationError.offline
+        model.reload()
+        await settle({ if case .failed = model.phase { return true }; return false }, "refresh failure surfaces")
+        expect(model.events.map(\.id) == ["1"], "a failed refresh keeps the last valid list")
+
+        let empty = EventRegistration_Tab1_ViewModel(service: service)
+        empty.reload()
+        await settle({ if case .failed = empty.phase { return true }; return false }, "offline first load fails")
+        expect(empty.events.isEmpty && empty.updatedAt == nil, "offline is not reported as an empty school list")
+        service.failure = nil
+        service.result = []
+        empty.reload()
+        await settle({ empty.phase == .loaded }, "empty list loads")
+        expect(empty.events.isEmpty && empty.updatedAt != nil, "a genuinely empty list is distinct from failure")
+
+        service.hold = true
+        service.honorsCancellation = false
+        service.result = [event("new")]
+        model.reload()
+        await settle({ service.pending.count == 1 }, "first request waits")
+        model.reload()
+        await settle({ service.pending.count == 2 }, "second request waits")
+        service.pending[1]?.resume(returning: [event("new")])
+        service.pending[1] = nil
+        await settle({ model.phase == .loaded }, "newest response applies")
+        service.pending[0]?.resume(returning: [event("old")])
+        service.pending[0] = nil
+        try? await Task.sleep(for: .milliseconds(30))
+        expect(model.events.map(\.id) == ["new"], "an older response never overwrites a newer one")
+        service.drain()
+        service.honorsCancellation = true
+
+        let leaving = EventRegistration_Tab1_ViewModel(service: service)
+        leaving.loadIfNeeded()
+        await settle({ service.pending.count == 1 }, "visit starts loading")
+        leaving.cancelLoading()
+        expect(leaving.phase == .idle, "leaving before the first result allows the next visit to load")
+        service.drain()
+        service.hold = false
+        leaving.loadIfNeeded()
+        await settle({ leaving.phase == .loaded }, "returning reloads")
+
+        service.hold = true
+        var refreshing: EventRegistration_Tab1_ViewModel? = EventRegistration_Tab1_ViewModel(service: service)
+        weak var released = refreshing
+        let pull = Task { [model = refreshing!] in await model.refresh() }
+        await settle({ service.pending.count == 1 }, "pull to refresh waits")
+        let started = ContinuousClock.now
+        pull.cancel()
+        await pull.value
+        expect(started.duration(to: .now) < .seconds(1), "cancelling pull to refresh returns promptly")
+        expect(refreshing?.phase == .idle, "cancelled pull leaves no spinner")
+        service.drain()
+        refreshing = nil
+        expect(released == nil, "a cancelled refresh releases the ViewModel")
+        service.hold = false
+
+        let applied = EventRegistration_Tab2_ViewModel(service: service)
+        applied.loadIfNeeded()
+        await settle({ applied.phase == .loaded }, "applied list loads")
+        let appliedBefore = service.appliedCalls
+        service.holdRegister = true
+        model.register(event("1"))
+        model.register(event("1"))
+        await settle({ service.registerGate != nil }, "registration starts")
+        expect(model.activity != nil && service.registerCalls == 1, "a double tap submits once")
+        model.cancelLoading()
+        service.registerGate?.resume()
+        await settle({ model.alert != nil }, "registration result reported after the list stops loading")
+        expect(model.alert?.kind == .success && model.activity == nil, "confirmed registration shown as success")
+        await settle({ service.appliedCalls > appliedBefore }, "applied list reloads after registration")
+
+        service.holdRegister = false
+        service.outcome = .uncertain("尚無法確認")
+        model.alert = nil
+        model.register(event("2"))
+        await settle({ model.alert != nil }, "uncertain result reported")
+        expect(model.alert?.kind == .uncertain, "uncertain outcome is never presented as success")
+
+        let form = EventRegistrationFormViewModel(eventID: "1", service: service)
+        form.load()
+        await settle({ form.phase == .loaded }, "form loads")
+        expect(form.isValid && !form.hasChanges, "loaded form is valid and unchanged")
+        form.form.mail = "invalid"
+        expect(!form.isValid && form.hasChanges, "invalid mail blocks saving")
+        print("PASS: one load per visit, failure vs empty, stale responses, cancellation and release, single mutation, verified outcomes, form validation")
+    }
+}
+
+@main struct Main {
+    static func main() {
+        Task { @MainActor in await Checks.run(); exit(0) }
+        RunLoop.main.run()
     }
 }
 '''
-with tempfile.TemporaryDirectory(prefix='niu-lifetime-') as directory:
-    swift = Path(directory) / 'Checks.swift'
+
+with tempfile.TemporaryDirectory(prefix="niu-lifetime-") as directory:
+    folder = Path(directory)
+    swift = folder / "Checks.swift"
     swift.write_text(fixture)
-    binary = Path(directory) / 'checks'
-    subprocess.run(['xcrun', 'swiftc', '-module-cache-path', str(Path(directory) / 'ModuleCache'), '-parse-as-library', str(swift), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True, timeout=10)
+    binary = folder / "checks"
+    subprocess.run([
+        "xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",
+        "-module-cache-path", str(folder / "ModuleCache"),
+        str(feature / "Models/EventRegistrationModels.swift"),
+        str(feature / "Services/EventRegistrationClient.swift"),
+        str(feature / "ViewModels/EventRegistrationViewModel.swift"),
+        str(feature / "ViewModels/EventRegistration_Tab1_ViewModel.swift"),
+        str(feature / "ViewModels/EventRegistration_Tab2_ViewModel.swift"),
+        str(swift), "-o", str(binary),
+    ], check=True)
+    subprocess.run([str(binary)], check=True, timeout=60)
