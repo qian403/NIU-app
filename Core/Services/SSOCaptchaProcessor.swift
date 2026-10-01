@@ -41,7 +41,7 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
 
         for variant in variants {
             guard !Task.isCancelled else { return nil }
-            guard let candidate = await recognizeVariant(variant, expectedLength: expectedLength) else { continue }
+            guard let candidate = recognizeVariant(variant, expectedLength: expectedLength) else { continue }
             if bestCandidate == nil || candidate.score > (bestCandidate?.score ?? Int.min) {
                 bestCandidate = candidate
             }
@@ -57,6 +57,140 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
             print("[Captcha] no OCR candidate")
         }
         return nil
+    }
+
+    @concurrent
+    public func recognizeAttendance(from image: CaptchaImage) async -> String? {
+        guard !Task.isCancelled else { return nil }
+        var candidates: [AttendanceCandidate] = []
+        for variant in buildAttendanceVariants(from: image) {
+            guard !Task.isCancelled else { return nil }
+            guard let candidate = recognizeVariant(variant, expectedLength: 5, attendance: true),
+                  candidate.digits.count == 5 else { continue }
+            candidates.append(AttendanceCandidate(
+                family: variant.name,
+                digits: candidate.digits,
+                confidence: candidate.confidence,
+                unmodifiedDigits: candidate.raw.filter { !$0.isWhitespace } == candidate.digits
+            ))
+        }
+        guard !Task.isCancelled else { return nil }
+        return Self.selectAttendanceCandidate(candidates)
+    }
+
+    struct AttendanceCandidate {
+        let family: String
+        let digits: String
+        let confidence: Float
+        var unmodifiedDigits = false
+    }
+
+    static func selectAttendanceCandidate(_ candidates: [AttendanceCandidate]) -> String? {
+        // Agreement must come from different treatments, not copies of one image.
+        let complete = candidates.filter {
+            $0.digits.count == 5 && $0.digits.allSatisfy { $0 >= "0" && $0 <= "9" }
+        }
+        let valid = complete.filter { $0.confidence >= 0.35 }
+        let grouped = Dictionary(grouping: valid, by: \.digits)
+        let ranked = grouped.map { digits, votes in
+            (digits: digits, count: Set(votes.map(\.family)).count)
+        }.sorted { $0.count > $1.count }
+        // A clean, literal reading of the school's dark green ink can stand
+        // alone when every other treatment is unreadable, but never override
+        // a conflicting complete reading.
+        if Set(complete.map(\.digits)).count == 1,
+           let foreground = valid.first(where: {
+               $0.family == "green" && $0.unmodifiedDigits && $0.confidence >= 0.85
+           }) {
+            return foreground.digits
+        }
+        guard let winner = ranked.first, winner.count >= 2,
+              ranked.count == 1 || winner.count > ranked[1].count else { return nil }
+        return winner.digits
+    }
+
+    private func buildAttendanceVariants(from image: CaptchaImage) -> [ImageVariant] {
+        var variants: [ImageVariant] = []
+        if let foreground = attendanceImage(image, greenOnly: true),
+           let padded = paddedAndScaled(foreground) {
+            variants.append(ImageVariant(name: "green", image: padded))
+        }
+        if let padded = paddedAndScaled(image) {
+            variants.append(ImageVariant(name: "original", image: padded))
+        }
+        if let gray = attendanceImage(image, greenOnly: false),
+           let binary = binarized(image: gray, threshold: 140),
+           let padded = paddedAndScaled(binary) {
+            variants.append(ImageVariant(name: "luminance", image: padded))
+        }
+        if let cleaned = preprocess(image: image),
+           let padded = paddedAndScaled(cleaned) {
+            variants.append(ImageVariant(name: "cleaned", image: padded))
+        }
+        return variants
+    }
+
+    private func attendanceImage(_ image: CaptchaImage, greenOnly: Bool) -> CaptchaImage? {
+        guard let cg = image.cgImage else { return nil }
+        let width = cg.width, height = cg.height
+        let bytesPerRow = width * 4
+        let byteCount = height * bytesPerRow
+        var pixels = [UInt8](repeating: 255, count: byteCount)
+        return pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return nil }
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            var foregroundCount = 0
+            for index in stride(from: 0, to: byteCount, by: 4) {
+                let r = Int(buffer[index]), g = Int(buffer[index + 1]), b = Int(buffer[index + 2])
+                let luminance = (77 * r + 150 * g + 29 * b) >> 8
+                // The M campus image uses green digits over gray shapes and blue speckles.
+                let isGreen = g - r >= 24 && g - b >= 24 && luminance < 160
+                if isGreen { foregroundCount += 1 }
+                let value = UInt8(greenOnly ? (isGreen ? 0 : 255) : luminance)
+                buffer[index] = value
+                buffer[index + 1] = value
+                buffer[index + 2] = value
+                buffer[index + 3] = 255
+            }
+            guard !greenOnly || foregroundCount >= 20,
+                  let output = context.makeImage() else { return nil }
+            return makeImage(output)
+        }
+    }
+
+    private func paddedAndScaled(_ image: CaptchaImage) -> CaptchaImage? {
+        guard let cg = image.cgImage else { return nil }
+        let padding = 12
+        let width = (cg.width + padding * 2) * 3
+        let height = (cg.height + padding * 2) * 3
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.interpolationQuality = .high
+        context.draw(cg, in: CGRect(
+            x: padding * 3, y: padding * 3, width: cg.width * 3, height: cg.height * 3
+        ))
+        guard let output = context.makeImage() else { return nil }
+        return makeImage(output)
+    }
+
+    private func makeImage(_ cg: CGImage) -> CaptchaImage {
+        #if os(macOS)
+        return CaptchaImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        #else
+        return CaptchaImage(cgImage: cg)
+        #endif
     }
 
     private func preprocess(image: CaptchaImage) -> CaptchaImage? {
@@ -184,81 +318,75 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
         return variants
     }
 
-    private func recognizeVariant(_ variant: ImageVariant, expectedLength: Int) async -> OCRCandidate? {
+    private func recognizeVariant(
+        _ variant: ImageVariant, expectedLength: Int, attendance: Bool = false
+    ) -> OCRCandidate? {
         guard let cgImage = variant.image.cgImage else {
             print("[Captcha] cgImage nil for \(variant.name)")
             return nil
         }
 
-        return await withCheckedContinuation { continuation in
-            let request = VNRecognizeTextRequest { [weak self] request, error in
-                guard let self else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                if let error {
-                    print("[Captcha] OCR error (\(variant.name)): \(error.localizedDescription)")
-                    continuation.resume(returning: nil)
-                    return
-                }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLanguages = ["en-US"]
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        request.minimumTextHeight = 0.12
 
-                guard let results = request.results as? [VNRecognizedTextObservation], !results.isEmpty else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                let orderedResults = results
-                    .compactMap { observation -> (VNRecognizedText, CGRect)? in
-                        guard let candidate = observation.topCandidates(1).first else { return nil }
-                        return (candidate, observation.boundingBox)
-                    }
-                    .sorted { lhs, rhs in
-                        if abs(lhs.1.minX - rhs.1.minX) > 0.015 {
-                            return lhs.1.minX < rhs.1.minX
-                        }
-                        return lhs.1.minY > rhs.1.minY
-                    }
-
-                let raw = orderedResults.map { $0.0.string }.joined()
-                let confidence = orderedResults.reduce(Float.zero) { $0 + $1.0.confidence }
-                let elements = orderedResults.map { ($0.0.string, $0.1) }
-
-                let fixed = self.fixZeroSix(on: variant.image, elements: elements)
-                let mapped = self.mapChars(fixed)
-                let digitsOnly = mapped.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
-
-                let score =
-                    digitsOnly.count * 100
-                    - abs(expectedLength - digitsOnly.count) * 80
-                    + Int(confidence * 100)
-                    - max(0, raw.count - digitsOnly.count) * 12
-
-                print("[Captcha] variant=\(variant.name) recognizedLength=\(digitsOnly.count) confidence=\(confidence) score=\(score)")
-
-                continuation.resume(returning: OCRCandidate(
-                    variantName: variant.name,
-                    raw: raw,
-                    fixed: fixed,
-                    mapped: mapped,
-                    digits: digitsOnly,
-                    confidence: confidence,
-                    score: score
-                ))
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            print("[Captcha] OCR perform failed (\(variant.name)) code=\((error as NSError).code)")
+            return nil
+        }
+        guard !Task.isCancelled, let results = request.results, !results.isEmpty else { return nil }
+        let orderedResults = results
+            .compactMap { observation -> (VNRecognizedText, CGRect)? in
+                guard let candidate = observation.topCandidates(1).first else { return nil }
+                return (candidate, observation.boundingBox)
             }
+            .sorted { lhs, rhs in
+                if abs(lhs.1.minX - rhs.1.minX) > 0.015 {
+                    return lhs.1.minX < rhs.1.minX
+                }
+                return lhs.1.minY > rhs.1.minY
+            }
+        guard !orderedResults.isEmpty else { return nil }
 
-            request.recognitionLanguages = ["en-US"]
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = false
-            request.minimumTextHeight = 0.12
+        let raw = orderedResults.map { $0.0.string }.joined()
+        let confidenceSum = orderedResults.reduce(Float.zero) { $0 + $1.0.confidence }
+        let confidence = attendance ? confidenceSum / Float(orderedResults.count) : confidenceSum
+        let elements = orderedResults.map { ($0.0.string, $0.1) }
+        let fixed = attendance ? raw : fixZeroSix(on: variant.image, elements: elements)
+        let mapped = attendance ? Self.mapAttendanceCharacters(fixed) : mapChars(fixed)
+        let digitsOnly = mapped.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        let score =
+            digitsOnly.count * 100
+            - abs(expectedLength - digitsOnly.count) * 80
+            + Int(confidence * 100)
+            - max(0, raw.count - digitsOnly.count) * 12
 
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            do {
-                try handler.perform([request])
-            } catch {
-                print("[Captcha] OCR perform failed (\(variant.name)): \(error.localizedDescription)")
-                continuation.resume(returning: nil)
+        print("[Captcha] variant=\(variant.name) recognizedLength=\(digitsOnly.count) confidence=\(confidence) score=\(score)")
+        return OCRCandidate(
+            variantName: variant.name, raw: raw, fixed: fixed, mapped: mapped,
+            digits: digitsOnly, confidence: confidence, score: score
+        )
+    }
+
+    static func mapAttendanceCharacters(_ text: String) -> String {
+        var output = ""
+        for character in text where !character.isWhitespace {
+            switch character {
+            case "O", "o", "Q": output.append("0")
+            case "I", "l", "|": output.append("1")
+            case "S", "s": output.append("5")
+            case "B": output.append("8")
+            case "Z", "z": output.append("2")
+            default: output.append(character)
             }
         }
+        // Unknown symbols cannot be silently discarded to manufacture five digits.
+        return output.allSatisfy { $0 >= "0" && $0 <= "9" } ? output : ""
     }
 
     private func scaled(image: CaptchaImage, factor: CGFloat) -> CaptchaImage? {

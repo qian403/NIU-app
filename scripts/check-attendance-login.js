@@ -1,75 +1,133 @@
-// Run: node scripts/check-attendance-login.js
-// Exercise the production M campus login DOM scripts without an account/network.
+// Exercise the production capture and submit scripts without accounts or network.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '../Features/Moodle/Views/MoodleWebView.swift'), 'utf8');
-const captureSection = source.slice(source.indexOf('private func captureAttendanceCaptcha'));
-const captureScript = captureSection.match(/let script = """\n([\s\S]*?)\n\s*"""/)[1];
-const submitSection = source.slice(source.indexOf('private func submitAttendanceLogin'));
-let submitScript = submitSection.match(/let script = """\n([\s\S]*?)\n\s*"""/)[1];
-submitScript = submitScript
-    .replaceAll('\\(username)', JSON.stringify('fixture-user'))
-    .replaceAll('\\(password)', JSON.stringify('fixture-password'))
-    .replaceAll('\\(captchaLiteral)', JSON.stringify('95895'));
+const source = fs.readFileSync(path.join(__dirname,
+    '../Features/Moodle/Views/MoodleWebView.swift'), 'utf8');
+function scriptAfter(signature) {
+    return source.slice(source.indexOf(signature)).match(/let script = """\n([\s\S]*?)\n\s*"""/)[1];
+}
+const capture = scriptAfter('private func captureAttendanceCaptcha');
+const retry = scriptAfter('private func retryAttendanceLoginPage');
+const submit = scriptAfter('private func submitAttendanceLogin')
+    .replace('\\(username)', JSON.stringify('synthetic-student'))
+    .replace('\\(password)', JSON.stringify('synthetic-password'))
+    .replace('\\(captchaLiteral)', 'captchaCode')
+    .replace('\\(imageLiteral)', 'capturedImage');
 
-const image = {
-    complete: true,
-    naturalWidth: 180,
-    naturalHeight: 40,
-};
-const canvas = {
-    width: 0,
-    height: 0,
-    getContext: () => ({ drawImage() {} }),
-    toDataURL: () => 'data:image/png;base64,ZmFrZQ==',
-};
-const captchaInput = { value: '', focus() {}, dispatchEvent() {} };
-const dom = {
-    querySelector: selector => {
-        if (selector.includes('#captcha')) return captchaInput;
-        if (selector.includes('#imgcode')) return image;
-        return null;
-    },
-    createElement: type => type === 'canvas' ? canvas : null,
-};
-const capturePayload = JSON.parse(vm.runInNewContext(captureScript, { document: dom }));
-assert.equal(capturePayload.hasInput, true);
-assert.equal(capturePayload.hasImage, true);
-assert.equal(capturePayload.dataURL, 'data:image/png;base64,ZmFrZQ==');
+function page(options = {}) {
+    let imageData = options.imageData ?? 'data:image/png;base64,fixture';
+    const image = options.hasImage === false ? null
+        : { complete: options.complete ?? true, naturalWidth: options.width ?? 180, naturalHeight: 40 };
+    const input = options.hasInput === false ? null
+        : { value: options.manualInput ?? '', focus() {}, dispatchEvent() {} };
+    const field = () => ({ value: '', focus() {}, dispatchEvent() {} });
+    const username = field();
+    const password = field();
+    let submissions = 0;
+    const form = {
+        method: options.method ?? 'post',
+        enctype: options.enctype ?? 'application/x-www-form-urlencoded',
+        action: 'https://euni.niu.edu.tw/login/index.php',
+        checkValidity: () => options.valid ?? true,
+        querySelector: () => ({}),
+        requestSubmit: () => { submissions += 1; },
+    };
+    if (options.refreshOnInput && input) {
+        input.dispatchEvent = () => { imageData = 'data:image/png;base64,replacement'; };
+    }
+    const context = {
+        captchaCode: options.captchaCode === undefined ? '12345' : options.captchaCode,
+        capturedImage: options.capturedImage ?? 'data:image/png;base64,fixture',
+        Event: class {},
+        FormData: class extends Array {
+            constructor() {
+                super();
+                this.push(['username', username.value], ['password', password.value],
+                    ['logintoken', 'synthetic-csrf']);
+                if (input) this.push(['captcha', input.value]);
+            }
+            append(name, value) { this.push([name, value]); }
+        },
+        URLSearchParams,
+        document: {
+            querySelector: selector => {
+                if (selector.includes('imgcode')) return image;
+                if (selector.includes('#captcha')) return input;
+                if (selector.includes('username')) return username;
+                if (selector.includes('password')) return password;
+                if (selector.includes('form')) return options.hasForm === false ? null : form;
+                throw new Error(`Unexpected selector: ${selector}`);
+            },
+            createElement: () => ({
+                getContext: () => options.noContext ? null : {
+                    drawImage() {
+                        if (options.canvasError) throw new Error('Synthetic canvas failure');
+                    },
+                },
+                toDataURL: () => imageData,
+            }),
+        },
+    };
+    return { context, input, username, password, submissions: () => submissions };
+}
 
-let submitted = false;
-const submitButton = { click() { submitted = true; } };
-const form = {
-    requestSubmit() { submitted = true; },
-    querySelector: selector => selector.includes('button') ? submitButton : null,
-};
-const fields = {
-    'form[action*="login/index.php"]': form,
-    'form#login': form,
-    'input[name="username"]': { value: '', focus() {}, dispatchEvent() {} },
-    'input#username': { value: '', focus() {}, dispatchEvent() {} },
-    'input[name="password"]': { value: '', focus() {}, dispatchEvent() {} },
-    'input#password': { value: '', focus() {}, dispatchEvent() {} },
-    '#captcha, input[name="captcha"]': captchaInput,
-};
-const submitDom = {
-    querySelector: selector => {
-        if (selector.includes('form[action*="login/index.php"]')) return form;
-        if (selector.includes('form#login')) return form;
-        if (selector.includes('input[name="username"]')) return fields['input[name="username"]'];
-        if (selector.includes('input[name="password"]')) return fields['input[name="password"]'];
-        if (selector.includes('#captcha')) return captchaInput;
-        return fields[selector] ?? null;
-    },
-};
-const result = vm.runInNewContext(submitScript, { document: submitDom, Event: class Event {} });
-assert.equal(result, 'submitted');
-assert.equal(submitted, true);
-assert.equal(fields['input[name="username"]'].value, 'fixture-user');
-assert.equal(fields['input[name="password"]'].value, 'fixture-password');
-assert.equal(captchaInput.value, '95895');
+for (const options of [
+    { hasImage: false }, { complete: false }, { width: 0 }, { noContext: true }, { canvasError: true },
+]) {
+    const fixture = page(options);
+    assert.equal(JSON.parse(vm.runInNewContext(capture, fixture.context)).dataURL, null);
+}
+const captured = JSON.parse(vm.runInNewContext(capture, page().context));
+assert.equal(captured.dataURL, 'data:image/png;base64,fixture');
+assert.equal(captured.hasInput, true);
+assert.equal(captured.hasImage, true);
+assert.equal(captured.complete, true);
+assert.equal(captured.width, 180);
 
-console.log('PASS: M campus captcha extraction and credential/captcha submission scripts');
+for (const options of [
+    { imageData: 'data:image/png;base64,replacement' },
+    { complete: false }, { width: 0 }, { hasImage: false },
+    { noContext: true }, { canvasError: true }, { refreshOnInput: true },
+]) {
+    const fixture = page(options);
+    assert.equal(vm.runInNewContext(submit, fixture.context), 'stale-captcha');
+    assert.equal(fixture.submissions(), 0, 'Changed or unreadable image must never submit');
+}
+const manual = page({ manualInput: '54321' });
+assert.equal(vm.runInNewContext(submit, manual.context), 'manual-input');
+assert.equal(manual.input.value, '54321');
+assert.equal(manual.username.value, '');
+assert.equal(manual.submissions(), 0);
+
+const valid = page();
+const prepared = JSON.parse(vm.runInNewContext(submit, valid.context));
+assert.equal(prepared.status, 'ready');
+assert.equal(prepared.action, 'https://euni.niu.edu.tw/login/index.php');
+const fields = new URLSearchParams(prepared.body);
+assert.equal(fields.get('logintoken'), 'synthetic-csrf');
+assert.equal(fields.get('captcha'), '12345');
+assert.equal(fields.get('username'), 'synthetic-student');
+assert.equal(fields.get('password'), 'synthetic-password');
+assert.equal(valid.username.value, 'synthetic-student');
+assert.equal(valid.password.value, 'synthetic-password');
+assert.equal(valid.input.value, '12345');
+assert.equal(valid.submissions(), 0, 'Queued JavaScript must never submit; native code validates the generation');
+const noCaptcha = page({ hasInput: false, hasImage: false, captchaCode: null });
+assert.equal(JSON.parse(vm.runInNewContext(submit, noCaptcha.context)).status, 'ready');
+const lateCaptcha = page({ captchaCode: null });
+assert.equal(vm.runInNewContext(submit, lateCaptcha.context), 'missing-form');
+assert.equal(lateCaptcha.submissions(), 0);
+const missingForm = page({ hasForm: false });
+assert.equal(vm.runInNewContext(submit, missingForm.context), 'missing-form');
+assert.equal(missingForm.submissions(), 0);
+for (const options of [{ method: 'get' }, { enctype: 'multipart/form-data' }, { valid: false }]) {
+    const fixture = page(options);
+    assert.equal(vm.runInNewContext(submit, fixture.context), 'unsupported-form');
+    assert.equal(fixture.submissions(), 0);
+}
+assert.equal(vm.runInNewContext(retry, page({ manualInput: '123' }).context), true);
+assert.equal(vm.runInNewContext(retry, page().context), false);
+console.log('PASS: capture readiness, stale images, manual input before submission/retry, form preparation without JS submission');
