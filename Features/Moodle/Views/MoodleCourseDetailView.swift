@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MoodleCourseDetailView: View {
     let course: MoodleCourse
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: MoodleCourseDetailViewModel
     @StateObject private var announcementsViewModel: MoodleAnnouncementsViewModel
     @StateObject private var assignmentsViewModel: MoodleAssignmentsListViewModel
@@ -33,7 +35,14 @@ struct MoodleCourseDetailView: View {
             courseSummary
             tabBar
 
-            tabContent
+            TabView(selection: $viewModel.selectedTab) {
+                ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
+                    tabContent(for: tab)
+                        .tag(tab)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(course.cleanName)
@@ -73,47 +82,83 @@ struct MoodleCourseDetailView: View {
     }
 
     private var tabBar: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 6) {
-                ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            viewModel.selectedTab = tab
-                        }
-                    }) {
-                        VStack(spacing: 4) {
-                            Image(systemName: tab.iconName)
-                                .font(.body.weight(.semibold))
-                            Text(tab.rawValue)
-                                .font(.caption.weight(.semibold))
-                                .fixedSize()
-                        }
-                        .foregroundStyle(viewModel.selectedTab == tab ? Color.accentColor : Color(.secondaryLabel))
-                        .frame(minWidth: 52, minHeight: 52)
-                        .padding(.horizontal, 6)
-                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // Keep all six destinations visible; larger text gets two rows.
+        let columnCount = dynamicTypeSize >= .xxLarge ? 3 : 6
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4), count: columnCount),
+            spacing: 6
+        ) {
+            ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
+                Button {
+                    selectTab(tab)
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: tab.iconName)
+                            .font(.body.weight(.semibold))
+                        Text(tab.rawValue)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                            .multilineTextAlignment(.center)
                     }
-                    .glassEffect(
-                        viewModel.selectedTab == tab
-                            ? .regular.tint(Color.accentColor.opacity(0.12)).interactive()
-                            : .regular.interactive(),
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    )
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(viewModel.selectedTab == tab ? .isSelected : [])
+                    .foregroundStyle(viewModel.selectedTab == tab ? Color.accentColor : Color(.secondaryLabel))
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+                .glassEffect(
+                    viewModel.selectedTab == tab
+                        ? .regular.tint(Color.accentColor.opacity(0.12)).interactive()
+                        : .regular.interactive(),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .overlay(alignment: .bottom) {
+                    if viewModel.selectedTab == tab {
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .frame(width: 16, height: 3)
+                            .padding(.bottom, 3)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.rawValue)
+                .accessibilityAddTraits(viewModel.selectedTab == tab ? .isSelected : [])
             }
-            .padding(.horizontal, Theme.Spacing.medium)
-            .padding(.vertical, 12)
         }
-        .scrollIndicators(.hidden)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    let translation = value.translation
+                    guard value.startLocation.x > 24,
+                          abs(translation.width) > 50,
+                          abs(translation.width) > abs(translation.height) * 1.5 else { return }
+                    selectAdjacentTab(offset: translation.width < 0 ? 1 : -1)
+                }
+        )
+    }
+
+    private func selectTab(_ tab: MoodleCourseDetailViewModel.Tab) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            viewModel.selectedTab = tab
+        }
+    }
+
+    private func selectAdjacentTab(offset: Int) {
+        let tabs = MoodleCourseDetailViewModel.Tab.allCases
+        guard let currentIndex = tabs.firstIndex(of: viewModel.selectedTab) else { return }
+        let nextIndex = currentIndex + offset
+        guard tabs.indices.contains(nextIndex) else { return }
+        selectTab(tabs[nextIndex])
     }
 
     // MARK: - Tab Content
 
     @ViewBuilder
-    private var tabContent: some View {
-        switch viewModel.selectedTab {
+    private func tabContent(for tab: MoodleCourseDetailViewModel.Tab) -> some View {
+        switch tab {
         case .announcements:
             MoodleCourseAnnouncementsView(
                 courseId: course.id,
