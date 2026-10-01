@@ -125,6 +125,13 @@
 		C0DEB006C0DEB006C0DEB006 /* Features/Moodle/Questions/MoodleQuestionPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC006C0DEC006C0DEC006 /* Features/Moodle/Questions/MoodleQuestionPage.swift */; };
 		C0DEB007C0DEB007C0DEB007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC007C0DEC007C0DEC007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift */; };
 		C0DEB008C0DEB008C0DEB008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC008C0DEC008C0DEC008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift */; };
+		C0DE1100C0DE1100C0DE1100 /* LibraryEquipmentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1200C0DE1200C0DE1200 /* LibraryEquipmentModels.swift */; };
+		C0DE1101C0DE1101C0DE1101 /* LibraryEquipmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1201C0DE1201C0DE1201 /* LibraryEquipmentService.swift */; };
+		C0DE1102C0DE1102C0DE1102 /* LibraryEquipmentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1202C0DE1202C0DE1202 /* LibraryEquipmentViewModel.swift */; };
+		C0DE1103C0DE1103C0DE1103 /* LibraryEquipmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1203C0DE1203C0DE1203 /* LibraryEquipmentView.swift */; };
+		C0DE1104C0DE1104C0DE1104 /* LibraryEquipmentComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1204C0DE1204C0DE1204 /* LibraryEquipmentComponents.swift */; };
+		C0DE1105C0DE1105C0DE1105 /* LibraryEquipmentBookingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1205C0DE1205C0DE1205 /* LibraryEquipmentBookingViews.swift */; };
+		C0DE1106C0DE1106C0DE1106 /* LibraryEquipmentReservationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1206C0DE1206C0DE1206 /* LibraryEquipmentReservationViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -290,6 +297,13 @@
 		C0DEC006C0DEC006C0DEC006 /* Features/Moodle/Questions/MoodleQuestionPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionPage.swift; sourceTree = "<group>"; };
 		C0DEC007C0DEC007C0DEC007 /* Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionDetailViewModel.swift; sourceTree = "<group>"; };
 		C0DEC008C0DEC008C0DEC008 /* Features/Moodle/Questions/MoodleQuestionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionDetailView.swift; sourceTree = "<group>"; };
+		C0DE1200C0DE1200C0DE1200 /* LibraryEquipmentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentModels.swift; sourceTree = "<group>"; };
+		C0DE1201C0DE1201C0DE1201 /* LibraryEquipmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentService.swift; sourceTree = "<group>"; };
+		C0DE1202C0DE1202C0DE1202 /* LibraryEquipmentViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentViewModel.swift; sourceTree = "<group>"; };
+		C0DE1203C0DE1203C0DE1203 /* LibraryEquipmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentView.swift; sourceTree = "<group>"; };
+		C0DE1204C0DE1204C0DE1204 /* LibraryEquipmentComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentComponents.swift; sourceTree = "<group>"; };
+		C0DE1205C0DE1205C0DE1205 /* LibraryEquipmentBookingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentBookingViews.swift; sourceTree = "<group>"; };
+		C0DE1206C0DE1206C0DE1206 /* LibraryEquipmentReservationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentReservationViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -807,6 +821,13 @@
 			children = (
 				D031C002D031C002D031C002 /* LibraryCodeService.swift */,
 				D031C004D031C004D031C004 /* LibraryCodeView.swift */,
+				C0DE1203C0DE1203C0DE1203 /* LibraryEquipmentView.swift */,
+				C0DE1204C0DE1204C0DE1204 /* LibraryEquipmentComponents.swift */,
+				C0DE1205C0DE1205C0DE1205 /* LibraryEquipmentBookingViews.swift */,
+				C0DE1206C0DE1206C0DE1206 /* LibraryEquipmentReservationViews.swift */,
+				C0DE1202C0DE1202C0DE1202 /* LibraryEquipmentViewModel.swift */,
+				C0DE1201C0DE1201C0DE1201 /* LibraryEquipmentService.swift */,
+				C0DE1200C0DE1200C0DE1200 /* LibraryEquipmentModels.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -1020,6 +1041,13 @@
 				C0DEB001C0DEB001C0DEB001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift in Sources */,
 				D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */,
 				D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */,
+				C0DE1103C0DE1103C0DE1103 /* LibraryEquipmentView.swift in Sources */,
+				C0DE1104C0DE1104C0DE1104 /* LibraryEquipmentComponents.swift in Sources */,
+				C0DE1105C0DE1105C0DE1105 /* LibraryEquipmentBookingViews.swift in Sources */,
+				C0DE1106C0DE1106C0DE1106 /* LibraryEquipmentReservationViews.swift in Sources */,
+				C0DE1102C0DE1102C0DE1102 /* LibraryEquipmentViewModel.swift in Sources */,
+				C0DE1101C0DE1101C0DE1101 /* LibraryEquipmentService.swift in Sources */,
+				C0DE1100C0DE1100C0DE1100 /* LibraryEquipmentModels.swift in Sources */,
 				10A32DBB2F431F630009BB45 /* HomeView.swift in Sources */,
 				C0DE90010000000000000001 /* PostalQueryView.swift in Sources */,
 				C0DE90010000000000000002 /* PostalQueryViewModel.swift in Sources */,
