@@ -5,57 +5,55 @@ struct GradeHistoryView: View {
     @StateObject private var vm = GradeHistoryViewModel()
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                modeSection
-                    .padding(.horizontal, Theme.Spacing.large)
-                    .padding(.vertical, Theme.Spacing.medium)
-                ZStack {
-                    Color(.systemBackground).ignoresSafeArea()
+        VStack(spacing: 0) {
+            modeSection
+                .padding(.horizontal, Theme.Spacing.large)
+                .padding(.vertical, Theme.Spacing.medium)
+            ZStack {
+                Color(.systemBackground).ignoresSafeArea()
 
-                    switch vm.loadState {
-                    case .idle, .loading:
-                        ProgressView(loadingText)
-                            .progressViewStyle(.circular)
-                            .tint(.primary)
-                            .foregroundColor(.primary.opacity(0.6))
+                switch vm.loadState {
+                case .idle, .loading:
+                    ProgressView(loadingText)
+                        .progressViewStyle(.circular)
+                        .tint(.primary)
+                        .foregroundColor(.primary.opacity(0.6))
 
-                    case .error(let message):
-                        errorView(message: message)
+                case .error(let message):
+                    errorView(message: message)
 
-                    case .loaded:
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: Theme.Spacing.large) {
-                                contentHeader
-                                contentSection
-                                AcademicRefreshFooter(
-                                    lastUpdated: vm.lastUpdated,
-                                    isRefreshing: vm.isRefreshing,
-                                    errorMessage: vm.lastRefreshError,
-                                    onRetry: vm.refresh
-                                )
-                            }
-                            .padding(.horizontal, Theme.Spacing.large)
-                            .padding(.vertical, Theme.Spacing.medium)
+                case .loaded:
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.large) {
+                            contentHeader
+                            contentSection
+                            AcademicRefreshFooter(
+                                lastUpdated: vm.lastUpdated,
+                                isRefreshing: vm.isRefreshing,
+                                errorMessage: vm.lastRefreshError,
+                                onRetry: vm.refresh
+                            )
                         }
-                        .scrollBounceBehavior(.always, axes: .vertical)
-                        .refreshable { await vm.refreshAndWait() }
+                        .padding(.horizontal, Theme.Spacing.large)
+                        .padding(.vertical, Theme.Spacing.medium)
                     }
+                    .scrollBounceBehavior(.always, axes: .vertical)
+                    .refreshable { await vm.refreshAndWait() }
                 }
             }
-            .navigationTitle("成績查詢")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if vm.isModeLoading {
-                        ProgressView()
-                            .tint(.primary)
-                    } else {
-                        Button(action: vm.refresh) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 16, weight: .light))
-                                .foregroundColor(.primary)
-                        }
+        }
+        .navigationTitle("成績查詢")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if vm.isModeLoading {
+                    ProgressView()
+                        .tint(.primary)
+                } else {
+                    Button(action: vm.refresh) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .light))
+                            .foregroundColor(.primary)
                     }
                 }
             }
@@ -71,6 +69,8 @@ struct GradeHistoryView: View {
                     .allowsHitTesting(false)
             }
         }
+        .task { vm.startIfNeeded() }
+        .onDisappear { vm.cancelLoading() }
     }
 
     // MARK: - Sections
@@ -1497,5 +1497,5 @@ private struct GradeHistoryWebView: UIViewRepresentable {
 }
 
 #Preview {
-    GradeHistoryView()
+    NavigationStack { GradeHistoryView() }
 }

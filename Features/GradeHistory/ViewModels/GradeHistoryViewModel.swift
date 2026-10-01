@@ -81,8 +81,20 @@ final class GradeHistoryViewModel: ObservableObject {
             loadState = .loaded
         } else {
             loadPersistedCache()
-            loadGrades()
+            if restoreDisplayedCache() { loadState = .loaded }
         }
+    }
+
+    func startIfNeeded() {
+        guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1",
+              !isRefreshing else { return }
+        loadGrades()
+    }
+
+    func cancelLoading() {
+        guard isRefreshing else { return }
+        finishOperation()
+        loadState = lastUpdated != nil ? .loaded : .idle
     }
 
     func refresh() {
