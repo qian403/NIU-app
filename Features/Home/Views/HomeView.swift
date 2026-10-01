@@ -1,11 +1,30 @@
 import SwiftUI
 
+private enum HomeDestination: Hashable {
+    case settings, moodle, classSchedule, library, academicCalendar, attendance
+    case eventRegistration, gradeHistory, graduationThreshold, mail, enrollmentCertificate, postalQuery, libraryEquipment
+    case tools
+
+    init(_ destination: CampusDestination) {
+        switch destination {
+        case .classSchedule: self = .classSchedule
+        case .academicCalendar: self = .academicCalendar
+        case .attendance: self = .attendance
+        case .library: self = .library
+        }
+    }
+}
+
+private struct HomeRoute: Hashable {
+    let destination: HomeDestination
+    var requestID: UUID?
+}
+
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var router: CampusRouter
     @StateObject private var scheduleViewModel = ClassScheduleViewModel()
-    @State private var navigationPath: [CampusDestination] = []
-    @State private var navigationID = UUID()
+    @State private var navigationPath = NavigationPath()
     @State private var animateIn = true
 
     // Today's courses state
@@ -64,21 +83,17 @@ struct HomeView: View {
                 }
             }
             .navigationBarHidden(true)
-            .navigationDestination(for: CampusDestination.self) { destination in
-                switch destination {
-                case .classSchedule: ClassScheduleView()
-                case .academicCalendar: AcademicCalendarView()
-                case .attendance: MoodleAttendanceScannerView()
-                case .library: LibraryCodeView()
-                }
+            .navigationDestination(for: HomeRoute.self) { route in
+                destinationView(for: route.destination)
+                    .id(route)
             }
         }
-        .id(navigationID)
         .task(id: router.pendingRequest?.id) {
             guard let request = router.pendingRequest else { return }
-            // Reset any previously pushed detail before opening the requested screen.
-            navigationPath = [request.destination]
-            navigationID = request.id
+            // Replace the route without rebuilding the stack that owns its path.
+            navigationPath = NavigationPath([
+                HomeRoute(destination: HomeDestination(request.destination), requestID: request.id)
+            ])
             router.pendingRequest = nil
         }
         .onAppear {
@@ -92,6 +107,29 @@ struct HomeView: View {
         }
         .task {
             await appState.refreshProfileIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private func destinationView(for destination: HomeDestination) -> some View {
+        switch destination {
+        case .settings: SettingsView()
+        case .moodle: MoodleView()
+        case .classSchedule: ClassScheduleView()
+        case .library: LibraryCodeView()
+        case .libraryEquipment: LibraryEquipmentView()
+        case .academicCalendar: AcademicCalendarView()
+        case .attendance:
+            MoodleAttendanceScannerView(onReturnHome: {
+                navigationPath = NavigationPath()
+            })
+        case .eventRegistration: EventRegistrationView()
+        case .gradeHistory: GradeHistoryView()
+        case .graduationThreshold: GraduationThresholdView()
+        case .mail: MailView()
+        case .enrollmentCertificate: EnrollmentCertificateView()
+        case .postalQuery: PostalQueryView()
+        case .tools: HomeToolsView()
         }
     }
 
@@ -152,7 +190,7 @@ struct HomeView: View {
 
     private var headerSection: some View {
         HStack {
-            NavigationLink(destination: SettingsView()) {
+            NavigationLink(value: HomeRoute(destination: .settings)) {
                 HStack(spacing: Theme.Spacing.small) {
                     NIUAvatar(appState.currentUser?.name ?? "U", size: .small)
                     VStack(alignment: .leading, spacing: 2) {
@@ -170,7 +208,7 @@ struct HomeView: View {
 
             Spacer()
 
-            NavigationLink(destination: SettingsView()) {
+            NavigationLink(value: HomeRoute(destination: .settings)) {
                 iconButtonAppearance("gearshape")
             }
             .buttonStyle(.plain)
@@ -237,7 +275,7 @@ struct HomeView: View {
                 Spacer()
 
                 Button("查看全部") {
-                    navigationPath.append(.classSchedule)
+                    navigationPath.append(HomeRoute(destination: .classSchedule))
                 }
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.accentColor)
@@ -300,7 +338,7 @@ struct HomeView: View {
         let isCurrent = period.isCurrentPeriod
 
         return Button {
-            navigationPath.append(.classSchedule)
+            navigationPath.append(HomeRoute(destination: .classSchedule))
         } label: {
             HStack(spacing: Theme.Spacing.small) {
                 RoundedRectangle(cornerRadius: 2)
@@ -364,7 +402,7 @@ struct HomeView: View {
     // MARK: - Feature Cards
 
     private var quickAttendanceEntry: some View {
-        NavigationLink(destination: MoodleAttendanceScannerView()) {
+        NavigationLink(value: HomeRoute(destination: .attendance)) {
             HStack(spacing: Theme.Spacing.medium) {
                 ZStack {
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous)
@@ -413,7 +451,7 @@ struct HomeView: View {
                     title: "M 園區",
                     subtitle: "課程、公告與作業",
                     color: .blue,
-                    destination: MoodleView()
+                    destination: .moodle
                 )
 
                 FeatureCard(
@@ -421,7 +459,7 @@ struct HomeView: View {
                     title: "我的課表",
                     subtitle: "查看每週課程安排",
                     color: .purple,
-                    destination: ClassScheduleView()
+                    destination: .classSchedule
                 )
 
                 FeatureCard(
@@ -429,7 +467,7 @@ struct HomeView: View {
                     title: "圖書館通行碼",
                     subtitle: "門禁 QR Code 與借書條碼",
                     color: .indigo,
-                    destination: LibraryCodeView()
+                    destination: .library
                 )
 
                 FeatureCard(
@@ -437,7 +475,7 @@ struct HomeView: View {
                     title: "學年度行事曆",
                     subtitle: "查看學期重要日程",
                     color: .orange,
-                    destination: AcademicCalendarView()
+                    destination: .academicCalendar
                 )
 
                 FeatureCard(
@@ -445,7 +483,7 @@ struct HomeView: View {
                     title: "活動報名",
                     subtitle: "參加校園活動",
                     color: .green,
-                    destination: EventRegistrationView()
+                    destination: .eventRegistration
                 )
 
                 FeatureCard(
@@ -453,7 +491,7 @@ struct HomeView: View {
                     title: "成績查詢",
                     subtitle: "歷年成績與 GPA",
                     color: .orange,
-                    destination: GradeHistoryView()
+                    destination: .gradeHistory
                 )
 
                 FeatureCard(
@@ -461,7 +499,7 @@ struct HomeView: View {
                     title: "畢業門檻",
                     subtitle: "多元時數、英文、體適能",
                     color: .teal,
-                    destination: GraduationThresholdView()
+                    destination: .graduationThreshold
                 )
 
                 FeatureCard(
@@ -469,7 +507,7 @@ struct HomeView: View {
                     title: "校園信箱",
                     subtitle: "收發郵件、附件與信件管理",
                     color: .blue,
-                    destination: MailView()
+                    destination: .mail
                 )
 
                 FeatureCard(
@@ -477,15 +515,15 @@ struct HomeView: View {
                     title: "在學證明",
                     subtitle: "註冊查詢、顯示與列印",
                     color: .cyan,
-                    destination: EnrollmentCertificateView()
+                    destination: .enrollmentCertificate
                 )
 
                 FeatureCard(
-                    icon: "shippingbox.fill",
-                    title: "郵件包裹查詢",
-                    subtitle: "查詢收件與領取狀態",
+                    icon: "square.grid.2x2.fill",
+                    title: "小工具",
+                    subtitle: "設備租借、郵件包裹",
                     color: .brown,
-                    destination: PostalQueryView()
+                    destination: .tools
                 )
             }
             .opacity(animateIn ? 1 : 0)
@@ -494,17 +532,48 @@ struct HomeView: View {
     }
 }
 
+private struct HomeToolsView: View {
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: Theme.Spacing.medium),
+                GridItem(.flexible(), spacing: Theme.Spacing.medium)
+            ], spacing: Theme.Spacing.medium) {
+                FeatureCard(
+                    icon: "calendar.badge.clock",
+                    title: "設備租借",
+                    subtitle: "圖書館空間與設備預約",
+                    color: .teal,
+                    destination: .libraryEquipment
+                )
+                FeatureCard(
+                    icon: "shippingbox.fill",
+                    title: "郵件包裹查詢",
+                    subtitle: "查詢收件與領取狀態",
+                    color: .brown,
+                    destination: .postalQuery
+                )
+            }
+            .padding(Theme.Spacing.large)
+        }
+        .background(Theme.Colors.groupedBackground)
+        .navigationTitle("小工具")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+}
+
 // MARK: - Feature Card
 
-struct FeatureCard<Destination: View>: View {
+private struct FeatureCard: View {
     let icon: String
     let title: String
     let subtitle: String
     let color: Color
-    let destination: Destination
+    let destination: HomeDestination
 
     var body: some View {
-        NavigationLink(destination: destination) {
+        NavigationLink(value: HomeRoute(destination: destination)) {
             VStack(spacing: Theme.Spacing.small) {
                 ZStack {
                     Circle()
@@ -575,9 +644,7 @@ private func normalizedDepartment(from raw: String) -> String {
 }
 
 #Preview {
-    NavigationStack {
-        HomeView()
-            .environmentObject(AppState())
-            .environmentObject(CampusRouter.shared)
-    }
+    HomeView()
+        .environmentObject(AppState())
+        .environmentObject(CampusRouter.shared)
 }

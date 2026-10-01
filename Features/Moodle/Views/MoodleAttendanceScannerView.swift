@@ -6,7 +6,7 @@ import WebKit
 
 struct MoodleAttendanceScannerView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.dismiss) private var dismiss
+    let onReturnHome: () -> Void
     @StateObject private var scanner = MoodleAttendanceScanner()
     @State private var attendanceURL: URL?
     @State private var isShowingAttendance = false
@@ -74,10 +74,7 @@ struct MoodleAttendanceScannerView: View {
                     attendanceURL: attendanceURL,
                     previewOutcome: debugPreviewOutcome,
                     onQRCodeExpired: { expiredAttendanceURLs.insert(attendanceURL) },
-                    onReturnHome: {
-                        isShowingAttendance = false
-                        dismiss()
-                    }
+                    onReturnHome: onReturnHome
                 )
             }
         }
