@@ -532,7 +532,7 @@ final class MoodleService {
         let originalFilename = localFileURL.lastPathComponent
         let filename = multipartSafeFilename(from: originalFilename, pathExtension: localFileURL.pathExtension)
         let mimeType = mimeTypeForFileExtension(localFileURL.pathExtension)
-        let fileData = try Data(contentsOf: localFileURL)
+        let fileData = try await MoodleRequestBody.readFile(at: localFileURL)
         guard !fileData.isEmpty else {
             throw MoodleError.apiError("選取的檔案內容為空，請重新選擇檔案")
         }
@@ -544,28 +544,20 @@ final class MoodleService {
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-            var body = Data()
-            func appendField(_ name: String, _ value: String) {
-                body.append("--\(boundary)\r\n".data(using: .utf8)!)
-                body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-                body.append("\(value)\r\n".data(using: .utf8)!)
-            }
-
-            appendField("token", token)
-            appendField("itemid", "\(draftItemId)")
-            appendField("component", "user")
-            appendField("filepath", "/")
-            appendField("filearea", "draft")
-            appendField("author", "NIU APP")
-            appendField("license", "allrightsreserved")
-            appendField("repo_upload_file", "1")
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"\(fileFieldName)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-            body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-            body.append(fileData)
-            body.append("\r\n".data(using: .utf8)!)
-            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-            request.httpBody = body
+            request.httpBody = await MoodleRequestBody.multipart(
+                boundary: boundary,
+                fields: [
+                    ("token", token),
+                    ("itemid", "\(draftItemId)"),
+                    ("component", "user"),
+                    ("filepath", "/"),
+                    ("filearea", "draft"),
+                    ("author", "NIU APP"),
+                    ("license", "allrightsreserved"),
+                    ("repo_upload_file", "1")
+                ],
+                file: .init(field: fileFieldName, filename: filename, mimeType: mimeType, data: fileData)
+            )
 
             #if DEBUG
             print("[MoodleUpload] field=\(fileFieldName) filename=\(filename) bytes=\(fileData.count) draft=\(draftItemId)")
@@ -885,10 +877,7 @@ final class MoodleService {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
         applyMoodleMobileHeaders(to: &request)
-        let form = params
-            .map { "\($0.key.urlEncoded)=\($0.value.urlEncoded)" }
-            .joined(separator: "&")
-        request.httpBody = form.data(using: .utf8)
+        request.httpBody = await MoodleRequestBody.form(params)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
@@ -1403,11 +1392,7 @@ final class MoodleService {
     }
 
     private func parseAttendanceHTML(_ html: String) -> MoodleAttendanceHTMLResult {
-        let tableRegex = try? NSRegularExpression(
-            pattern: "(<table[^>]*>[\\s\\S]*?</table>)",
-            options: [.caseInsensitive]
-        )
-        let allTables = captureGroups(in: html, regex: tableRegex)
+        let allTables = captureGroups(in: html, regex: AttendanceHTMLRegex.table)
 
         let candidateTables = allTables.filter { table in
             let lower = table.lowercased()
@@ -1427,11 +1412,7 @@ final class MoodleService {
             return lhsEarliest > rhsEarliest
         }) ?? []
 
-        let statsRowsRegex = try? NSRegularExpression(
-            pattern: "<table[^>]*class=\"[^\"]*attlist[^\"]*\"[^>]*>[\\s\\S]*?</table>",
-            options: [.caseInsensitive]
-        )
-        let statsTable = firstMatch(in: html, regex: statsRowsRegex)
+        let statsTable = firstMatch(in: html, regex: AttendanceHTMLRegex.statsTable)
         let totalText = extractStatValue(from: statsTable, keyContains: "已記錄的上課時段")
         let percentText = extractStatValue(from: statsTable, keyContains: "出席次數百分比")
         let parsedTotal = Int((totalText ?? "").replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression))
@@ -1449,11 +1430,7 @@ final class MoodleService {
     }
 
     private func parseAttendanceRecords(from tableHTML: String) -> [MoodleAttendanceHTMLRecord] {
-        let rowRegex = try? NSRegularExpression(
-            pattern: "<tr[^>]*>([\\s\\S]*?)</tr>",
-            options: [.caseInsensitive]
-        )
-        let rows = captureGroups(in: tableHTML, regex: rowRegex)
+        let rows = captureGroups(in: tableHTML, regex: AttendanceHTMLRegex.row)
 
         var records: [MoodleAttendanceHTMLRecord] = []
         var runningId = 1
@@ -1508,9 +1485,7 @@ final class MoodleService {
     }
 
     private func extractTableCell(_ rowHTML: String, classHint: String) -> String {
-        let pattern = "<td[^>]*class=\"[^\"]*\(NSRegularExpression.escapedPattern(for: classHint))[^\"]*\"[^>]*>([\\s\\S]*?)</td>"
-        let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
-        if let raw = firstCapturedValue(in: rowHTML, regex: regex) {
+        if let raw = firstCapturedValue(in: rowHTML, regex: AttendanceHTMLRegex.cell(classHint: classHint)) {
             return raw
         }
 
@@ -1518,21 +1493,15 @@ final class MoodleService {
     }
 
     private func extractTableCells(_ rowHTML: String) -> [String] {
-        let regex = try? NSRegularExpression(
-            pattern: "<td[^>]*>([\\s\\S]*?)</td>",
-            options: [.caseInsensitive]
-        )
-        return captureGroups(in: rowHTML, regex: regex)
+        captureGroups(in: rowHTML, regex: AttendanceHTMLRegex.cell)
     }
 
     private func extractStatValue(from tableHTML: String?, keyContains: String) -> String? {
         guard let tableHTML else { return nil }
-        let rowRegex = try? NSRegularExpression(pattern: "<tr[^>]*>([\\s\\S]*?)</tr>", options: [.caseInsensitive])
-        let rows = captureGroups(in: tableHTML, regex: rowRegex)
+        let rows = captureGroups(in: tableHTML, regex: AttendanceHTMLRegex.row)
 
         for row in rows {
-            let cellsRegex = try? NSRegularExpression(pattern: "<td[^>]*>([\\s\\S]*?)</td>", options: [.caseInsensitive])
-            let cells = captureGroups(in: row, regex: cellsRegex)
+            let cells = captureGroups(in: row, regex: AttendanceHTMLRegex.cell)
             guard cells.count >= 2 else { continue }
 
             let key = sanitizeAttendanceText(cells[0]) ?? ""
@@ -1550,10 +1519,7 @@ final class MoodleService {
             .replacingOccurrences(of: "[\u{00A0}\u{2000}-\u{200B}]", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let datePattern = "(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日"
-        let regex = try? NSRegularExpression(pattern: datePattern)
-
-        if let regex,
+        if let regex = AttendanceHTMLRegex.date,
            let match = regex.firstMatch(in: normalized, range: NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)),
            match.numberOfRanges >= 4,
            let yRange = Range(match.range(at: 1), in: normalized),
@@ -1567,7 +1533,8 @@ final class MoodleService {
             comp.day = d
             let date = comp.date ?? Date(timeIntervalSince1970: 0)
 
-            let timeText = normalized.replacingOccurrences(of: datePattern, with: "", options: .regularExpression)
+            let fullRange = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+            let timeText = regex.stringByReplacingMatches(in: normalized, range: fullRange, withTemplate: "")
                 .replacingOccurrences(of: "\\(週.\\)", with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -1642,7 +1609,7 @@ final class MoodleService {
                 "itemid": "\(draftItemId)",
                 "filepath": "/",
                 "filename": filename,
-                "filecontent": fileData.base64EncodedString()
+                "filecontent": await MoodleRequestBody.base64(fileData)
             ]
         )
 
@@ -1901,39 +1868,37 @@ final class MoodleService {
         uploadReq.setValue(editURL, forHTTPHeaderField: "Referer")
         await syncWebKitCookiesToSharedStorage()
 
-        var body = Data()
-        func appendField(_ name: String, _ value: String) {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(value)\r\n".data(using: .utf8)!)
-        }
-
-        appendField("title", filename)
-        appendField("author", "NIU APP")
-        appendField("license", "allrightsreserved")
-        appendField("itemid", effectiveDraftItemID)
-        appendField("repo_id", repoID)
-        appendField("p", hiddenP)
-        appendField("page", hiddenPage)
-        appendField("env", hiddenEnv)
-        appendField("sesskey", sesskey)
-        appendField("client_id", clientID)
-        appendField("maxbytes", maxBytes)
-        appendField("areamaxbytes", areaMaxBytes)
-        appendField("ctx_id", ctxID)
-        appendField("savepath", "/")
-        appendField("subdirs", hiddenSubdirs)
+        var fields: [(String, String)] = [
+            ("title", filename),
+            ("author", "NIU APP"),
+            ("license", "allrightsreserved"),
+            ("itemid", effectiveDraftItemID),
+            ("repo_id", repoID),
+            ("p", hiddenP),
+            ("page", hiddenPage),
+            ("env", hiddenEnv),
+            ("sesskey", sesskey),
+            ("client_id", clientID),
+            ("maxbytes", maxBytes),
+            ("areamaxbytes", areaMaxBytes),
+            ("ctx_id", ctxID),
+            ("savepath", "/"),
+            ("subdirs", hiddenSubdirs)
+        ]
         if let hiddenAcceptedTypes, !hiddenAcceptedTypes.isEmpty {
-            appendField("accepted_types[]", hiddenAcceptedTypes)
+            fields.append(("accepted_types[]", hiddenAcceptedTypes))
         }
-        appendField("repo_upload_file", "1")
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"repo_upload_file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: \(mimeTypeForFileExtension(URL(fileURLWithPath: filename).pathExtension))\r\n\r\n".data(using: .utf8)!)
-        body.append(fileData)
-        body.append("\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        uploadReq.httpBody = body
+        fields.append(("repo_upload_file", "1"))
+        uploadReq.httpBody = await MoodleRequestBody.multipart(
+            boundary: boundary,
+            fields: fields,
+            file: .init(
+                field: "repo_upload_file",
+                filename: filename,
+                mimeType: mimeTypeForFileExtension(URL(fileURLWithPath: filename).pathExtension),
+                data: fileData
+            )
+        )
 
         #if DEBUG
         print("[MoodleCrawlerUpload] cmid=\(assignmentCMID) draft=\(effectiveDraftItemID) repo=\(repoID) repoFromList=\(repoIDFromList.map(String.init) ?? "nil") repoCandidates=\(uploadRepoCandidates.prefix(6)) ctx=\(ctxID) bytes=\(fileData.count) autologin=\(usedAutologin) silentRefresh=\(didSilentRefresh) finalURL=\(finalURL?.absoluteString ?? "nil") env=\(hiddenEnv) p=\(hiddenP) page=\(hiddenPage) htmlCtxCandidates=\(htmlContextCandidates.prefix(6)) moduleCtx=\(moduleContextId.map(String.init) ?? "nil")")
@@ -2068,7 +2033,85 @@ enum MoodleError: LocalizedError {
 // MARK: - String Extension
 
 private extension String {
+    /// Encodes everything except RFC 3986 unreserved characters, so `+`, `&`
+    /// and `=` survive as part of a query or form value (base64 uses `+`).
     nonisolated var urlEncoded: String {
-        addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
+        addingPercentEncoding(withAllowedCharacters: MoodleRequestBody.unreserved) ?? self
+    }
+}
+
+// MARK: - Attendance HTML Patterns
+
+/// Compiled once; attendance pages are parsed row by row on every refresh.
+private enum AttendanceHTMLRegex {
+    static let table = make("(<table[^>]*>[\\s\\S]*?</table>)")
+    static let statsTable = make("<table[^>]*class=\"[^\"]*attlist[^\"]*\"[^>]*>[\\s\\S]*?</table>")
+    static let row = make("<tr[^>]*>([\\s\\S]*?)</tr>")
+    static let cell = make("<td[^>]*>([\\s\\S]*?)</td>")
+    static let date = make("(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日", options: [])
+    private static let cellsByClass = Dictionary(uniqueKeysWithValues:
+        ["datecol", "desccol", "statuscol", "pointscol", "remarkscol"].map { ($0, classCell($0)) })
+
+    static func cell(classHint: String) -> NSRegularExpression? {
+        cellsByClass[classHint] ?? classCell(classHint)
+    }
+
+    private static func classCell(_ classHint: String) -> NSRegularExpression? {
+        make("<td[^>]*class=\"[^\"]*\(NSRegularExpression.escapedPattern(for: classHint))[^\"]*\"[^>]*>([\\s\\S]*?)</td>")
+    }
+
+    private static func make(
+        _ pattern: String,
+        options: NSRegularExpression.Options = [.caseInsensitive]
+    ) -> NSRegularExpression? {
+        try? NSRegularExpression(pattern: pattern, options: options)
+    }
+}
+
+// MARK: - Request Bodies
+
+/// Attachments can be large; read and encode them away from the main actor.
+nonisolated enum MoodleRequestBody {
+    struct FilePart: Sendable {
+        let field: String
+        let filename: String
+        let mimeType: String
+        let data: Data
+    }
+
+    static let unreserved = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
+
+    @concurrent
+    static func readFile(at url: URL) async throws -> Data {
+        try Data(contentsOf: url, options: .mappedIfSafe)
+    }
+
+    @concurrent
+    static func base64(_ data: Data) async -> String {
+        data.base64EncodedString()
+    }
+
+    @concurrent
+    static func form(_ params: [String: String]) async -> Data {
+        Data(params.map { "\($0.key.urlEncoded)=\($0.value.urlEncoded)" }.joined(separator: "&").utf8)
+    }
+
+    @concurrent
+    static func multipart(boundary: String, fields: [(String, String)], file: FilePart) async -> Data {
+        var body = Data()
+        body.reserveCapacity(file.data.count + 4096)
+        for (name, value) in fields {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        body.append(Data((
+            "--\(boundary)\r\n" +
+            "Content-Disposition: form-data; name=\"\(file.field)\"; filename=\"\(file.filename)\"\r\n" +
+            "Content-Type: \(file.mimeType)\r\n\r\n"
+        ).utf8))
+        body.append(file.data)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        return body
     }
 }

@@ -32,12 +32,7 @@ nonisolated enum LibraryEquipmentDate {
         day(date).addingTimeInterval(TimeInterval(minute * 60))
     }
     static func format(_ date: Date, pattern: String = "yyyy/MM/dd") -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = pattern
-        return formatter.string(from: date)
+        (displayFormatters[pattern] ?? formatter(pattern)).string(from: date)
     }
     static func time(_ minute: Int) -> String {
         String(format: "%02d:%02d", minute / 60, minute % 60)
@@ -54,24 +49,48 @@ nonisolated enum LibraryEquipmentDate {
         return hour * 60 + minute
     }
     static func parse(_ text: String) -> Date? {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = iso.date(from: text) { return date }
-        iso.formatOptions = [.withInternetDateTime]
-        if let date = iso.date(from: text) { return date }
-        for pattern in ["yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd HH:mm:ss",
-                        "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm", "yyyy-MM-dd HH:mm",
-                        "yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss",
-                        "yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ"] {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.calendar = calendar
-            formatter.timeZone = calendar.timeZone
-            formatter.isLenient = false
-            formatter.dateFormat = pattern
+        for iso in isoParsers {
+            if let date = iso.date(from: text) { return date }
+        }
+        for formatter in timestampParsers {
             if let date = formatter.date(from: text) { return date }
         }
         return nil
+    }
+
+    // Formatters are configured once and only read afterwards; Foundation
+    // documents DateFormatter/ISO8601DateFormatter as thread-safe for that use.
+    private static let displayFormatters = Dictionary(uniqueKeysWithValues: [
+        "yyyy/MM/dd", "yyyy/MM/dd HH:mm", "yyyy-MM-dd", "MM/dd HH:mm",
+        "HH:mm", "M/d", "M月", "M月d日", "d"
+    ].map { ($0, formatter($0)) })
+
+    private static let isoParsers = [
+        [.withInternetDateTime, .withFractionalSeconds], [.withInternetDateTime]
+    ].map { (options: ISO8601DateFormatter.Options) in
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = options
+        return iso
+    }
+
+    private static let timestampParsers = [
+        "yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd HH:mm:ss",
+        "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm", "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ"
+    ].map { pattern in
+        let formatter = formatter(pattern)
+        formatter.isLenient = false
+        return formatter
+    }
+
+    private static func formatter(_ pattern: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = pattern
+        return formatter
     }
 }
 
