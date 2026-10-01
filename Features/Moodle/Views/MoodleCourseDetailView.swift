@@ -4,6 +4,8 @@ struct MoodleCourseDetailView: View {
     let course: MoodleCourse
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .body) private var tabIconHeight: CGFloat = 24
+    @ScaledMetric(relativeTo: .caption) private var tabLabelLineHeight: CGFloat = 18
     @StateObject private var viewModel: MoodleCourseDetailViewModel
     @StateObject private var announcementsViewModel: MoodleAnnouncementsViewModel
     @StateObject private var assignmentsViewModel: MoodleAssignmentsListViewModel
@@ -85,7 +87,7 @@ struct MoodleCourseDetailView: View {
         // Keep all six destinations visible; larger text gets two rows.
         let columnCount = dynamicTypeSize >= .xxLarge ? 3 : 6
         return LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4), count: columnCount),
+            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4, alignment: .top), count: columnCount),
             spacing: 6
         ) {
             ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
@@ -95,10 +97,16 @@ struct MoodleCourseDetailView: View {
                     VStack(spacing: 4) {
                         Image(systemName: tab.iconName)
                             .font(.body.weight(.semibold))
+                            .frame(height: tabIconHeight)
                         Text(tab.rawValue)
                             .font(.caption.weight(.semibold))
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                             .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(
+                                minHeight: tabLabelLineHeight * (dynamicTypeSize.isAccessibilitySize ? 2 : 1),
+                                alignment: .top
+                            )
                     }
                     .foregroundStyle(viewModel.selectedTab == tab ? Color.accentColor : Color(.secondaryLabel))
                     .padding(.vertical, 8)
