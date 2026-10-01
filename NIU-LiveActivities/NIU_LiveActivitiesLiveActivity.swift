@@ -86,25 +86,22 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                         .foregroundStyle(activityStatusTint(context))
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .frame(maxWidth: 64, alignment: .leading)
+                        .frame(maxWidth: 76, alignment: .leading)
                         .accessibilityLabel("\(activityStatusLabel(context))，\(context.state.courseName)")
                 }
             } compactTrailing: {
-                VStack(alignment: .trailing, spacing: 0) {
-                    if !context.isStale {
-                        Text(context.state.mode == "current" ? "下課" : "上課")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    countdown(context: context)
-                        .font(.caption2.monospacedDigit().weight(.semibold))
-                        .minimumScaleFactor(0.75)
-                        .lineLimit(1)
-                }
-                // Timer text accepts the proposed width; a minimum alone lets it
-                // stretch the compact island and crowd out the course name.
-                .frame(width: 48, alignment: .trailing)
-                .accessibilityElement(children: .combine)
+                // A single line keeps the compact island at its native height;
+                // the 上課／下課 label moves to VoiceOver only.
+                countdown(context: context)
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(activityStatusTint(context))
+                    .minimumScaleFactor(0.75)
+                    .lineLimit(1)
+                    // Timer text accepts the proposed width; a minimum alone lets it
+                    // stretch the compact island and crowd out the course name.
+                    .frame(width: 40, alignment: .trailing)
+                    .accessibilityLabel(context.isStale ? "課表待更新" : (context.state.mode == "current" ? "距離下課" : "距離上課"))
+                    .accessibilityValue(context.isStale ? Text("") : countdownText(context))
             } minimal: {
                 Image(systemName: activityStatusSymbol(context))
                     .font(.caption2.weight(.semibold))
@@ -215,10 +212,14 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
         if context.isStale {
             Text("待更新")
         } else {
-            let end = context.state.mode == "current" ? context.state.endDate : context.state.startDate
-            Text(timerInterval: min(Date(), end)...end, countsDown: true, showsHours: false)
+            countdownText(context)
                 .monospacedDigit()
         }
+    }
+
+    private func countdownText(_ context: ActivityViewContext<ClassLiveActivityAttributes>) -> Text {
+        let end = context.state.mode == "current" ? context.state.endDate : context.state.startDate
+        return Text(timerInterval: min(Date(), end)...end, countsDown: true, showsHours: false)
     }
 }
 
