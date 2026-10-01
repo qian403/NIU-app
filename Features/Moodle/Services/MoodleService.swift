@@ -521,11 +521,8 @@ final class MoodleService {
         assignmentCourseID: Int? = nil
     ) async throws -> MoodleUploadedFile {
         guard let token else { throw MoodleError.notAuthenticated }
-        var components = URLComponents(string: "\(baseURL)/webservice/upload.php")
-        components?.queryItems = [
-            URLQueryItem(name: "token", value: token)
-        ]
-        guard let uploadURL = components?.url else {
+        // upload.php reads the token from the multipart body; keep it out of the URL.
+        guard let uploadURL = URL(string: "\(baseURL)/webservice/upload.php") else {
             throw MoodleError.invalidURL
         }
 
@@ -700,10 +697,21 @@ final class MoodleService {
         return uploaded
     }
     
-    /// Build a file download URL with token appended
+    /// Build a file download URL with token appended.
+    /// Only Moodle's own host receives the token; other URLs (for example,
+    /// external images in page HTML) are returned unchanged without credentials.
     func fileURL(for rawURL: String) -> URL? {
         guard let token = token else { return nil }
         guard var components = URLComponents(string: rawURL) else { return nil }
+        guard components.host?.lowercased() == "euni.niu.edu.tw",
+              components.user == nil, components.password == nil,
+              components.port == nil || components.port == 443,
+              let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            return components.url
+        }
+        // Never send the token over cleartext.
+        components.scheme = "https"
+        components.port = nil
         var queryItems = components.queryItems ?? []
         if !queryItems.contains(where: { $0.name == "token" }) {
             queryItems.append(URLQueryItem(name: "token", value: token))
@@ -742,23 +750,8 @@ final class MoodleService {
     ) async throws -> T {
         guard let requestToken = tokenOverride ?? token else { throw MoodleError.notAuthenticated }
         
-        var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
-        var queryItems = [
-            URLQueryItem(name: "wstoken", value: requestToken),
-            URLQueryItem(name: "wsfunction", value: function),
-            URLQueryItem(name: "moodlewsrestformat", value: "json")
-        ]
-        for (key, value) in params {
-            queryItems.append(URLQueryItem(name: key, value: value))
-        }
-        components.queryItems = queryItems
-        
-        guard let url = components.url else { throw MoodleError.invalidURL }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        var request = try await webServiceRequest(function: function, token: requestToken, params: params)
         request.timeoutInterval = 20
-        applyMoodleMobileHeaders(to: &request)
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
@@ -789,19 +782,11 @@ final class MoodleService {
     private func callAutologinKey(privateToken: String) async throws -> MoodleAutologinResponse {
         guard let token else { throw MoodleError.notAuthenticated }
 
-        var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
-        components.queryItems = [
-            URLQueryItem(name: "wstoken", value: token),
-            URLQueryItem(name: "wsfunction", value: "tool_mobile_get_autologin_key"),
-            URLQueryItem(name: "moodlewsrestformat", value: "json")
-        ]
-        guard let url = components.url else { throw MoodleError.invalidURL }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        applyMoodleMobileHeaders(to: &request)
-        request.httpBody = "privatetoken=\(privateToken.urlEncoded)".data(using: .utf8)
+        var request = try await webServiceRequest(
+            function: "tool_mobile_get_autologin_key",
+            token: token,
+            params: ["privatetoken": privateToken]
+        )
         request.timeoutInterval = 15
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -830,21 +815,7 @@ final class MoodleService {
     ) async throws -> Any? {
         guard let token = token else { throw MoodleError.notAuthenticated }
 
-        var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
-        var queryItems = [
-            URLQueryItem(name: "wstoken", value: token),
-            URLQueryItem(name: "wsfunction", value: function),
-            URLQueryItem(name: "moodlewsrestformat", value: "json")
-        ]
-        for (key, value) in params {
-            queryItems.append(URLQueryItem(name: key, value: value))
-        }
-        components.queryItems = queryItems
-
-        guard let url = components.url else { throw MoodleError.invalidURL }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        applyMoodleMobileHeaders(to: &request)
+        let request = try await webServiceRequest(function: function, token: token, params: params)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw MoodleError.serverError
@@ -865,19 +836,7 @@ final class MoodleService {
     ) async throws -> Any? {
         guard let token = token else { throw MoodleError.notAuthenticated }
 
-        var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
-        components.queryItems = [
-            URLQueryItem(name: "wstoken", value: token),
-            URLQueryItem(name: "wsfunction", value: function),
-            URLQueryItem(name: "moodlewsrestformat", value: "json")
-        ]
-        guard let url = components.url else { throw MoodleError.invalidURL }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        applyMoodleMobileHeaders(to: &request)
-        request.httpBody = await MoodleRequestBody.form(params)
+        let request = try await webServiceRequest(function: function, token: token, params: params)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
@@ -1208,6 +1167,31 @@ final class MoodleService {
         return text.contains("找不到資料紀錄")
             || text.contains("找不到資料记录")
             || text.contains("cannot find data record")
+    }
+
+    /// Moodle's REST server merges GET and POST parameters, so wstoken goes in
+    /// the POST body to keep it out of URLs, URLError descriptions and URLCache.
+    private func webServiceRequest(
+        function: String,
+        token: String,
+        params: [String: String]
+    ) async throws -> URLRequest {
+        var components = URLComponents(string: "\(baseURL)/webservice/rest/server.php")!
+        components.queryItems = [
+            URLQueryItem(name: "wsfunction", value: function),
+            URLQueryItem(name: "moodlewsrestformat", value: "json")
+        ]
+        guard let url = components.url else { throw MoodleError.invalidURL }
+
+        var fields = params
+        fields["wstoken"] = token
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        applyMoodleMobileHeaders(to: &request)
+        request.httpBody = await MoodleRequestBody.form(fields)
+        return request
     }
 
     private func applyMoodleMobileHeaders(to request: inout URLRequest) {

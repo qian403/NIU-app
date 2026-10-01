@@ -562,6 +562,17 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         urlString.contains("euni.niu.edu.tw") && urlString.contains("/login")
     }
 
+    /// Strict origin check before saved credentials are written into a page.
+    /// `isLoginPage` stays loose for navigation decisions only.
+    private func isTrustedAttendanceLoginPage(_ url: URL?) -> Bool {
+        guard let url, let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
+        return components.scheme?.lowercased() == "https"
+            && components.host?.lowercased() == "euni.niu.edu.tw"
+            && (components.port == nil || components.port == 443)
+            && components.user == nil && components.password == nil
+            && components.path.lowercased().hasPrefix("/login/")
+    }
+
     private struct AttendanceCaptchaPayload: Decodable {
         let hasInput: Bool
         let hasImage: Bool
@@ -596,6 +607,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         attendanceLoginPageGeneration = attendanceNavigationGeneration
         guard !attendanceUsesManualLogin,
               attendanceLoginAttempts < maxAttendanceLoginAttempts,
+              isTrustedAttendanceLoginPage(webView.url),
               let credentials = LoginRepository.shared.getSavedCredentials(),
               let username = javascriptLiteral(credentials.username),
               let password = javascriptLiteral(credentials.password) else {
@@ -808,8 +820,16 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     ) {
         let captchaLiteral = captcha.flatMap(javascriptLiteral) ?? "null"
         let imageLiteral = captchaDataURL.flatMap(javascriptLiteral) ?? "null"
+        guard isTrustedAttendanceLoginPage(webView.url) else {
+            showAttendanceLoginPage()
+            return
+        }
         let script = """
         (function(username, password, captcha, capturedImage) {
+            // The page may have changed since the native check; never fill credentials off-origin.
+            if (location.protocol !== 'https:' || location.hostname !== 'euni.niu.edu.tw'
+                || (location.port && location.port !== '443')
+                || location.pathname.toLowerCase().indexOf('/login/') !== 0) return 'untrusted-origin';
             var form = document.querySelector('form[action*="login/index.php"]')
                 || document.querySelector('form#login');
             var usernameInput = document.querySelector('input[name="username"], input#username');
@@ -884,7 +904,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                     generation: generation,
                     navigationGeneration: navigationGeneration
                 )
-            } else if result as? String == "manual-input" {
+            } else if result as? String == "manual-input" || result as? String == "untrusted-origin" {
                 self.showAttendanceLoginPage()
             } else {
                 self.retryAttendanceLoginPage(

@@ -39,6 +39,9 @@ function page(options = {}) {
         input.dispatchEvent = () => { imageData = 'data:image/png;base64,replacement'; };
     }
     const context = {
+        location: options.location ?? {
+            protocol: 'https:', hostname: 'euni.niu.edu.tw', port: '', pathname: '/login/index.php',
+        },
         captchaCode: options.captchaCode === undefined ? '12345' : options.captchaCode,
         capturedImage: options.capturedImage ?? 'data:image/png;base64,fixture',
         Event: class {},
@@ -128,6 +131,19 @@ for (const options of [{ method: 'get' }, { enctype: 'multipart/form-data' }, { 
     assert.equal(vm.runInNewContext(submit, fixture.context), 'unsupported-form');
     assert.equal(fixture.submissions(), 0);
 }
+for (const location of [
+    { protocol: 'https:', hostname: 'evil.example', port: '', pathname: '/login' },
+    { protocol: 'https:', hostname: 'euni.niu.edu.tw.evil.example', port: '', pathname: '/login/index.php' },
+    { protocol: 'http:', hostname: 'euni.niu.edu.tw', port: '', pathname: '/login/index.php' },
+    { protocol: 'https:', hostname: 'euni.niu.edu.tw', port: '8443', pathname: '/login/index.php' },
+    { protocol: 'https:', hostname: 'euni.niu.edu.tw', port: '', pathname: '/my/' },
+]) {
+    const foreign = page({ location });
+    assert.equal(vm.runInNewContext(submit, foreign.context), 'untrusted-origin');
+    assert.equal(foreign.username.value, '', 'Credentials must never be written off-origin');
+    assert.equal(foreign.password.value, '');
+    assert.equal(foreign.submissions(), 0);
+}
 assert.equal(vm.runInNewContext(retry, page({ manualInput: '123' }).context), true);
 assert.equal(vm.runInNewContext(retry, page().context), false);
-console.log('PASS: capture readiness, stale images, manual input before submission/retry, form preparation without JS submission');
+console.log('PASS: capture readiness, stale images, manual input before submission/retry, form preparation without JS submission, no off-origin fill');
