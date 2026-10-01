@@ -112,8 +112,13 @@ View 負責呈現與互動，ViewModel 管理畫面狀態，Service／Repository
 | 行事曆 App／Widget 邏輯  | `python3 scripts/check-calendar-client.py`                                |
 | Widget 與快捷            | `python3 scripts/check-widgets.py`                                        |
 | SSO 登入與儲存           | `node scripts/check-sso-login.js`、`python3 scripts/check-sso-storage.py` |
+| SSO 背景更新與取消       | `python3 scripts/check-sso-refresh.py`                                    |
+| SSO 背景／手動登入畫面（隔離模擬器） | `python3 scripts/check-sso-refresh-webview.py --device <UDID>`              |
 | 歷年成績                 | `node scripts/check-grade-history.js`                                     |
+| 成績載入與取消           | `python3 scripts/check-grade-state.py`                                    |
+| 首頁／成績導覽（隔離模擬器） | `python3 scripts/check-home-navigation.py --device <UDID>`                |
 | 點名回應解析             | `python3 scripts/check-attendance-response.py`                            |
+| 點名驗證碼與登入         | `python3 scripts/check-attendance-captcha.py`、`node scripts/check-attendance-login.js` |
 | 特別感謝名單與快取       | `python3 scripts/check-credits.py`                                        |
 | 非同步工作與生命週期     | `python3 scripts/check-lifetimes.py`                                      |
 | 背景即時動態用戶端       | `python3 scripts/check-live-activity-client.py`                           |
