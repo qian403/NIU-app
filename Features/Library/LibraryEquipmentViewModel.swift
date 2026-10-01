@@ -230,7 +230,9 @@ final class LibraryEquipmentViewModel: ObservableObject {
 
     func refresh() {
         guard connected else { if !needsLogin { start() }; return }
-        run { model, operation in try await model.loadAll(operation) }
+        run { model, operation in
+            try await model.reconnecting(operation) { try await model.loadAll(operation) }
+        }
     }
 
     func refreshAndWait() async {
@@ -250,7 +252,9 @@ final class LibraryEquipmentViewModel: ObservableObject {
     func prepareConfirmation() {
         guard !isLoading, !isMutating, !needsVerification, let selection = draft() else { return }
         run { model, operation in
-            let fresh = try await model.freshDraft(selection, operation: operation)
+            let fresh = try await model.reconnecting(operation) {
+                try await model.freshDraft(selection, operation: operation)
+            }
             try model.check(operation)
             model.confirmation = fresh
         }
@@ -332,6 +336,20 @@ final class LibraryEquipmentViewModel: ObservableObject {
         do { try policy.validate(draft, schedule: schedule) }
         catch { recheckSelection(); throw error }
         return draft
+    }
+
+    /// Reads only: the school session can expire while this page stays open, so sign in again quietly
+    /// once before showing the school's login page. Mutations never pass through here to avoid replays.
+    private func reconnecting<T>(_ operation: UUID, _ read: () async throws -> T) async throws -> T {
+        do { return try await read() }
+        catch LibraryEquipmentError.loginRequired {
+            try check(operation)
+            connected = false
+            try await service.connect(account: account, password: password(account))
+            try check(operation)
+            connected = true
+            return try await read()
+        }
     }
 
     private func loadAll(_ operation: UUID) async throws {

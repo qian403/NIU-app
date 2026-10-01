@@ -30,6 +30,8 @@ import WebKit
     var busy = false
     var closed = false
     var connectionError: LibraryEquipmentError?
+    var connections = 0
+    var expireSession = false
     var policyError: LibraryEquipmentError?
     var recordsError: LibraryEquipmentError?
     var failRefreshAfterMutation = false
@@ -44,11 +46,13 @@ import WebKit
                                        openMinute: 480, closeMinute: 1290)
     func connect(account: String, password: String?) async throws {
         closed = false
+        connections += 1
         if let connectionError { throw connectionError }
     }
     func resumeLogin() async throws {}
     func groups() async throws -> [LibraryEquipmentGroup] { availableGroups ?? [group] }
     func reservations() async throws -> [LibraryEquipmentReservation] {
+        if expireSession { expireSession = false; throw LibraryEquipmentError.loginRequired }
         if let recordsError { throw recordsError }
         return records
     }
@@ -182,6 +186,21 @@ import WebKit
         model.refresh()
         try await settle(model)
         precondition(model.policy != nil, "An initial network failure must support reconnect")
+        model.start()
+        try await settle(model)
+        let connections = service.connections
+        service.expireSession = true
+        model.refresh()
+        try await settle(model)
+        precondition(service.connections == connections + 1 && !model.needsLogin && model.errorMessage == nil
+                     && model.policy != nil, "An expired school session re-signs in quietly before showing login")
+        service.expireSession = true
+        service.connectionError = .loginRequired
+        model.refresh()
+        try await settle(model)
+        precondition(service.connections == connections + 2 && model.errorMessage != nil,
+                     "A failed quiet re-sign-in surfaces login and does not loop")
+        service.connectionError = nil
         model.start()
         try await settle(model)
         model.select(date: day)
@@ -342,7 +361,7 @@ import WebKit
         model.stop()
         precondition(model.groups.isEmpty && model.reservations.isEmpty && model.policy == nil && service.closed)
         precondition(model.completion == nil && !model.hasReservationFilters)
-        print("PASS: Taipei dates, duration/quota/busy boundaries, policy decoding, cancellation IDs, stale selection/account responses, fresh confirmation, double submit prevention, refresh cancellation during mutation, uncertain outcome reconciliation, cleanup")
+        print("PASS: Taipei dates, quiet re-sign-in after session expiry, duration/quota/busy boundaries, policy decoding, cancellation IDs, stale selection/account responses, fresh confirmation, double submit prevention, refresh cancellation during mutation, uncertain outcome reconciliation, cleanup")
     }
 }
 '''
