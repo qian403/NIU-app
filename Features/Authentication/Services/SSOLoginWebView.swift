@@ -567,6 +567,9 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
             let script = """
             (function() {
+                // Polling retries do not re-run the native URL check; stay on the school SSO page.
+                if (location.protocol !== 'https:' || location.hostname !== 'ccsys1.niu.edu.tw'
+                    || !location.pathname.toLowerCase().includes('/sso/login')) return 'waiting';
                 const [account, password] = \(json);
                 const usernameField = document.querySelector('#username');
                 const passwordField = document.querySelector('#password');

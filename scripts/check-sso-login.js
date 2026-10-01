@@ -58,7 +58,8 @@ console.log('PASS: login loading → token; success/info/warnings; actual and hi
 
 const fillSection = source.slice(source.indexOf('private func fillModernLoginForm'));
 const fillTemplate = fillSection.match(/let script = """\n([\s\S]*?)\n\s*"""/)[1];
-function fill({ automatic, alreadyFilled = false, disabled = false, observed = false }) {
+function fill({ automatic, alreadyFilled = false, disabled = false, observed = false,
+    location = { protocol: 'https:', hostname: 'ccsys1.niu.edu.tw', pathname: '/SSO/login' } }) {
     const script = fillTemplate
         .replace(String.raw`\(json)`, JSON.stringify(['synthetic', 'fixture-password']))
         .replace(String.raw`\(shouldFill)`, String(!alreadyFilled))
@@ -76,7 +77,7 @@ function fill({ automatic, alreadyFilled = false, disabled = false, observed = f
     const submit = { disabled, click() { clicks++; } };
     const form = { addEventListener() {} };
     const state = vm.runInNewContext(script, {
-        HTMLInputElement: Input, Event: class {},
+        HTMLInputElement: Input, Event: class {}, location,
         window: { __niuAppSubmitObserved: observed },
         document: { querySelector(selector) {
             return ({
@@ -97,4 +98,13 @@ assert.deepEqual(fill({ automatic: false, alreadyFilled: true }),
     { state: 'manual', clicks: 0, writes: 0, username: 'user-edit' });
 assert.deepEqual(fill({ automatic: false, alreadyFilled: true, observed: true }),
     { state: 'submitted', clicks: 0, writes: 0, username: 'user-edit' });
-console.log('PASS: automatic submit, blocked verification, manual prefill, preserved user edits, no duplicate submit');
+for (const location of [
+    { protocol: 'https:', hostname: 'evil.example', pathname: '/SSO/login' },
+    { protocol: 'https:', hostname: 'ccsys1.niu.edu.tw.evil.example', pathname: '/SSO/login' },
+    { protocol: 'http:', hostname: 'ccsys1.niu.edu.tw', pathname: '/SSO/login' },
+    { protocol: 'https:', hostname: 'ccsys1.niu.edu.tw', pathname: '/SSO/dashboard' },
+]) {
+    assert.deepEqual(fill({ automatic: true, location }),
+        { state: 'waiting', clicks: 0, writes: 0, username: 'user-edit' });
+}
+console.log('PASS: automatic submit, blocked verification, manual prefill, preserved user edits, no duplicate submit, no off-origin fill');
