@@ -29,6 +29,10 @@ final class LibraryEquipmentService: NSObject, LibraryEquipmentServing, WKNaviga
     private var generation = UUID()
     private let origin = "https://webpacx.niu.edu.tw"
 
+    private enum LoginAttempt { case authenticated, interactive, retry }
+    private static let loginAttempts = 3
+    private static let loginSubmissions = 2
+
     func connect(account: String, password: String?) async throws {
         close()
         owner = account.lowercased()
@@ -42,21 +46,70 @@ final class LibraryEquipmentService: NSObject, LibraryEquipmentServing, WKNaviga
         webView = view
         onWebViewCreated?(view)
         guard let url = URL(string: origin + "/equipment") else { throw LibraryEquipmentError.invalidResponse }
+        // Slow page hydration or a delayed session cookie are retried quietly; the school's page is
+        // shown only for CAPTCHA, a missing password, or after every bounded attempt has failed.
+        var submissions = 0
+        var lastError: Error = LibraryEquipmentError.loginRequired
+        for attempt in 0..<Self.loginAttempts {
+            if attempt > 0 {
+                try await Task.sleep(for: .seconds(attempt))
+                try check(operation)
+            }
+            do {
+                let canSubmit = submissions < Self.loginSubmissions
+                switch try await attemptLogin(url, account: account, password: canSubmit ? password : nil,
+                                              operation: operation, submitted: { submissions += 1 }) {
+                case .authenticated: return
+                case .interactive: throw LibraryEquipmentError.loginRequired
+                case .retry: lastError = LibraryEquipmentError.loginRequired
+                }
+            } catch let error where Self.isTransient(error) {
+                try check(operation)
+                lastError = error
+            }
+        }
+        throw lastError
+    }
+
+    private func attemptLogin(_ url: URL, account: String, password: String?, operation: UUID,
+                              submitted: () -> Void) async throws -> LoginAttempt {
         try await load(url)
         try check(operation)
-        if try await authenticate() { return }
+        if try await authenticate() { return .authenticated }
         // The school's form handles its own AES encryption. CAPTCHA is never solved automatically.
         let loginState = try await script(LibraryEquipmentJavaScript.login, arguments: [
             "account": account, "password": password ?? ""
         ])
         try check(operation)
-        guard loginState == "submitted" else { throw LibraryEquipmentError.loginRequired }
-        for _ in 0..<6 {
+        switch loginState {
+        case "submitted": submitted()
+        case "interactive": return .interactive
+        default: return .retry
+        }
+        for _ in 0..<20 {
             try await Task.sleep(for: .milliseconds(500))
             try check(operation)
-            if try await authenticate() { return }
+            do {
+                if try await authenticate() { return .authenticated }
+            } catch let error where Self.isTransient(error) || error is CancellationError {
+                // The page may still be navigating after the form submission.
+                try check(operation)
+            }
         }
-        throw LibraryEquipmentError.loginRequired
+        return .retry
+    }
+
+    private static func isTransient(_ error: Error) -> Bool {
+        if let error = error as? LibraryEquipmentError {
+            return [.timedOut, .unavailable, .invalidResponse].contains(error)
+        }
+        if let error = error as? URLError {
+            // Offline is reported immediately; a load interrupted by the school's redirect is retried.
+            return ![.notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff].contains(error.code)
+        }
+        let error = error as NSError
+        // WebKit reports an interrupted page load (e.g. a redirect during login) as 102.
+        return error.domain == "WebKitErrorDomain" && error.code == 102
     }
 
     func resumeLogin() async throws {
@@ -336,7 +389,7 @@ nonisolated enum LibraryEquipmentJavaScript {
       }
       await new Promise(r => setTimeout(r, 250));
     }
-    return 'interactive';
+    return 'missing';
     """
 
     static let authentication = """
