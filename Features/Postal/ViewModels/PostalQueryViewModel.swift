@@ -15,12 +15,12 @@ final class PostalQueryViewModel: ObservableObject {
     @Published private(set) var updatedAt: Date?
     @Published private(set) var page: PostalPage?
 
-    private let makeService: () -> any PostalServing
+    private let makeService: @Sendable () async -> any PostalServing
     private var service: (any PostalServing)?
     private var work: Task<Void, Never>?
     private var generation = UUID()
 
-    init(makeService: @escaping () -> any PostalServing = { PostalService() }) {
+    init(makeService: @escaping @Sendable () async -> any PostalServing = { await PostalService.make() }) {
         self.makeService = makeService
     }
 
@@ -38,8 +38,8 @@ final class PostalQueryViewModel: ObservableObject {
             return
         }
         service?.invalidate()
-        let client = makeService()
-        service = client
+        service = nil
+        let makeService = makeService
         let submitted = query.normalized
         records = []
         page = nil
@@ -49,6 +49,13 @@ final class PostalQueryViewModel: ObservableObject {
         errorMessage = nil
         let current = generation
         work = Task { [weak self] in
+            // Session setup must not compete with keyboard dismissal on the main actor.
+            let client = await makeService()
+            guard !Task.isCancelled, self?.generation == current else {
+                client.invalidate()
+                return
+            }
+            self?.service = client
             do {
                 let result = try await client.search(submitted)
                 guard !Task.isCancelled, let self, self.generation == current else { return }

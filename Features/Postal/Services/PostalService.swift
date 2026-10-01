@@ -17,6 +17,11 @@ nonisolated final class PostalRedirectPolicy: NSObject, URLSessionTaskDelegate {
 nonisolated final class PostalService: PostalServing {
     private let session: URLSession
 
+    @concurrent
+    static func make() async -> PostalService {
+        PostalService()
+    }
+
     init(configuration: URLSessionConfiguration = .ephemeral) {
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
