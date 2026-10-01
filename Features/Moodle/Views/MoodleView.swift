@@ -232,6 +232,105 @@ struct MoodleView: View {
 }
 
 
+// MARK: - Schedule → Moodle course
+
+/// Opened from the class schedule: finds the Moodle course with the same name
+/// and shows its detail page directly.
+struct MoodleScheduleCourseView: View {
+    @StateObject private var viewModel: MoodleScheduleCourseLookupViewModel
+
+    init(courseName: String) {
+        _viewModel = StateObject(wrappedValue: MoodleScheduleCourseLookupViewModel(courseName: courseName))
+    }
+
+    var body: some View {
+        content
+            .task { await viewModel.load() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch viewModel.state {
+        case .loading:
+            VStack(spacing: 16) {
+                ProgressView()
+                Text("正在 M 園區尋找「\(viewModel.courseName)」…")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .navigationTitle(viewModel.courseName)
+            .navigationBarTitleDisplayMode(.inline)
+
+        case .matched(let course):
+            MoodleCourseDetailView(course: course)
+
+        case .multiple(let courses):
+            ScrollView {
+                LazyVStack(spacing: Theme.Spacing.medium) {
+                    Text("找到多門名稱相符的課程，請選擇：")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ForEach(courses) { course in
+                        NavigationLink(destination: MoodleCourseDetailView(course: course)) {
+                            CourseCard(course: course)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.medium)
+                .padding(.vertical, Theme.Spacing.small)
+            }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .navigationTitle(viewModel.courseName)
+            .navigationBarTitleDisplayMode(.inline)
+
+        case .notFound:
+            messageView(
+                icon: "magnifyingglass",
+                message: "M 園區找不到「\(viewModel.courseName)」，可能尚未開設課程頁面。"
+            )
+
+        case .error(let message):
+            messageView(icon: "exclamationmark.triangle", message: message, showsRetry: true)
+        }
+    }
+
+    private func messageView(icon: String, message: String, showsRetry: Bool = false) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: icon)
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            if showsRetry {
+                NIUButton("重試") {
+                    Task { await viewModel.load() }
+                }
+            }
+            NavigationLink(destination: MoodleView()) {
+                Text("查看所有 M 園區課程")
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(minHeight: 44)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .navigationTitle(viewModel.courseName)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 // MARK: - Course Card
 
 private struct CourseCard: View {

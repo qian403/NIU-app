@@ -108,3 +108,105 @@ final class MoodleViewModel: ObservableObject {
         return raw.isEmpty ? inferSemester(from: course.startDate) : raw
     }
 }
+
+// MARK: - Schedule → Moodle course lookup
+
+/// Resolves a course name from the class schedule to the matching Moodle course.
+@MainActor
+final class MoodleScheduleCourseLookupViewModel: ObservableObject {
+
+    enum State {
+        case loading
+        case matched(MoodleCourse)
+        case multiple([MoodleCourse])
+        case notFound
+        case error(String)
+    }
+
+    @Published private(set) var state: State = .loading
+
+    let courseName: String
+    private let repository: any MoodleCourseRepositoryProtocol
+
+    init(courseName: String, repository: (any MoodleCourseRepositoryProtocol)? = nil) {
+        self.courseName = courseName
+        self.repository = repository ?? MoodleCourseRepository()
+    }
+
+    func load() async {
+        state = .loading
+        do {
+            if !repository.isAuthenticated {
+                guard let creds = LoginRepository.shared.getSavedCredentials() else {
+                    state = .error("找不到登入資料，請登出後重新登入")
+                    return
+                }
+                try await repository.authenticate(username: creds.username, password: creds.password)
+            }
+            let courses = try await repository.fetchCourses()
+            try Task.checkCancellation()
+
+            let matches = Self.matchingCourses(for: courseName, in: courses)
+            switch matches.count {
+            case 0: state = .notFound
+            case 1: state = .matched(matches[0])
+            default: state = .multiple(matches)
+            }
+        } catch is CancellationError {
+            // The view went away; nothing to show.
+        } catch {
+            if Task.isCancelled { return }
+            state = .error(error.localizedDescription)
+            let diagnostic = error as NSError
+            print("[Moodle] Schedule course lookup error: domain=\(diagnostic.domain) code=\(diagnostic.code)")
+        }
+    }
+
+    /// Courses whose name matches `name`, limited to a single semester:
+    /// the current semester when it has matches, otherwise the newest one.
+    static func matchingCourses(
+        for name: String,
+        in courses: [MoodleCourse],
+        now: Date = Date()
+    ) -> [MoodleCourse] {
+        let target = normalizedName(name)
+        guard !target.isEmpty else { return [] }
+
+        var matches = courses.filter { normalizedName($0.cleanName) == target }
+        if matches.isEmpty {
+            matches = courses.filter { course in
+                let candidate = normalizedName(course.cleanName)
+                guard min(candidate.count, target.count) >= 2 else { return false }
+                return candidate.contains(target) || target.contains(candidate)
+            }
+        }
+        guard !matches.isEmpty else { return [] }
+
+        let current = currentSemesterCode(now: now)
+        if matches.contains(where: { $0.semesterCode == current }) {
+            return matches.filter { $0.semesterCode == current }
+        }
+        let newest = matches.map(\.semesterCode).max() ?? ""
+        return matches.filter { $0.semesterCode == newest }
+    }
+
+    /// Semester code like "1141", switching academic year on August 1 (Asia/Taipei).
+    static func currentSemesterCode(now: Date) -> String {
+        let cal = ScheduleClock.calendar
+        let year = cal.component(.year, from: now)
+        let month = cal.component(.month, from: now)
+        let academicYear = (month >= 8 ? year : year - 1) - 1911
+        let term = (month >= 8 || month == 1) ? 1 : 2
+        return "\(academicYear)\(term)"
+    }
+
+    static func normalizedName(_ name: String) -> String {
+        let halfWidth = name.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? name
+        let ignored = CharacterSet.whitespacesAndNewlines
+            .union(.punctuationCharacters)
+            .union(.symbols)
+        return String(String.UnicodeScalarView(
+            halfWidth.lowercased().unicodeScalars.filter { !ignored.contains($0) }
+        ))
+    }
+}
