@@ -82,7 +82,9 @@ struct ClassWatchLiveActivityView: View {
                 }
                 .font(.caption2)
 
-                if let interval = presentation.progressInterval {
+                if let segments = presentation.progressSegments {
+                    ClassSegmentedProgressView(segments: segments, tint: tint)
+                } else if let interval = presentation.progressInterval {
                     ProgressView(timerInterval: interval, countsDown: false)
                         .progressViewStyle(.linear)
                         .tint(tint)
@@ -129,21 +131,29 @@ struct ClassWatchLiveActivityView: View {
         .background(.black)
 }
 
+#Preview("手錶：連續三節", traits: .fixedLayout(width: 184, height: 100)) {
+    ClassWatchLiveActivityView(state: watchPreviewState(mode: "current", periods: 3), isStale: false)
+        .background(.black)
+}
+
 #Preview("手錶：待更新", traits: .fixedLayout(width: 172, height: 100)) {
     ClassWatchLiveActivityView(state: watchPreviewState(mode: "current"), isStale: true)
         .background(.black)
 }
 
-private func watchPreviewState(mode: String) -> ClassLiveActivityAttributes.ContentState {
+private func watchPreviewState(mode: String, periods: Int = 1) -> ClassLiveActivityAttributes.ContentState {
     let start = Date().addingTimeInterval(mode == "current" ? -1200 : 900)
+    let starts = (0..<periods).map { start.addingTimeInterval(Double($0) * 3600) }
     return .init(
         mode: mode,
         courseName: "資訊安全導論",
         classroom: "工102",
         teacher: "測試教師",
-        periodLabel: "第3節",
+        periodLabel: periods > 1 ? "第3–\(2 + periods)節" : "第3節",
         startDate: start,
-        endDate: start.addingTimeInterval(3000)
+        endDate: starts[starts.count - 1].addingTimeInterval(3000),
+        periodStartDates: periods > 1 ? starts : nil,
+        periodEndDates: periods > 1 ? starts.map { $0.addingTimeInterval(3000) } : nil
     )
 }
 #endif
