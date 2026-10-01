@@ -401,12 +401,18 @@ private struct PeriodRowView: View {
             .padding(.top, 16)
 
             if let course = course {
-                CourseCard(
-                    course: course,
-                    periodLabel: period.displayPeriodLabel,
-                    isCurrent: isCurrent
-                )
+                NavigationLink {
+                    MoodleScheduleCourseView(courseName: course.name)
+                } label: {
+                    CourseCard(
+                        course: course,
+                        periodLabel: period.displayPeriodLabel,
+                        isCurrent: isCurrent
+                    )
+                }
+                .buttonStyle(.plain)
                 .accessibilityLabel("\(period.displayPeriodLabel)，\(period.startTimeLabel)到\(period.endTimeLabel)，\(course.name)，\(course.details ?? "")")
+                .accessibilityHint("開啟 M 園區課程")
             }
         }
     }
