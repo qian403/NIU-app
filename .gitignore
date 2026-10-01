@@ -115,3 +115,10 @@ add_*.rb
 /.playwright-mcp
 /.claude
 AGENTS.md
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Merge leftovers and local cleanup staging
+*.orig
+/_to_delete/
