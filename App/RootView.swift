@@ -22,15 +22,51 @@ struct RootView: View {
             .allowsHitTesting(!sessionService.showRefreshWebView)
 
             // Session refresh may require interactive verification on the school's page.
-            if sessionService.showRefreshWebView {
+            if sessionService.isRefreshing {
                 let refreshID = sessionService.refreshID
-                SSOLoginScreen(
+                SSOLoginWebView(
                     account: sessionService.refreshAccount,
-                    password: sessionService.refreshPassword
+                    password: sessionService.refreshPassword,
+                    automaticallySubmits: !sessionService.showRefreshWebView,
+                    onInteractionRequired: {
+                        sessionService.requireInteraction(requestID: refreshID)
+                    },
+                    onInteractionReady: {
+                        sessionService.markInteractionReady(requestID: refreshID)
+                    },
+                    isAttemptCurrent: {
+                        sessionService.isRefreshing && sessionService.refreshID == refreshID
+                    }
                 ) { result in
-                    SSOSessionService.shared.handleRefreshResult(result, requestID: refreshID)
+                    sessionService.handleRefreshResult(result, requestID: refreshID)
                 }
                 .id(refreshID)
+                .allowsHitTesting(sessionService.isRefreshPageReadyForInteraction)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if sessionService.showRefreshWebView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("請完成校務登入").font(.headline)
+                                Spacer()
+                                Button("取消", action: sessionService.cancelRefresh)
+                                    .frame(minHeight: 44)
+                            }
+                            Text(sessionService.lastFailureMessage ?? "無法自動完成登入，請在下方完成校方驗證。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            if !sessionService.isRefreshPageReadyForInteraction {
+                                ProgressView("正在準備登入頁…").font(.footnote)
+                            }
+                            Button("重新載入登入頁", action: sessionService.retryInteractiveLogin)
+                                .font(.footnote)
+                                .frame(minHeight: 44)
+                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                    }
+                }
+                .opacity(sessionService.showRefreshWebView ? 1 : 0)
+                .accessibilityHidden(!sessionService.showRefreshWebView)
+                .allowsHitTesting(sessionService.showRefreshWebView)
                 .zIndex(1)
             }
         }

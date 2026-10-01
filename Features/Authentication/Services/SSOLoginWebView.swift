@@ -104,13 +104,25 @@ struct SSOLoginScreen: View {
 public struct SSOLoginWebView: SSOViewRepresentable {
     public let account: String
     public let password: String
+    public let automaticallySubmits: Bool
+    public let onInteractionRequired: (() -> Void)?
+    public let onInteractionReady: (() -> Void)?
+    public let isAttemptCurrent: (() -> Bool)?
     public let onResult: (SSOLoginResult) -> Void
     
     @EnvironmentObject var appState: AppState
 
-    public init(account: String, password: String, onResult: @escaping (SSOLoginResult) -> Void) {
+    public init(account: String, password: String, automaticallySubmits: Bool = true,
+                onInteractionRequired: (() -> Void)? = nil,
+                onInteractionReady: (() -> Void)? = nil,
+                isAttemptCurrent: (() -> Bool)? = nil,
+                onResult: @escaping (SSOLoginResult) -> Void) {
         self.account = account
         self.password = password
+        self.automaticallySubmits = automaticallySubmits
+        self.onInteractionRequired = onInteractionRequired
+        self.onInteractionReady = onInteractionReady
+        self.isAttemptCurrent = isAttemptCurrent
         self.onResult = onResult
     }
 
@@ -136,7 +148,9 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         return webView
     }
 
-    public func updateNSView(_ nsView: WKWebView, context: Context) {}
+    public func updateNSView(_ nsView: WKWebView, context: Context) {
+        context.coordinator.updateAutomation(automaticallySubmits, in: nsView)
+    }
 
     public static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         coordinator.cancel(in: nsView)
@@ -159,7 +173,9 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         return webView
     }
 
-    public func updateUIView(_ uiView: WKWebView, context: Context) {}
+    public func updateUIView(_ uiView: WKWebView, context: Context) {
+        context.coordinator.updateAutomation(automaticallySubmits, in: uiView)
+    }
 
     public static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         coordinator.cancel(in: uiView)
@@ -180,13 +196,34 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         private var modernWebContentRecoveryCount = 0
         private var modernPageGeneration = 0
         private var authorizationTask: Task<Void, Never>?
+        private var automaticSubmissionEnabled: Bool
+        private var verificationWaitStartedAt: Date?
+        private var lastReportedModernError: String?
+        private var rejectedModernToken: String?
+        private var cancelled = false
+        private var pendingFormEvaluations: Set<UUID> = []
+        private var interactionReadyNotified = false
+
+        private var isAttemptActive: Bool {
+            !cancelled && (parent.isAttemptCurrent?() ?? true)
+        }
+
+        private func notifyInteractionReady() {
+            guard isAttemptActive, !automaticSubmissionEnabled, pendingFormEvaluations.isEmpty,
+                  !interactionReadyNotified else { return }
+            modernFormHasBeenFilled = true
+            interactionReadyNotified = true
+            parent.onInteractionReady?()
+        }
 
         fileprivate func cancel(in webView: WKWebView) {
+            cancelled = true
             modernLoginFinished = true
             isProcessingCaptcha = false
             modernPageGeneration += 1
             authorizationTask?.cancel()
             authorizationTask = nil
+            pendingFormEvaluations = []
             webView.navigationDelegate = nil
             webView.stopLoading()
         }
@@ -197,9 +234,26 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         init(appState: AppState, parent: SSOLoginWebView) {
             self.appState = appState
             self.parent = parent
+            automaticSubmissionEnabled = parent.automaticallySubmits
+        }
+
+        fileprivate func updateAutomation(_ enabled: Bool, in webView: WKWebView) {
+            guard !cancelled, automaticSubmissionEnabled != enabled else { return }
+            automaticSubmissionEnabled = enabled
+            guard !enabled else { return }
+            // Keep the current challenge/page and stop editing or submitting its form.
+            modernFormHasBeenFilled = true
+            modernLoginDeadline = nil
+            notifyInteractionReady()
+            if modernLoginFinished, authorizationTask == nil {
+                modernLoginFinished = false
+                isProcessingCaptcha = true
+                checkModernLoginState(in: webView)
+            }
         }
 
         public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard !cancelled else { return }
             let urlStr = webView.url?.absoluteString ?? ""
             print("[SSO] 已載入: \(URL(string: urlStr)?.path ?? "")")
 
@@ -361,12 +415,13 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            guard !cancelled else { return }
             let urlStr = webView.url?.absoluteString ?? ""
             let nsError = error as NSError
             print("[SSO] 載入失敗(預備): \(URL(string: urlStr)?.path ?? "") error=\(error.localizedDescription)")
             
             // 超時錯誤處理
-            if nsError.code == NSURLErrorTimedOut && !lastPostFailed {
+            if nsError.code == NSURLErrorTimedOut && !lastPostFailed && automaticSubmissionEnabled {
                 print("[SSO] 請求超時，重置狀態並重試...")
                 lastPostFailed = true
                 getSSOViewState = false
@@ -377,7 +432,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 modernLoginDeadline = nil
                 modernPageGeneration += 1
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                let generation = modernPageGeneration
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self, weak webView] in
+                    guard let self, let webView, !self.cancelled, self.automaticSubmissionEnabled,
+                          generation == self.modernPageGeneration else { return }
                     if let url = URL(string: ssoModernLoginURLString) {
                         webView.load(URLRequest(url: url))
                     }
@@ -396,6 +454,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            guard !cancelled else { return }
             let urlStr = webView.url?.absoluteString ?? ""
             print("[SSO] 載入失敗: \(URL(string: urlStr)?.path ?? "") error=\(error.localizedDescription)")
             let nsError = error as NSError
@@ -437,7 +496,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func eval(_ webView: WKWebView, _ js: String, _ note: String, completion: @escaping (Any?) -> Void) {
-            webView.evaluateJavaScript(js) { result, error in
+            guard !cancelled else { return }
+            let generation = modernPageGeneration
+            webView.evaluateJavaScript(js) { [weak self] result, error in
+                guard let self, !self.cancelled, generation == self.modernPageGeneration else { return }
                 completion(error == nil ? result : nil)
             }
         }
@@ -483,16 +545,17 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func startModernLogin(in webView: WKWebView) {
-            guard !isProcessingCaptcha, !modernLoginFinished else { return }
+            guard !cancelled, !isProcessingCaptcha, !modernLoginFinished else { return }
             isProcessingCaptcha = true
-            modernLoginDeadline = Date().addingTimeInterval(120)
+            modernLoginDeadline = automaticSubmissionEnabled ? Date().addingTimeInterval(120) : nil
             print("[SSO] 開始新版登入流程")
             checkModernLoginState(in: webView)
             fillModernLoginForm(in: webView)
         }
 
         private func fillModernLoginForm(in webView: WKWebView) {
-            guard !modernLoginFinished, !modernSubmitTriggered else { return }
+            guard isAttemptActive, pendingFormEvaluations.isEmpty, !modernLoginFinished, !modernSubmitTriggered,
+                  automaticSubmissionEnabled || !modernFormHasBeenFilled else { return }
             let generation = modernPageGeneration
             guard let credentials = try? JSONSerialization.data(withJSONObject: [parent.account, parent.password]),
                   let json = String(data: credentials, encoding: .utf8) else {
@@ -500,6 +563,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 return
             }
             let shouldFill = modernFormHasBeenFilled ? "false" : "true"
+            let shouldSubmit = automaticSubmissionEnabled ? "true" : "false"
 
             let script = """
             (function() {
@@ -522,6 +586,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                         field.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
+                if (!\(shouldSubmit)) return 'manual';
                 if (!usernameField.checkValidity() || !passwordField.checkValidity()) return 'invalid_credentials';
                 if (submit.disabled) return 'waiting_verification';
                 submit.click();
@@ -529,13 +594,30 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             })();
             """
 
+            let evaluationID = UUID()
+            pendingFormEvaluations.insert(evaluationID)
             webView.evaluateJavaScript(script) { [weak self, weak webView] result, error in
-                guard let self, let webView,
-                      generation == self.modernPageGeneration,
-                      !self.modernLoginFinished else { return }
+                guard let self, let webView else { return }
+                self.pendingFormEvaluations.remove(evaluationID)
+                defer { self.notifyInteractionReady() }
+                guard self.isAttemptActive, !self.modernLoginFinished else { return }
+                guard generation == self.modernPageGeneration else {
+                    self.fillModernLoginForm(in: webView)
+                    return
+                }
                 let state = result as? String
-                if state == "waiting_verification" || state == "submitted" {
+                if state == "waiting_verification" || state == "submitted" || state == "manual" {
                     self.modernFormHasBeenFilled = true
+                }
+                if state == "manual" { return }
+                if state == "waiting_verification" {
+                    if self.verificationWaitStartedAt == nil { self.verificationWaitStartedAt = Date() }
+                    if let started = self.verificationWaitStartedAt,
+                       Date().timeIntervalSince(started) >= 8 {
+                        self.parent.onInteractionRequired?()
+                    }
+                } else {
+                    self.verificationWaitStartedAt = nil
                 }
                 if error != nil || state != "submitted" {
                     if state == "invalid_credentials" {
@@ -564,7 +646,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func checkModernLoginState(in webView: WKWebView) {
-            guard isProcessingCaptcha, !modernLoginFinished, !modernStateCheckInFlight else { return }
+            guard isAttemptActive, isProcessingCaptcha, !modernLoginFinished, !modernStateCheckInFlight else { return }
             let generation = modernPageGeneration
             modernStateCheckInFlight = true
             let script = """
@@ -594,19 +676,22 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             """
             webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
                 guard let self, let webView,
+                      self.isAttemptActive,
                       generation == self.modernPageGeneration,
                       !self.modernLoginFinished else { return }
                 self.modernStateCheckInFlight = false
                 if let json = result as? String,
                    let data = json.data(using: .utf8),
                    let state = try? JSONDecoder().decode(ModernPageState.self, from: data) {
-                    if !state.token.isEmpty {
+                    if !state.token.isEmpty, state.token != self.rejectedModernToken {
                         self.handleModernLoginOutcome(.success(token: state.token), in: webView)
                         return
                     }
                     if !state.error.isEmpty {
                         let lowercased = state.error.lowercased()
-                        if !state.error.contains("驗證") && !lowercased.contains("turnstile") {
+                        if !state.error.contains("驗證") && !lowercased.contains("turnstile"),
+                           self.automaticSubmissionEnabled || state.error != self.lastReportedModernError {
+                            self.lastReportedModernError = state.error
                             self.handleModernLoginOutcome(self.modernLoginError(state.error), in: webView)
                             return
                         }
@@ -658,6 +743,18 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             case .systemError:
                 parent.onResult(.systemError)
             }
+            if !automaticSubmissionEnabled {
+                if case .success = outcome { return }
+                // Manual errors remain visible; keep watching for a new user login.
+                modernLoginFinished = false
+                isProcessingCaptcha = true
+                let generation = modernPageGeneration
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self, weak webView] in
+                    guard let self, let webView, !self.cancelled,
+                          generation == self.modernPageGeneration else { return }
+                    self.checkModernLoginState(in: webView)
+                }
+            }
         }
 
         private func tokenExpiration(_ token: String) -> String? {
@@ -682,15 +779,27 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             let generation = modernPageGeneration
             authorizationTask = Task { @MainActor [weak self] in
                 guard let self else { return }
+                defer {
+                    if generation == self.modernPageGeneration { self.authorizationTask = nil }
+                }
                 let info = await self.fetchAuthorizationInfo(token: token)
-                guard !Task.isCancelled, generation == self.modernPageGeneration else { return }
+                guard !Task.isCancelled, self.isAttemptActive,
+                      generation == self.modernPageGeneration else { return }
                 guard let info else {
                     print("[SSO] 登入憑證驗證失敗")
+                    if self.parent.onInteractionRequired != nil {
+                        self.rejectedModernToken = token
+                        self.modernLoginFinished = false
+                        self.isProcessingCaptcha = true
+                    }
                     self.parent.onResult(.generic(title: "登入驗證未完成",
                         message: "無法確認校務登入憑證，請確認網路後重新登入"))
+                    if self.parent.onInteractionRequired != nil {
+                        self.checkModernLoginState(in: webView)
+                    }
                     return
                 }
-                guard !self.appState.isLoggingOut else { return }
+                guard self.isAttemptActive, !self.appState.isLoggingOut else { return }
                 SSOTokenStore.shared.save(token: token, exp: self.tokenExpiration(token), account: self.parent.account)
                 self.appState.updateProfileFromSSO(info)
                 print("[SSO] 登入憑證驗證完成")
@@ -763,6 +872,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func scheduleLegacyCaptchaRetry(in webView: WKWebView, reason: String) {
+            guard !cancelled, automaticSubmissionEnabled else { return }
             legacyCaptchaRetryCount += 1
 
             guard legacyCaptchaRetryCount <= maxLegacyCaptchaAttempts else {
@@ -777,7 +887,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             isProcessingCaptcha = false
             getSSOViewState = false
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            let generation = modernPageGeneration
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak webView] in
+                guard let self, let webView, !self.cancelled,
+                      self.automaticSubmissionEnabled, generation == self.modernPageGeneration else { return }
                 if let url = URL(string: ssoLegacyDefaultURLString) {
                     webView.load(URLRequest(url: url))
                 } else {
@@ -787,9 +900,11 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func fetchStudentInfo(in webView: WKWebView, javascript: String, attempt: Int) {
+            guard !cancelled else { return }
+            let generation = modernPageGeneration
             let maxAttempts = 2
             webView.evaluateJavaScript(javascript) { [weak self] result, error in
-                guard let self else { return }
+                guard let self, self.isAttemptActive, generation == self.modernPageGeneration else { return }
                 if let jsonStr = result as? String,
                    let data = jsonStr.data(using: .utf8),
                    let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String],
@@ -799,9 +914,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     let info = StudentInfo(name: name, department: department, grade: grade)
                     print("[SSO] 取得學生資訊")
                     if !department.isEmpty || !grade.isEmpty {
-                        Task { @MainActor in
-                            self.appState.updateProfileFromSSO(info)
-                        }
+                        self.appState.updateProfileFromSSO(info)
                         self.parent.onResult(.success(info: info))
                         return
                     }
@@ -899,7 +1012,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func Login_SSO(in webView: WKWebView) {
-            guard !isProcessingCaptcha else { return }
+            guard !cancelled, automaticSubmissionEnabled, !isProcessingCaptcha else { return }
             isProcessingCaptcha = true
             print("[SSO] 開始登入流程")
 
@@ -921,7 +1034,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     }
                     
                     SSOCaptchaProcessor.shared.recognize(from: image) { [weak self] code in
-                        guard let self = self else { return }
+                        guard let self, !self.cancelled, self.automaticSubmissionEnabled else { return }
                         
                         if let code = code, code.count == 6 {
                             print("[SSO] OCR 成功")
@@ -951,6 +1064,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func getCaptchaImage(in webView: WKWebView, attempt: Int, completion: @escaping (SSOImage?) -> Void) {
+            guard !cancelled, automaticSubmissionEnabled else { return }
             let maxAttempts = 4
             let js = """
             (function(){
@@ -1091,6 +1205,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         }
 
         private func submitLogin(in webView: WKWebView, viewState: String, viewStateGenerator: String, eventValidation: String, requestToken: String, captcha: String) {
+            guard !cancelled, automaticSubmissionEnabled else { return }
             let formData: [(String, String)] = [
                 ("__EVENTTARGET", ""),
                 ("__EVENTARGUMENT", ""),
