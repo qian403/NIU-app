@@ -178,6 +178,12 @@ struct NIU_LiveActivitiesLiveActivity: Widget {
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.orange)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let segments = context.state.progressSegments, segments.count > 1 {
+            // Consecutive periods of one course: one total bar with a node per handover.
+            ClassSegmentedProgressView(
+                segments: segments,
+                tint: context.state.mode == "current" ? .mint : .cyan
+            )
         } else if let configuration = courseProgressConfiguration(
             mode: context.state.mode,
             isStale: context.isStale,

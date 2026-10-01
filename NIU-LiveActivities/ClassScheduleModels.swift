@@ -170,6 +170,62 @@ nonisolated struct ScheduleSession: Codable, Equatable, Sendable {
     let end: Date
 }
 
+/// Consecutive periods of one course, presented as a single Live Activity span.
+nonisolated struct ScheduleBlock: Equatable, Sendable {
+    /// Runs from the first period's start to the last period's end.
+    let session: ScheduleSession
+    /// Class time of each period inside the block, excluding the breaks between
+    /// them; a single element for one period.
+    let periods: [ClosedRange<Date>]
+}
+
+extension Array where Element == ScheduleSession {
+    /// Merge adjacent periods that share a course name. The break limit keeps a
+    /// lunch break or a later repeat of the same course as separate blocks.
+    nonisolated func mergedConsecutiveCourses(maxBreak: TimeInterval = 20 * 60) -> [ScheduleBlock] {
+        var groups: [[ScheduleSession]] = []
+        for session in sorted(by: { $0.start < $1.start }) {
+            if let previous = groups.last?.last,
+               Self.courseKey(previous) == Self.courseKey(session),
+               !Self.courseKey(session).isEmpty,
+               session.start >= previous.end,
+               session.start.timeIntervalSince(previous.end) <= maxBreak {
+                groups[groups.count - 1].append(session)
+            } else {
+                groups.append([session])
+            }
+        }
+        return groups.map { group in
+            let first = group[0], last = group[group.count - 1]
+            guard group.count > 1 else { return ScheduleBlock(session: first, periods: [first.start...first.end]) }
+            return ScheduleBlock(
+                session: ScheduleSession(courseName: first.courseName, classroom: first.classroom,
+                                         teacher: first.teacher,
+                                         periodLabel: Self.periodRangeLabel(first.periodLabel, last.periodLabel),
+                                         start: first.start, end: last.end),
+                periods: group.map { $0.start...$0.end }
+            )
+        }
+    }
+
+    private nonisolated static func courseKey(_ session: ScheduleSession) -> String {
+        session.courseName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// "第3節" + "第5節" → "第3–5節".
+    private nonisolated static func periodRangeLabel(_ first: String, _ last: String) -> String {
+        func core(_ label: String) -> String {
+            var value = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.hasPrefix("第") { value.removeFirst() }
+            if value.hasSuffix("節") { value.removeLast() }
+            return value
+        }
+        let start = core(first), end = core(last)
+        guard !start.isEmpty, !end.isEmpty else { return first }
+        return "第\(start)–\(end)節"
+    }
+}
+
 extension ClassSchedule {
     func sessions(on date: Date) -> [ScheduleSession] {
         let cal = ScheduleClock.calendar

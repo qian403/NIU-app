@@ -680,14 +680,17 @@ final class ClassLiveActivityCoordinator {
             return
         }
 
+        let primary = snapshot.primary.session
         let state = ClassLiveActivityAttributes.ContentState(
             mode: snapshot.mode,
-            courseName: snapshot.primary.courseName,
-            classroom: snapshot.primary.classroom,
-            teacher: snapshot.primary.teacher,
-            periodLabel: snapshot.primary.periodLabel,
-            startDate: snapshot.primary.start,
-            endDate: snapshot.primary.end
+            courseName: primary.courseName,
+            classroom: primary.classroom,
+            teacher: primary.teacher,
+            periodLabel: primary.periodLabel,
+            startDate: primary.start,
+            endDate: primary.end,
+            periodStartDates: snapshot.primary.periods.count > 1 ? snapshot.primary.periods.map(\.lowerBound) : nil,
+            periodEndDates: snapshot.primary.periods.count > 1 ? snapshot.primary.periods.map(\.upperBound) : nil
         )
 
         let attributes = ClassLiveActivityAttributes(startedAt: now, token: sessionID)
@@ -770,7 +773,6 @@ final class ClassLiveActivityCoordinator {
         }
 
         let candidates = sessionsForDisplayDays(from: schedule, now: now)
-            .sorted { $0.start < $1.start }
 
         for session in candidates {
             if now < session.start {
@@ -786,15 +788,14 @@ final class ClassLiveActivityCoordinator {
 
     private typealias ClassSession = ScheduleSession
 
-    private func classSnapshot(from schedule: ClassSchedule, now: Date) -> (mode: String, primary: ClassSession, next: ClassSession?)? {
-        let candidates = sessionsForDisplayDays(from: schedule, now: now)
-            .filter { $0.end > now }
-            .sorted { $0.start < $1.start }
+    private func classSnapshot(from schedule: ClassSchedule, now: Date) -> (mode: String, primary: ScheduleBlock, next: ScheduleBlock?)? {
+        let candidates = schedule.sessions(on: now).mergedConsecutiveCourses()
+            .filter { $0.session.end > now }
 
         guard !candidates.isEmpty else { return nil }
 
-        if let current = candidates.first(where: { $0.start <= now && now < $0.end }) {
-            let next = candidates.first(where: { $0.start >= current.end })
+        if let current = candidates.first(where: { $0.session.start <= now && now < $0.session.end }) {
+            let next = candidates.first(where: { $0.session.start >= current.session.end })
             return ("current", current, next)
         }
 
@@ -803,8 +804,10 @@ final class ClassLiveActivityCoordinator {
         return ("upcoming", next, following)
     }
 
+    /// Consecutive periods of one course share a single activity, so they also
+    /// share one refresh boundary instead of waking at every period break.
     private func sessionsForDisplayDays(from schedule: ClassSchedule, now: Date) -> [ClassSession] {
-        schedule.sessions(on: now)
+        schedule.sessions(on: now).mergedConsecutiveCourses().map(\.session)
     }
 
     func setForeground(_ active: Bool) {
@@ -835,8 +838,8 @@ final class ClassLiveActivityCoordinator {
         return String(scalars)
     }
 
-    private func calendarStaleDate(for snapshot: (mode: String, primary: ClassSession, next: ClassSession?)) -> Date {
-        let base = snapshot.mode == "current" ? snapshot.primary.end : snapshot.primary.start
+    private func calendarStaleDate(for snapshot: (mode: String, primary: ScheduleBlock, next: ScheduleBlock?)) -> Date {
+        let base = snapshot.mode == "current" ? snapshot.primary.session.end : snapshot.primary.session.start
         return base
     }
 

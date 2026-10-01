@@ -78,6 +78,23 @@ schedule += r'''
         precondition(ClassPeriod(id: "bad", timeRange: "25:00~26:00", courses: [:]).startMinutes == nil)
         let decoded = try! JSONDecoder().decode(ClassSchedule.self, from: JSONEncoder().encode(model.fixture!))
         precondition(decoded.sessions(on: date(19, 9, 0)) == model.fixture!.sessions(on: date(19, 9, 0)))
+        let blocks = model.fixture!.sessions(on: date(18, 9, 0)).mergedConsecutiveCourses()
+        precondition(blocks.map(\.periods.count) == [1, 1, 4], "Only same-course periods with a short break merge")
+        precondition(blocks[2].session.start == date(18, 13, 0) && blocks[2].session.end == date(18, 16, 50))
+        precondition(blocks[2].session.periodLabel == "第5–8節")
+        precondition(blocks[2].periods.first == date(18, 13, 0)...date(18, 13, 50), "Breaks stay outside period spans")
+        precondition(blocks[0].session == model.fixture!.sessions(on: date(18, 9, 0))[0], "Single period stays unchanged")
+        let other = CourseInfo(name: "Other", teacher: nil, classroom: "A101")
+        let mixed = ClassSchedule(periods: [
+            .init(id: "1", timeRange: "08:10~09:00", courses: [0: course]),
+            .init(id: "2", timeRange: "09:10~10:00", courses: [0: other]),
+            .init(id: "3", timeRange: "10:10~11:00", courses: [0: course]),
+            .init(id: "4", timeRange: "11:10~12:00", courses: [0: CourseInfo(name: " Fixture ")]),
+        ], dayCount: 1, dayHeaders: ["星期五"], fetchedAt: Date())
+        let mixedBlocks = mixed.sessions(on: date(18, 8, 0)).mergedConsecutiveCourses()
+        precondition(mixedBlocks.map(\.periods.count) == [1, 1, 2], "A different course in between splits the block")
+        precondition(mixedBlocks[2].session.periodLabel == "第3–4節")
+        print("PASS: consecutive same-course periods merge; breaks, lunch and other courses split")
         print("PASS: seven-day horizon, shared cache format, Taipei timezone, invalid hours")
         print("PASS: before class, current class, break, end of day, weekend course and missing cache")
     }
@@ -181,6 +198,26 @@ watch = "import Foundation\nenum ClassLiveActivityAttributes {\n" + block(
         precondition(missing.classroom == "教室未提供")
         precondition(missing.periodLabel == nil)
         precondition(presentation(name: "  課程  ", room: " 工102\n").courseName == "課程")
+        func t(_ seconds: Double) -> Date { Date(timeIntervalSince1970: seconds) }
+        let merged = ClassWatchActivityPresentation(state: .init(
+            mode: "current", courseName: "資訊安全導論", classroom: "工102", teacher: "合成教師",
+            periodLabel: "第3–5節", startDate: start, endDate: t(10300),
+            periodStartDates: [start, t(3700), t(7300)], periodEndDates: [t(3100), t(6700), t(10300)]), isStale: false)
+        precondition(merged.progressSegments == [start...t(3100), t(3700)...t(6700), t(7300)...t(10300)], "Breaks are nodes, not bar time")
+        precondition(merged.progressInterval == start...Date(timeIntervalSince1970: 10300), "Countdown covers the whole block")
+        precondition(current.progressSegments == nil, "One period keeps the single bar")
+        for (starts, ends) in [([t(3700), t(7300)], [t(6700), t(10300)]), ([start, t(3700)], [t(3100)]),
+                               ([start, t(3700)], [t(4000), t(10300)]), ([start, t(3700)], nil)] {
+            let state = ClassLiveActivityAttributes.ContentState(
+                mode: "current", courseName: "x", classroom: "x", teacher: "x", periodLabel: "x",
+                startDate: start, endDate: t(10300), periodStartDates: starts, periodEndDates: ends)
+            precondition(state.progressSegments == [start...t(10300)], "Malformed starts fall back to total bar")
+        }
+        let legacy = try! JSONDecoder().decode(ClassLiveActivityAttributes.ContentState.self, from: Data(
+            #"{"mode":"current","courseName":"x","classroom":"x","teacher":"x","periodLabel":"x","startDate":0,"endDate":60}"#.utf8))
+        precondition(legacy.periodStartDates == nil && legacy.progressSegments?.count == 1, "Pushes without period starts still decode")
+        precondition(ClassWatchActivityPresentation(state: merged.state, isStale: true).progressSegments == nil)
+        print("PASS: merged period segments, malformed fallback and legacy push payloads")
         print("PASS: Watch current/upcoming deadlines, stale/invalid state, missing fields and period labels")
     }
 }

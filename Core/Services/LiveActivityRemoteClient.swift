@@ -176,7 +176,10 @@ final class LiveActivityRemoteClient {
               schedule.ownerSessionID == activity.attributes.token else { return }
         let now = Date()
         let limit = activity.attributes.startedAt.addingTimeInterval(7 * 3600 + 55 * 60)
-        let sessions = schedule.sessions(on: now).filter { $0.end > now && $0.end <= limit }
+        // Upload the same merged spans the device shows, so a pushed update keeps
+        // the whole consecutive-period progress instead of a single period.
+        let sessions = schedule.sessions(on: now).mergedConsecutiveCourses().map(\.session)
+            .filter { $0.end > now && $0.end <= limit }
         guard let last = sessions.last else { return }
         let endpoint = base.absoluteString
         do {

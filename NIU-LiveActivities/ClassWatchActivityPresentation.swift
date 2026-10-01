@@ -36,6 +36,12 @@ struct ClassWatchActivityPresentation {
         return state.startDate...state.endDate
     }
 
+    /// Period spans for consecutive periods of one course; nil for a single period.
+    var progressSegments: [ClosedRange<Date>]? {
+        guard !needsRefresh, let segments = state.progressSegments, segments.count > 1 else { return nil }
+        return segments
+    }
+
     private func nonempty(_ value: String) -> String? {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
