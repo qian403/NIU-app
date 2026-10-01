@@ -14,7 +14,7 @@ for tab, model in [(1, "EventData"), (2, "EventData_Apply")]:
         feature / f"ViewModels/EventRegistration_Tab{tab}_ViewModel.swift"
     ).read_text()
     start = view_model.index("    var filteredEvents:")
-    end = view_model.index("    // 選中的活動資訊", start)
+    end = view_model.index("    // MARK: - Loading", start)
     source += f"""
 struct SearchTab{tab} {{
     var events: [{model}]

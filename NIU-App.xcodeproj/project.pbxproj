@@ -125,7 +125,7 @@
 		D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C004D031C004D031C004 /* LibraryCodeView.swift */; };
 		D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */; };
 		D2F819E2F9104CB298DA8F5E /* NIUComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AC3551E7FD4C20863D3461 /* NIUComponents.swift */; };
-		DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */; };
+		DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationClient.swift */; };
 		DE1B327C5FC7444289A1258A /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */; };
 		E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E96602F196B61E6AF082552 /* SSOLoginWebView.swift */; };
 		E82C05FDB268A0B09DCA82FB /* Features/EventRegistration/Views/EventRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99CB51CCF338C6F80F84C2B4 /* Features/EventRegistration/Views/EventRegistrationView.swift */; };
@@ -220,7 +220,7 @@
 		8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift; sourceTree = "<group>"; };
 		99CB51CCF338C6F80F84C2B4 /* Features/EventRegistration/Views/EventRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistrationView.swift; sourceTree = "<group>"; };
 		9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/CalendarEventCard.swift; sourceTree = "<group>"; };
-		9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Services/EventRegistrationWebViewManager.swift; sourceTree = "<group>"; };
+		9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Services/EventRegistrationClient.swift; sourceTree = "<group>"; };
 		9E96602F196B61E6AF082552 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5C /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
 		A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistration_Tab1_View.swift; sourceTree = "<group>"; };
@@ -683,7 +683,7 @@
 				3CF54E564E0F41D38F6569A8 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift */,
 				E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */,
 				87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */,
-				9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift */,
+				9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationClient.swift */,
 				164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */,
 				AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */,
 				AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */,
@@ -973,7 +973,7 @@
 				79E15ABF1868BE5DC2DB8453 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift in Sources */,
 				B3FE21C2F45E4762945AE2BC /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift in Sources */,
 				EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */,
-				DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationWebViewManager.swift in Sources */,
+				DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationClient.swift in Sources */,
 				19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */,
 				E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */,
 				10A32DB22F431F630009BB45 /* View+Extensions.swift in Sources */,

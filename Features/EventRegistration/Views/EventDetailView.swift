@@ -4,6 +4,7 @@ struct EventDetailView: View {
     let event: EventData
     let onRegister: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmingRegistration = false
     
     var body: some View {
         NavigationStack {
@@ -12,20 +13,10 @@ struct EventDetailView: View {
                     // 活動標題
                     VStack(alignment: .leading, spacing: 8) {
                         Text(event.name)
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.title2.bold())
                             .foregroundColor(.primary)
                         
-                        HStack {
-                            Text(event.event_state)
-                                .font(.caption)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(stateColor.opacity(0.2))
-                                .foregroundColor(stateColor)
-                                .cornerRadius(8)
-                            
-                            Spacer()
-                        }
+                        EventStatusBadge(text: event.event_state, color: event.stateColor)
                     }
                     .padding(.bottom, 8)
                     
@@ -48,11 +39,11 @@ struct EventDetailView: View {
                     if !event.eventDetail.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("活動說明")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.headline)
                                 .foregroundColor(.primary)
                             EventLinkedText(event.eventDetail)
-                                .font(.system(size: 14))
-                                .foregroundColor(.primary.opacity(0.85))
+                                .font(.body)
+                                .foregroundStyle(.primary)
                                 .lineLimit(nil)
                                 .multilineTextAlignment(.leading)
                                 .textSelection(.enabled)
@@ -64,7 +55,7 @@ struct EventDetailView: View {
                     // 聯絡資訊
                     VStack(alignment: .leading, spacing: 8) {
                         Text("聯絡資訊")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.headline)
                             .foregroundColor(.primary)
                         InfoRow(icon: "person.fill", title: "聯絡人", value: event.contactInfoName)
                         TappableInfoRow(icon: "phone.fill", title: "電話", value: event.contactInfoTel, urlScheme: "tel:")
@@ -85,11 +76,11 @@ struct EventDetailView: View {
                     if !event.Remark.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("備註")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.headline)
                                 .foregroundColor(.primary)
                             EventLinkedText(event.Remark)
-                                .font(.system(size: 14))
-                                .foregroundColor(.primary.opacity(0.85))
+                                .font(.body)
+                                .foregroundStyle(.primary)
                                 .lineLimit(nil)
                                 .multilineTextAlignment(.leading)
                                 .textSelection(.enabled)
@@ -114,21 +105,28 @@ struct EventDetailView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 if canRegister {
-                    Button(action: {
-                        onRegister(event.eventSerialID)
-                        dismiss()
-                    }) {
+                    Button {
+                        confirmingRegistration = true
+                    } label: {
                         Text("我要報名")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.green)
-                            .cornerRadius(12)
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.green)
                     .padding()
-                    .background(Color(.systemBackground))
+                    .background(.bar)
                 }
+            }
+            .confirmationDialog("確定要報名這個活動？", isPresented: $confirmingRegistration, titleVisibility: .visible) {
+                Button("報名") {
+                    onRegister(event.eventSerialID)
+                    dismiss()
+                }
+                Button("先不要", role: .cancel) {}
+            } message: {
+                Text("「\(event.name)」報名送出後會寫入校方紀錄，App 會再到已報名列表確認結果。")
             }
         }
     }
@@ -137,18 +135,6 @@ struct EventDetailView: View {
         event.event_state.contains("報名中")
     }
     
-    private var stateColor: Color {
-        switch event.event_state {
-        case let state where state.contains("報名中"):
-            return .green
-        case let state where state.contains("已額滿"):
-            return .red
-        case let state where state.contains("即將開始"):
-            return .orange
-        default:
-            return .gray
-        }
-    }
 }
 
 struct EventShareMenu: View {
@@ -195,13 +181,13 @@ struct InfoRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16))
+                .font(.body)
                 .foregroundColor(.secondary)
                 .frame(width: 24)
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundColor(.secondary)
                 Group {
                     if detectsLinks {
@@ -210,7 +196,7 @@ struct InfoRow: View {
                         Text(value)
                     }
                 }
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundColor(.primary)
             }
             
@@ -229,25 +215,26 @@ struct TappableInfoRow: View {
         Button(action: openLink) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 16))
+                    .font(.body)
                     .foregroundColor(.secondary)
                     .frame(width: 24)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                     Text(value)
-                        .font(.system(size: 14))
-                        .foregroundColor(.blue)
-                        .underline()
+                        .font(.subheadline)
+                        .foregroundStyle(Color.accentColor)
                 }
                 
                 Spacer()
             }
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
         .disabled(value.trimmingCharacters(in: .whitespaces).isEmpty)
+        .accessibilityHint(urlScheme == "tel:" ? "撥打電話" : "撰寫郵件")
     }
     
     private func openLink() {

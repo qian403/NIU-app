@@ -3,206 +3,113 @@ import SwiftUI
 struct EventRegistration_Tab2_View: View {
     @ObservedObject var viewModel: EventRegistration_Tab2_ViewModel
     @State private var selectedEvent: EventData_Apply?
-    
+    @State private var editingEvent: EventData_Apply?
+    @State private var pendingEdit: EventData_Apply?
+
     var body: some View {
-        ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // 搜尋框
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.gray)
-                    TextField("搜尋活動編號或關鍵字", text: $viewModel.searchText)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .accessibilityHint("可搜尋活動編號、名稱、主辦單位、內容或報名狀態")
-                    
-                    if !viewModel.searchText.isEmpty {
-                        Button(action: {
-                            viewModel.searchText = ""
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.gray)
-                                .frame(minWidth: 44, minHeight: 44)
-                        }
-                        .accessibilityLabel("清除搜尋")
-                    }
-                }
-                .frame(minHeight: 44)
-                .padding(.horizontal, 10)
-                .background(Color(.secondarySystemGroupedBackground))
-                .cornerRadius(10)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                
-                if viewModel.filteredEvents.isEmpty && !viewModel.isOverlayVisible {
-                    VStack(spacing: 16) {
-                        Image(systemName: viewModel.searchText.isEmpty ? "calendar.badge.checkmark" : "magnifyingglass")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray)
-                        Text(viewModel.searchText.isEmpty ? "目前沒有已報名的活動" : "找不到符合「\(viewModel.searchText)」的活動")
-                            .font(.headline)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(viewModel.filteredEvents) { event in
-                                AppliedEventRow(event: event)
-                                    .padding(.horizontal)
-                                    .onTapGesture {
-                                        selectedEvent = event
-                                    }
-                            }
-                        }
-                        .padding(.vertical)
-                    }
-                }
-            }
-            
-            // 載入遮罩
-            if viewModel.isOverlayVisible {
-                Color.primary.opacity(0.3)
-                    .ignoresSafeArea()
-                
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .tint(.white)
-                    
-                    Text(viewModel.overlayText)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                }
-                .padding(32)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.accentColor.opacity(0.9))
-                )
-            }
+        EventListScaffold(
+            items: viewModel.filteredEvents,
+            totalCount: viewModel.events.count,
+            phase: viewModel.phase,
+            updatedAt: viewModel.updatedAt,
+            searchText: $viewModel.searchText,
+            searchHint: "可搜尋活動編號、名稱、主辦單位、內容或報名狀態",
+            emptyTitle: "目前沒有已報名的活動",
+            emptySymbol: "calendar.badge.checkmark",
+            reload: viewModel.reload,
+            refresh: viewModel.refresh
+        ) { event in
+            Button { selectedEvent = event } label: { AppliedEventRow(event: event) }
+                .buttonStyle(.plain)
+                .accessibilityHint("顯示報名詳情")
         }
-        .sheet(item: $selectedEvent) { event in
+        // Present the edit form only after the detail sheet has fully closed.
+        .sheet(item: $selectedEvent, onDismiss: {
+            editingEvent = pendingEdit
+            pendingEdit = nil
+        }) { event in
             AppliedEventDetailView(
                 event: event,
                 onCancel: { eventID in
                     viewModel.cancelRegistration(eventID: eventID)
                 },
                 onModify: { event in
-                    viewModel.selectedEventForModify = event
+                    pendingEdit = event
                 }
             )
         }
-        .sheet(item: $viewModel.selectedEventForModify) { event in
-            ModifyRegistrationView(event: event, onSubmit: { eventInfo in
-                viewModel.modifyRegistration(eventInfo: eventInfo)
+        .sheet(item: $editingEvent) { event in
+            ModifyRegistrationView(event: event, onSubmit: { form in
+                viewModel.modifyRegistration(eventID: event.eventSerialID, form: form)
             }, onCancel: { eventID in
                 viewModel.cancelRegistration(eventID: eventID)
             })
         }
-        .overlay(
-            Group {
-                if viewModel.showToast {
-                    ToastView(message: viewModel.toastMessage)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                withAnimation {
-                                    viewModel.showToast = false
-                                }
-                            }
-                        }
-                }
-            }
-            .animation(.spring(), value: viewModel.showToast)
-            , alignment: .top
-        )
-        .refreshable {
-            await viewModel.manualRefresh()
+        .alert(viewModel.alert?.title ?? "", isPresented: Binding(
+            get: { viewModel.alert != nil },
+            set: { if !$0 { viewModel.alert = nil } }
+        ), presenting: viewModel.alert) { _ in
+            Button("好", role: .cancel) {}
+        } message: { alert in
+            Text(alert.message)
         }
-        .onAppear {
-            viewModel.onViewAppear()
-        }
+    }
+}
+
+extension EventData_Apply {
+    /// The school shows its action button text here, e.g. 「修改資料 / 取消報名」 or 「活動已結束」.
+    var hasEnded: Bool { event_state.contains("已結束") }
+    var offersModification: Bool { !hasEnded && event_state.contains("修改") }
+    var offersCancellation: Bool { !hasEnded && event_state.contains("取消") }
+
+    var eventStateLabel: String {
+        if hasEnded { return "活動已結束" }
+        if offersModification || offersCancellation { return "可修改或取消" }
+        return event_state
+    }
+
+    var eventStateColor: Color {
+        if hasEnded { return .gray }
+        if event_state.contains("進行中") { return .green }
+        return .blue
+    }
+
+    var registrationStateColor: Color {
+        state.contains("取消") ? .gray : state.contains("候補") ? .orange : .green
     }
 }
 
 // MARK: - 已報名活動列表項目
 struct AppliedEventRow: View {
     let event: EventData_Apply
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(event.name)
-                    .font(.headline)
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(event.state)
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.green.opacity(0.2))
-                        .foregroundColor(.green)
-                        .cornerRadius(4)
-                    
-                    Text(event.event_state)
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(eventStateColor.opacity(0.2))
-                        .foregroundColor(eventStateColor)
-                        .cornerRadius(4)
+        VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
+            Text(event.name)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Theme.Spacing.xsmall) {
+                if !event.state.isEmpty {
+                    EventStatusBadge(text: event.state, color: event.registrationStateColor)
+                }
+                if !event.eventStateLabel.isEmpty {
+                    EventStatusBadge(text: event.eventStateLabel, color: event.eventStateColor)
                 }
             }
-            
-            Label("活動編號：\(event.eventSerialID)", systemImage: "number")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-            HStack {
-                Image(systemName: "building.2")
-                    .foregroundColor(.secondary)
-                Text(event.department)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            
-            HStack {
-                Image(systemName: "calendar")
-                    .foregroundColor(.secondary)
-                Text(event.eventTime.replacingOccurrences(of: "\n", with: " "))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            HStack {
-                Image(systemName: "mappin.and.ellipse")
-                    .foregroundColor(.secondary)
-                Text(event.eventLocation)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            EventInfoLine(icon: "number", text: "活動編號：\(event.eventSerialID)")
+            EventInfoLine(icon: "building.2", text: event.department)
+            EventInfoLine(icon: "calendar", text: event.eventTime.replacingOccurrences(of: "\n", with: " "))
+            EventInfoLine(icon: "mappin.and.ellipse", text: event.eventLocation)
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
         }
-        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-    }
-    
-    private var eventStateColor: Color {
-        switch event.event_state {
-        case let state where state.contains("進行中"):
-            return .green
-        case let state where state.contains("已結束"):
-            return .gray
-        default:
-            return .blue
-        }
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
     }
 }
