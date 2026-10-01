@@ -83,7 +83,9 @@ struct PostalQueryView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "person").foregroundStyle(.secondary).accessibilityHidden(true)
                     TextField("輸入收件人姓名", text: $model.query.name)
-                        .textContentType(.name)
+                        .textContentType(nil)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                         .focused($focusedField, equals: .name)
                         .submitLabel(.search)
                         .onSubmit(search)

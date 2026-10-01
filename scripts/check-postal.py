@@ -11,13 +11,25 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 source = r'''
 import Foundation
+import Synchronization
 
 nonisolated struct StubPostalService: PostalServing {
     let load: @Sendable (PostalQuery) async throws -> PostalPage
     var loadNext: @Sendable (PostalPage) async throws -> PostalPage = { _ in throw PostalError.unavailable }
+    var onInvalidate: @Sendable () -> Void = {}
     func search(_ query: PostalQuery) async throws -> PostalPage { try await load(query) }
     func nextPage(after page: PostalPage) async throws -> PostalPage { try await loadNext(page) }
-    func invalidate() {}
+    func invalidate() { onInvalidate() }
+}
+actor ServiceGate {
+    var pending: [CheckedContinuation<any PostalServing, Never>] = []
+    func make() async -> any PostalServing {
+        await withCheckedContinuation { pending.append($0) }
+    }
+    var count: Int { pending.count }
+    func resolve(_ index: Int, with service: any PostalServing) {
+        pending[index].resume(returning: service)
+    }
 }
 actor Gate {
     var pending: [(PostalQuery, CheckedContinuation<PostalPage, Error>)] = []
@@ -134,6 +146,35 @@ actor PageGate {
         precondition(failing.resultQuery == nil && failing.errorMessage?.contains("網路") == true)
         precondition(PostalQueryViewModel.message(for: PostalError.invalidResponse).contains("格式"))
         print("PASS: stale requests, filter edits, reset/account cleanup, empty vs network/parse errors")
+
+        let factory = ServiceGate()
+        let discarded = Mutex(0)
+        let started = Mutex(0)
+        let delayedService = StubPostalService(load: { query in
+            started.withLock { $0 += 1 }
+            return try PostalHTML.page(fixture(), query: query)
+        }, onInvalidate: { discarded.withLock { $0 += 1 } })
+        let delayed = PostalQueryViewModel(makeService: { await factory.make() })
+        delayed.query = query; delayed.search()
+        try await settle { await factory.count == 1 }
+        precondition(delayed.isLoading)
+        delayed.query.name = "新條件"; delayed.search()
+        try await settle { await factory.count == 2 }
+        await factory.resolve(0, with: delayedService)
+        try await settle { discarded.withLock { $0 == 1 } }
+        precondition(started.withLock { $0 == 0 } && delayed.isLoading)
+        await factory.resolve(1, with: delayedService)
+        try await settle { !delayed.isLoading }
+        precondition(delayed.resultQuery?.name == "新條件" && started.withLock { $0 == 1 })
+        delayed.search()
+        try await settle { await factory.count == 3 }
+        delayed.reset()
+        let beforeResetReturn = discarded.withLock { $0 }
+        await factory.resolve(2, with: delayedService)
+        try await settle { discarded.withLock { $0 == beforeResetReturn + 1 } }
+        precondition(delayed.records.isEmpty && delayed.resultQuery == nil && !delayed.isLoading)
+        precondition(started.withLock { $0 == 1 })
+        print("PASS: asynchronous session setup, replaced/reset setup invalidated before network requests")
 
         let pageGate = PageGate()
         let paging = PostalQueryViewModel(makeService: {
