@@ -24,6 +24,8 @@ bundle = "dev.chien.niuapp.home-navigation-checks"
 home = (root / "Features/Home/Views/HomeView.swift").read_text().split("#Preview")[0]
 cards = home[home.index("    private var featureCards:"):home.index("private struct HomeToolsView")]
 assert "destination: .tools" in cards
+assert any('title: "請假"' in card and "destination: .leaveApplication" in card
+           for card in cards.split("FeatureCard("))
 assert "destination: .libraryEquipment" not in cards and "destination: .postalQuery" not in cards
 tools_start = home.index("private struct HomeToolsView")
 tools = home[tools_start:home.index("// MARK: - Feature Card", tools_start)]
@@ -35,6 +37,7 @@ hook = r'''
             case "tools": navigationPath.append(HomeRoute(destination: .tools))
             case "equipment": navigationPath.append(HomeRoute(destination: .libraryEquipment))
             case "postal": navigationPath.append(HomeRoute(destination: .postalQuery))
+            case "leave": navigationPath.append(HomeRoute(destination: .leaveApplication))
             case "back": if !navigationPath.isEmpty { navigationPath.removeLast() }
             case "grades": navigationPath.append(HomeRoute(destination: .gradeHistory))
             case "home": navigationPath = NavigationPath()
@@ -154,7 +157,7 @@ struct MoodleAttendanceScannerView: View {
 }
 '''
 for name in ["Settings", "Moodle", "ClassSchedule", "LibraryCode", "LibraryEquipment", "AcademicCalendar",
-             "EventRegistration", "GraduationThreshold", "Mail", "EnrollmentCertificate", "PostalQuery"]:
+             "EventRegistration", "GraduationThreshold", "Mail", "EnrollmentCertificate", "PostalQuery", "LeaveRecords"]:
     source += f'struct {name}View: View {{ var body: some View {{ FixtureScreen(name: "{name}") }} }}\n'
 source += r'''
 struct CheckFailure: Error { let reason: String }
@@ -217,6 +220,13 @@ struct CheckFailure: Error { let reason: String }
                         "Postal must retain Tools as its parent")
             Fixture.commands.send("back")
             try await waitFor { navigationControllers().first?.topViewController?.navigationItem.title == "小工具" }
+            Fixture.commands.send("back")
+            try await waitFor { navigationControllers().first?.viewControllers.count == 1 }
+            Fixture.stage = "leave records open"
+            Fixture.commands.send("leave")
+            try await waitFor { Fixture.visible.contains("LeaveRecords") }
+            try require(navigationControllers().first?.viewControllers.count == 2,
+                        "Leave records must use the Home stack with a back destination")
             Fixture.commands.send("back")
             try await waitFor { navigationControllers().first?.viewControllers.count == 1 }
             Fixture.stage = "first grade open"
@@ -282,7 +292,7 @@ struct CheckFailure: Error { let reason: String }
             Fixture.commands.send("grades")
             try await waitFor { Fixture.gradeModels.count == 4 && Fixture.gradeModels.last?.loadState == .loaded }
             result = ["status": "passed", "checks":
-                "Tools grid, equipment/postal to Tools to Home back stack, cold first grade open, native back stack, reopen, loading cancellation, stale result, shortcut replacement, repeated shortcut from detail, attendance result to Home, grade reentry"]
+                "Tools grid, equipment/postal to Tools to Home back stack, leave card to LeaveRecords, cold first grade open, native back stack, reopen, loading cancellation, stale result, shortcut replacement, repeated shortcut from detail, attendance result to Home, grade reentry"]
         } catch {
             result = ["status": "failed", "reason": String(describing: error)]
         }
