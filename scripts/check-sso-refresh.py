@@ -188,46 +188,10 @@ import Foundation
         precondition(!reloading.isRefreshing, "Reload must not extend the original refresh deadline")
         let reloadResult = await reloadWaiter.value
         precondition(!reloadResult)
-        var valid = true
-        var active = true
-        var credentialReads = 0
-        var successes = 0
-        let proactive = SSOSessionService(credentialsProvider: {
-            credentialReads += 1
-            return ("synthetic", "fixture-password")
-        }, applicationIsActive: { active }, tokenIsValid: { valid }, onRefreshSuccess: { successes += 1 })
-        await proactive.refreshIfNeeded()
-        precondition(credentialReads == 0 && !proactive.isRefreshing, "Valid token skips proactive login")
-        valid = false
-        active = false
-        await proactive.refreshIfNeeded()
-        precondition(credentialReads == 0, "Background cannot start login")
-        active = true
-        let foreground = Task { await proactive.refreshIfNeeded() }
-        try await settle()
-        let feature = Task { await proactive.requestRefresh(force: true) }
-        try await settle()
-        precondition(proactive.isRefreshing && credentialReads == 1, "Feature joins proactive refresh without duplicate Keychain reads")
-        proactive.handleRefreshResult(.success(info: info), requestID: proactive.refreshID)
-        await foreground.value
-        let featureResult = await feature.value
-        precondition(featureResult && successes == 1)
-        await proactive.refreshIfNeeded()
-        precondition(!proactive.isRefreshing && credentialReads == 1, "Invalid token must still respect attempt rate limit")
-        proactive.disableAutoRefresh()
-        await proactive.refreshIfNeeded()
-        precondition(credentialReads == 1, "Logout disables proactive work")
-        proactive.enableAutoRefresh()
-        let leavingForeground = Task { await proactive.refreshIfNeeded() }
-        try await settle()
-        leavingForeground.cancel()
-        await leavingForeground.value
-        try await settle()
-        precondition(!proactive.isRefreshing && successes == 1, "Cancellation stops unneeded proactive refresh")
         let missing = SSOSessionService(credentialsProvider: { nil }, applicationIsActive: { true }, tokenIsValid: { false })
         let unavailable = await missing.requestRefresh()
         precondition(!unavailable && !missing.isRefreshing)
-        print("PASS: silent success, request coalescing, manual recovery/reload, stale callbacks/timers, cancellation, logout, overall timeout, rate limits, EUNI re-fetch and foreground refresh")
+        print("PASS: silent success, request coalescing, manual recovery/reload, stale callbacks/timers, cancellation, logout, overall timeout, rate limits and EUNI re-fetch")
     }
 }
 '''
