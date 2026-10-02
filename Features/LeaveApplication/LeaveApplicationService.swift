@@ -31,7 +31,6 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
 
     private enum Read<T> { case waiting, expired, ready(T) }
     private var started = false
-    private var bridged = false
     /// One-shot approval for a school confirm the user already accepted natively (撤回).
     private var expectedConfirm: ((String) -> Bool)?
 
@@ -65,11 +64,27 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
         return (records, actions)
     }
 
-    /// Read-only detail of one form (Mode=DETAIL from 請假紀錄).
+    /// Read-only detail of one form (Mode=DETAIL from 請假紀錄) with its 簽核流程.
     func loadDetail(account: String, formNo: String) async throws -> LeavePage {
         self.account = account
-        return try await openRecord(formNo: formNo, listPath: LeaveSchoolPage.records,
-                                    listPage: LeaveSchoolPage.recordsList, mode: "DETAIL")
+        var page = try await openRecord(formNo: formNo, listPath: LeaveSchoolPage.records,
+                                        listPage: LeaveSchoolPage.recordsList, mode: "DETAIL")
+        // The flow is extra: a failure here leaves the detail usable and shows its own notice.
+        do {
+            let text = try await run(LeaveApplicationScript.flow, arguments: ["formNo": formNo])
+            let flow = try JSONDecoder().decode(LeaveApprovalFlow.self, from: Data(text.utf8))
+            if flow.kind == "expired" { throw LeaveApplicationError.expired }
+            if flow.kind == "flow" { page.flow = flow }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch LeaveApplicationError.expired {
+            throw LeaveApplicationError.expired
+        } catch {
+            // Optional flow failures keep the already verified form available.
+            page.flow = nil
+        }
+        try check()
+        return page
     }
 
     /// 撤回 one form. Returns true only when a fresh query no longer lists it as withdrawable.
@@ -121,7 +136,7 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
         return page
     }
 
-    /// Logs in once per service (reusing cookies, one GUID bridge at most), loads `path`
+    /// Reuses cookies with one GUID bridge at most per open, loads `path`
     /// into mainFrame like the school's menu, then polls `read` within a fixed budget.
     private func open<T>(_ path: String, read: @escaping @MainActor () async -> Read<T>) async throws -> T {
         if !started {
@@ -131,6 +146,7 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
             webView.load(URLRequest(url: mainFrame, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
         }
         var opened = false
+        var bridged = false
         // 90 × 0.5 s keeps login and page lookup within a fixed budget.
         for _ in 0..<90 {
             try await Task.sleep(for: .milliseconds(500))
@@ -317,8 +333,18 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        defer { completionHandler() }
+        // 「使用時間逾時,系統已將您自動登出」is a lapsed session: sign in again on the
+        // next page open instead of showing it as a message about the leave form.
+        if Self.isLogoutNotice(message) {
+            if !closed { sessionExpired = true }
+            return
+        }
         onDialog?(String(message.prefix(1000)))
-        completionHandler()
+    }
+
+    nonisolated static func isLogoutNotice(_ message: String) -> Bool {
+        message.contains("自動登出") || (message.contains("逾時") && message.contains("登入"))
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,

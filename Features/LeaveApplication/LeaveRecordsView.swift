@@ -415,6 +415,14 @@ struct LeaveRecordDetailView: View {
 
     @ViewBuilder private var detailSections: some View {
         if let detail {
+            // Why it came back is the first thing a returned form needs.
+            if let returnReason = detail.flow?.returnReason {
+                Section {
+                    LeaveNotice(icon: "arrow.uturn.backward.circle.fill", title: "退回原因", detail: returnReason,
+                                color: Theme.Colors.warning)
+                }
+            }
+            approvalSection(detail.flow)
             if let reason = detail.current?.reason, !reason.isEmpty {
                 Section("請假事由") { Text(reason).textSelection(.enabled) }
             }
@@ -430,7 +438,7 @@ struct LeaveRecordDetailView: View {
             }
         } else if let error = model.detailErrors[formNo] {
             Section {
-                LeaveNotice(icon: "exclamationmark.triangle.fill", title: "無法讀取事由與節次", detail: error, color: Theme.Colors.warning)
+                LeaveNotice(icon: "exclamationmark.triangle.fill", title: "無法讀取簽核流程與假單內容", detail: error, color: Theme.Colors.warning)
                 Button { model.loadDetail(formNo) } label: { Label("重新讀取", systemImage: "arrow.clockwise") }
                     .disabled(model.isBusy)
             }
@@ -438,10 +446,26 @@ struct LeaveRecordDetailView: View {
             Section {
                 HStack(spacing: Theme.Spacing.small) {
                     ProgressView()
-                    Text("正在讀取事由、節次與附件…").foregroundStyle(.secondary)
+                    Text("正在讀取簽核流程、事由與附件…").foregroundStyle(.secondary)
                 }
                 .frame(minHeight: 44)
             }
+        }
+    }
+
+    @ViewBuilder private func approvalSection(_ flow: LeaveApprovalFlow?) -> some View {
+        Section {
+            if let steps = flow?.steps, !steps.isEmpty {
+                LeaveApprovalTimeline(steps: steps, tint: tint)
+                    .padding(.vertical, Theme.Spacing.xxsmall)
+            } else {
+                Text("無法讀取簽核流程，可到校務系統的假單「簽核流程」查看。")
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("簽核流程")
+        } footer: {
+            if let name = flow?.name, !name.isEmpty { Text("流程：\(name)。資料來源：教務系統簽核流程。") }
         }
     }
 
@@ -468,6 +492,86 @@ struct LeaveRecordDetailView: View {
             Text("修改與補檔會開啟校方表單；撤回後校方會刪除這張假單。")
         }
         .disabled(model.isBusy)
+    }
+}
+
+/// 簽核流程 as a vertical timeline. Connectors are separate segments between markers,
+/// so no line runs through a marker.
+struct LeaveApprovalTimeline: View {
+    let steps: [LeaveApprovalStep]
+    let tint: Color
+    @ScaledMetric(relativeTo: .body) private var marker: CGFloat = 22
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .top, spacing: Theme.Spacing.small) {
+                    VStack(spacing: 4) {
+                        icon(step)
+                            .frame(width: marker, height: marker)
+                        if index < steps.count - 1 {
+                            Rectangle()
+                                .fill(step.isDone ? tint : Theme.Colors.opaqueSeparator)
+                                .frame(width: 2)
+                                .frame(maxHeight: .infinity)
+                        }
+                    }
+                    content(step)
+                        .padding(.bottom, index < steps.count - 1 ? Theme.Spacing.medium : 0)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(label(step, index: index))
+            }
+        }
+    }
+
+    @ViewBuilder private func icon(_ step: LeaveApprovalStep) -> some View {
+        if step.isReturned {
+            Image(systemName: "arrow.uturn.backward.circle.fill").resizable().foregroundStyle(Theme.Colors.warning)
+        } else if step.isDone {
+            Image(systemName: "checkmark.circle.fill").resizable().foregroundStyle(tint)
+        } else if step.isCurrent {
+            Image(systemName: "clock.fill").resizable().foregroundStyle(Theme.Colors.info).padding(2)
+        } else {
+            Circle().strokeBorder(Theme.Colors.opaqueSeparator, lineWidth: 1.5)
+        }
+    }
+
+    private func content(_ step: LeaveApprovalStep) -> some View {
+        let pending = !step.isDone && !step.isReturned && !step.isCurrent
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.xsmall) {
+                Text(step.stage.isEmpty ? "簽核" : step.stage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(pending ? Theme.Colors.secondaryLabel : Theme.Colors.label)
+                Text(step.status)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(step.isReturned ? Theme.Colors.warning : step.isCurrent ? Theme.Colors.info
+                                     : step.isDone ? tint : Theme.Colors.secondaryLabel)
+            }
+            let who = [step.unit, step.person].filter { !$0.isEmpty }.joined(separator: " ")
+            if !who.isEmpty {
+                Text(who).font(.caption).foregroundStyle(Theme.Colors.secondaryLabel)
+            }
+            if !step.date.isEmpty {
+                Text(step.date).font(.caption).monospacedDigit().foregroundStyle(Theme.Colors.secondaryLabel)
+            }
+            if step.hasMeaningfulComment {
+                Text(step.comment)
+                    .font(.footnote)
+                    .foregroundStyle(step.isReturned ? Theme.Colors.warning : Theme.Colors.label)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func label(_ step: LeaveApprovalStep, index: Int) -> String {
+        var parts = ["第 \(index + 1) 關", step.stage, step.status]
+        if !step.unit.isEmpty || !step.person.isEmpty { parts.append("\(step.unit) \(step.person)") }
+        if !step.date.isEmpty { parts.append(step.date) }
+        if step.hasMeaningfulComment { parts.append("意見：\(step.comment)") }
+        return parts.joined(separator: "，")
     }
 }
 
