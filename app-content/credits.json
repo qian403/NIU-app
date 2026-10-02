@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "introduction": "感謝下列開源專案與開發者提供靈感與參考：",
   "entries": [
     {
@@ -10,6 +10,15 @@
       "projectName": "NIU_APP_IOS",
       "url": "https://github.com/KennyYang0726/NIU_APP_IOS",
       "order": 10
+    },
+    {
+      "id": "windlessme-niu-app-android",
+      "name": "windless",
+      "description": "niu-app-android 開發者",
+      "projectName": "niu-app-android",
+      "url": "https://github.com/windlessme/niu-app-android",
+      "avatarURL": "https://avatars.githubusercontent.com/u/83590234?v=4",
+      "order": 20
     }
   ]
 }

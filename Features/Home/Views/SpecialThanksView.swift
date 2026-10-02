@@ -18,7 +18,24 @@ struct SpecialThanksView: View {
                     ForEach(document.sortedEntries) { entry in
                         Link(destination: entry.url) {
                             VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-                                Label(entry.name, systemImage: "person.fill")
+                                Label {
+                                    Text(entry.name)
+                                } icon: {
+                                    if let avatarURL = entry.avatarURL {
+                                        AsyncImage(url: avatarURL) { image in
+                                            image.resizable().scaledToFill()
+                                        } placeholder: {
+                                            Image(systemName: "person.fill")
+                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                .background(Color(.tertiarySystemGroupedBackground))
+                                        }
+                                        .frame(width: 32, height: 32)
+                                        .clipShape(Circle())
+                                        .accessibilityHidden(true)
+                                    } else {
+                                        Image(systemName: "person.fill")
+                                    }
+                                }
                                     .font(.headline)
                                     .foregroundStyle(.primary)
                                 Text(entry.description)
