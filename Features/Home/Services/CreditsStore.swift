@@ -7,6 +7,7 @@ nonisolated struct CreditsDocument: Codable, Equatable, Sendable {
         let description: String
         let projectName: String
         let url: URL
+        let avatarURL: URL?
         let order: Int
     }
 
@@ -30,10 +31,7 @@ nonisolated struct CreditsDocument: Codable, Equatable, Sendable {
         for entry in document.entries {
             guard validText(entry.id, limit: 100), validText(entry.name, limit: 200),
                   validText(entry.description, limit: 2_000), validText(entry.projectName, limit: 200),
-                  entry.url.absoluteString.count <= 2_048,
-                  let components = URLComponents(url: entry.url, resolvingAgainstBaseURL: false),
-                  components.scheme == "https", let host = components.host, !host.isEmpty,
-                  components.user == nil, components.password == nil else {
+                  validURL(entry.url), entry.avatarURL.map({ validURL($0) }) ?? true else {
                 throw CreditsError.invalidDocument
             }
         }
@@ -42,6 +40,14 @@ nonisolated struct CreditsDocument: Codable, Equatable, Sendable {
 
     private static func validText(_ text: String, limit: Int) -> Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.count <= limit
+    }
+
+    private static func validURL(_ url: URL) -> Bool {
+        guard url.absoluteString.count <= 2_048,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme == "https", let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil else { return false }
+        return true
     }
 }
 
