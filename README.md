@@ -1,10 +1,5 @@
 # NIU-Life
 
-
-## 已知問題
-- Qrcode 點名後無法確定是否成功
-- Widget 與即時動態更新不穩定
-
 把課表、M 園區與校園常用服務，放進同一個 App。
 
 NIU-Life 是為國立宜蘭大學學生打造的非官方 iOS 校務輔助工具，以 SwiftUI 開發，整合課程查詢、學年度行事曆、快速點名與圖書館通行碼，並提供主畫面小工具、鎖定畫面快捷與課表即時動態。
@@ -20,12 +15,14 @@ NIU-Life 是為國立宜蘭大學學生打造的非官方 iOS 校務輔助工具
 | 快速點名     | 使用相機掃描課堂 QR Code，進入 M 園區點名流程。                        |
 | 圖書館通行碼 | 顯示門禁 QR Code 與借書條碼。                                          |
 | 學年度行事曆 | 切換月曆／事件模式，依學年度搜尋及分類篩選，查看校方原文與來源 PDF。   |
-| 活動報名     | 瀏覽校園活動與活動詳情，進入報名流程。                                 |
+| 活動報名     | 瀏覽與報名校園活動、管理已報名活動，分享活動資訊及報名連結。             |
 | 成績查詢     | 查看歷年成績與 GPA。                                                   |
 | 畢業門檻     | 查詢多元時數、英文與體適能等門檻。                                     |
 | 請假         | 先列出自己的假單與審核結果，校方開放時可撤回、修改或補交證明；新請假原生填寫假別、日期、節次與附件。 |
 | 小工具與快捷 | 在主畫面查看課表、行事曆，從鎖定畫面或控制中心快速開啟點名與圖書館。   |
 | 課表即時動態 | 在鎖定畫面與支援裝置的動態島顯示課程資訊；背景遠端更新需另行同意啟用。 |
+
+活動詳情中的「分享」提供「分享活動資訊」與「只分享連結」兩種方式，可報名與已報名活動皆適用。完整分享內容依序包含活動名稱、活動編號、主辦單位、活動時間、活動地點、報名時間與活動連結；連結依活動編號產生，例如 `https://ccsys.niu.edu.tw/MvcTeam/Act/Apply/16157`。
 
 ## 使用須知
 
@@ -116,6 +113,7 @@ View 負責呈現與互動，ViewModel 管理畫面狀態，Service／Repository
 | SSO 背景更新與取消       | `python3 scripts/check-sso-refresh.py`                                    |
 | SSO 背景／手動登入畫面（隔離模擬器） | `python3 scripts/check-sso-refresh-webview.py --device <UDID>`              |
 | 請假表單與送出保護       | `node scripts/check-leave-application.js` |
+| 活動分享文字與連結       | `python3 scripts/check-event-sharing.py` |
 | 歷年成績                 | `node scripts/check-grade-history.js`                                     |
 | 成績載入與取消           | `python3 scripts/check-grade-state.py`                                    |
 | 首頁／成績導覽（隔離模擬器） | `python3 scripts/check-home-navigation.py --device <UDID>`                |
@@ -142,6 +140,8 @@ python3 calendar-data/scripts/build_review.py --check
 ## 問題回報與參與
 
 歡迎透過 GitHub Issues 回報問題、提出建議，或以 Pull Request 改善功能與文件。提交前請先確認現有差異，保持修改範圍集中，執行相關檢查及 `git diff --check`。
+
+第一次參與可先閱讀[貢獻指南](CONTRIBUTING.md)，了解開發流程、程式慣例、驗證方式與 PR 應附上的資訊。文件修正、介面與無障礙改善、錯誤修復及校曆資料校對都歡迎參與。
 
 回報問題時請提供 App 版本、裝置與系統版本、重現步驟，以及預期和實際結果。截圖與日誌請先遮蔽姓名、學號、成績等個資；**不要附上密碼、token、cookie 或仍可使用的 QR Code**。
 
