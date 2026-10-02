@@ -602,7 +602,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         return request
     }
 
-    private func handleAttendanceLoginPage(_ webView: WKWebView) {
+    private func handleAttendanceLoginPage(_ webView: WKWebView, excludingCaptcha: String? = nil) {
         guard attendanceLoginPageGeneration != attendanceNavigationGeneration else { return }
         attendanceLoginPageGeneration = attendanceNavigationGeneration
         guard !attendanceUsesManualLogin,
@@ -624,7 +624,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             webView,
             attempt: 1,
             generation: generation,
-            navigationGeneration: navigationGeneration
+            navigationGeneration: navigationGeneration,
+            excludingDataURL: excludingCaptcha
         ) { [weak self, weak webView] payload, image in
             guard let self, let webView, self.hasStarted,
                   generation == self.loadGeneration,
@@ -659,8 +660,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                     let recognitionMS = Int((ProcessInfo.processInfo.systemUptime - recognitionStarted) * 1000)
                     print("[MoodleAttendance] captcha ocrMs=\(recognitionMS) recognized=\(code != nil)")
                     guard let code, code.count == 5 else {
-                        self.retryAttendanceLoginPage(
+                        self.refreshAttendanceCaptcha(
                             webView,
+                            previousDataURL: payload.dataURL,
                             generation: generation,
                             navigationGeneration: navigationGeneration
                         )
@@ -693,6 +695,69 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 )
             } else {
                 self.showAttendanceLoginPage()
+            }
+        }
+    }
+
+    private func refreshAttendanceCaptcha(
+        _ webView: WKWebView,
+        previousDataURL: String?,
+        generation: Int,
+        navigationGeneration: Int
+    ) {
+        guard hasStarted, !attendanceUsesManualLogin,
+              generation == loadGeneration, navigationGeneration == attendanceNavigationGeneration,
+              webView === storedWebView else { return }
+        guard attendanceLoginAttempts < maxAttendanceLoginAttempts,
+              isTrustedAttendanceLoginPage(webView.url) else {
+            showAttendanceLoginPage()
+            return
+        }
+        guard let previousDataURL, let previousImage = javascriptLiteral(previousDataURL) else {
+            retryAttendanceLoginPage(webView, generation: generation, navigationGeneration: navigationGeneration)
+            return
+        }
+        let script = """
+        (function(previousImage) {
+            if (location.protocol !== 'https:' || location.hostname !== 'euni.niu.edu.tw' ||
+                (location.port && location.port !== '443') || !location.pathname.startsWith('/login/')) {
+                return 'manual';
+            }
+            var input = document.querySelector('#captcha, input[name="captcha"]');
+            if (input && input.value.trim()) return 'manual';
+            var image = document.querySelector('#imgcode, img[src*="/auth/posbosscaptcha/captcha.php"]');
+            if (!input || !image) return 'unavailable';
+            // A user may have already clicked while OCR was running. Wait for
+            // that image instead of replacing it with yet another request.
+            if (!image.complete) return 'changed';
+            if (!image.naturalWidth) return 'unavailable';
+            try {
+                var canvas = document.createElement('canvas');
+                canvas.width = image.naturalWidth;
+                canvas.height = image.naturalHeight;
+                var context = canvas.getContext('2d');
+                if (!context) return 'unavailable';
+                context.drawImage(image, 0, 0);
+                if (canvas.toDataURL('image/png') !== previousImage) return 'changed';
+                var previousSource = image.src;
+                image.click();
+                return image.src !== previousSource ? 'refreshed' : 'unavailable';
+            } catch (error) { return 'unavailable'; }
+        })(\(previousImage));
+        """
+        webView.evaluateJavaScript(script) { [weak self, weak webView] result, error in
+            guard let self, let webView, self.hasStarted, !self.attendanceUsesManualLogin,
+                  generation == self.loadGeneration,
+                  navigationGeneration == self.attendanceNavigationGeneration,
+                  webView === self.storedWebView else { return }
+            if error == nil, let status = result as? String, ["refreshed", "changed"].contains(status) {
+                self.attendanceLoginPageGeneration = nil
+                self.handleAttendanceLoginPage(webView, excludingCaptcha: previousDataURL)
+            } else if result as? String == "manual" {
+                self.showAttendanceLoginPage()
+            } else {
+                // Missing/changed school click handler: retain the bounded fresh-GET fallback.
+                self.retryAttendanceLoginPage(webView, generation: generation, navigationGeneration: navigationGeneration)
             }
         }
     }
@@ -737,8 +802,12 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         attempt: Int,
         generation: Int,
         navigationGeneration: Int,
+        excludingDataURL: String? = nil,
         completion: @escaping (AttendanceCaptchaPayload?, CaptchaImage?) -> Void
     ) {
+        guard hasStarted, !attendanceUsesManualLogin, generation == loadGeneration,
+              navigationGeneration == attendanceNavigationGeneration,
+              webView === storedWebView else { return }
         let script = """
         (function() {
             var input = document.querySelector('#captcha, input[name="captcha"]');
@@ -768,7 +837,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         """
 
         webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
-            guard let self, let webView, self.hasStarted,
+            guard let self, let webView, self.hasStarted, !self.attendanceUsesManualLogin,
                   generation == self.loadGeneration,
                   navigationGeneration == self.attendanceNavigationGeneration,
                   webView === self.storedWebView else { return }
@@ -780,7 +849,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 return
             }
 
-            if let dataURL = payload.dataURL,
+            if let dataURL = payload.dataURL, dataURL != excludingDataURL,
                let image = self.decodeCaptchaDataURL(dataURL) {
                 completion(payload, image)
                 return
@@ -788,8 +857,10 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
             // The school's page can add the captcha after didFinish. Wait for
             // that script before deciding this login form has no captcha.
-            if attempt < 20 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak webView] in
+            let maxAttempts = excludingDataURL == nil ? 20 : 50
+            let delay = excludingDataURL == nil ? 0.25 : 0.1
+            if attempt < maxAttempts {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak webView] in
                     guard let self, let webView,
                           generation == self.loadGeneration,
                           navigationGeneration == self.attendanceNavigationGeneration else { return }
@@ -798,6 +869,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                         attempt: attempt + 1,
                         generation: generation,
                         navigationGeneration: navigationGeneration,
+                        excludingDataURL: excludingDataURL,
                         completion: completion
                     )
                 }

@@ -10,6 +10,8 @@ function scriptAfter(signature) {
     return source.slice(source.indexOf(signature)).match(/let script = """\n([\s\S]*?)\n\s*"""/)[1];
 }
 const capture = scriptAfter('private func captureAttendanceCaptcha');
+const refresh = scriptAfter('private func refreshAttendanceCaptcha')
+    .replace('\\(previousImage)', 'capturedImage');
 const retry = scriptAfter('private func retryAttendanceLoginPage');
 const submit = scriptAfter('private func submitAttendanceLogin')
     .replace('\\(username)', JSON.stringify('synthetic-student'))
@@ -21,6 +23,15 @@ function page(options = {}) {
     let imageData = options.imageData ?? 'data:image/png;base64,fixture';
     const image = options.hasImage === false ? null
         : { complete: options.complete ?? true, naturalWidth: options.width ?? 180, naturalHeight: 40 };
+    let refreshes = 0;
+    if (image) {
+        image.src = 'https://euni.niu.edu.tw/auth/posbosscaptcha/captcha.php';
+        image.click = () => {
+            refreshes += 1;
+            if (options.clickError) throw new Error('Synthetic refresh failure');
+            if (!options.noRefresh) image.src += '?t=synthetic';
+        };
+    }
     const input = options.hasInput === false ? null
         : { value: options.manualInput ?? '', focus() {}, dispatchEvent() {} };
     const field = () => ({ value: '', focus() {}, dispatchEvent() {} });
@@ -74,7 +85,7 @@ function page(options = {}) {
             }),
         },
     };
-    return { context, input, username, password, submissions: () => submissions };
+    return { context, input, username, password, refreshes: () => refreshes, submissions: () => submissions };
 }
 
 for (const options of [
@@ -147,3 +158,24 @@ for (const location of [
 assert.equal(vm.runInNewContext(retry, page({ manualInput: '123' }).context), true);
 assert.equal(vm.runInNewContext(retry, page().context), false);
 console.log('PASS: capture readiness, stale images, manual input before submission/retry, form preparation without JS submission, no off-origin fill');
+
+const refreshable = page();
+assert.equal(vm.runInNewContext(refresh, refreshable.context), 'refreshed');
+assert.equal(refreshable.refreshes(), 1);
+assert.equal(refreshable.submissions(), 0);
+for (const options of [{ imageData: 'data:image/png;base64,new' }, { complete: false }]) {
+    const changed = page(options);
+    assert.equal(vm.runInNewContext(refresh, changed.context), 'changed');
+    assert.equal(changed.refreshes(), 0, 'Do not replace a user-requested image again');
+}
+for (const options of [{ manualInput: '12' },
+    { location: { protocol: 'https:', hostname: 'evil.example', port: '', pathname: '/login/' } }]) {
+    const manual = page(options);
+    assert.equal(vm.runInNewContext(refresh, manual.context), 'manual');
+    assert.equal(manual.refreshes(), 0);
+}
+for (const options of [{ hasInput: false }, { hasImage: false }, { width: 0 },
+    { noContext: true }, { canvasError: true }, { noRefresh: true }, { clickError: true }]) {
+    assert.equal(vm.runInNewContext(refresh, page(options).context), 'unavailable');
+}
+console.log('PASS: image-only click refresh, existing user refresh, manual input, trusted origin and unavailable handler');
