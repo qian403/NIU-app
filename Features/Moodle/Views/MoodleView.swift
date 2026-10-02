@@ -338,7 +338,7 @@ private struct CourseCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "book.closed.fill")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
@@ -346,16 +346,17 @@ private struct CourseCard: View {
                     .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
 
                 Text(course.cleanName)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
-
-                Spacer(minLength: 4)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.tertiary)
-                    .padding(.top, 5)
+                    .fixedSize()
+                    .accessibilityHidden(true)
             }
             
             // Teacher & credits
