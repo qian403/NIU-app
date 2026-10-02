@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
-"""Exercise the production CAPTCHA processor with synthetic images, offline."""
+"""Exercise the production CAPTCHA processor with synthetic images, offline.
+
+--benchmark reports 120 deterministic samples; --manifest accepts a JSON array
+[{"path":"sample.png","expected":"12345"}] with paths relative to that file.
+Keep real images/labels outside the repository. No login requests are submitted.
+--processor selects an older source snapshot for comparable benchmark runs.
+"""
 from pathlib import Path
+import argparse
 import subprocess
 import tempfile
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--benchmark", action="store_true", help="Report OCR accuracy and latency on 120 deterministic synthetic images")
+parser.add_argument("--manifest", type=Path, help="Offline JSON array of {path, expected}; run benchmark instead of regression checks")
+parser.add_argument("--processor", type=Path, help="Processor snapshot for before/after benchmarking")
+args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 source = (root / "Features/Moodle/Views/MoodleWebView.swift").read_text()
 manager_fixture = r'''
 import Foundation
 @MainActor final class WKWebView {
+    var url = URL(string: "https://euni.niu.edu.tw/login/index.php")
     var isUserInteractionEnabled = true
     var pending: ((Any?, Error?) -> Void)?
     var requests: [URLRequest] = []
@@ -37,6 +50,7 @@ import Foundation
     }
 '''
 for start, end in [
+    ("    private func isTrustedAttendanceLoginPage", "    private struct AttendanceCaptchaPayload"),
     ("    private struct AttendanceLoginSubmission", "    private func handleAttendanceLoginPage"),
     ("    private func retryAttendanceLoginPage", "    private func captureAttendanceCaptcha"),
     ("    private func submitAttendanceLogin", "    private func checkAttendanceLoginSubmission"),
@@ -113,7 +127,7 @@ extension NSImage {
         .init(family: family, digits: digits, confidence: confidence)
     }
 
-    static func image(_ text: String, noisy: Bool) -> NSImage {
+    static func image(_ text: String, noisy: Bool, seed: Int = 0) -> NSImage {
         let context = CGContext(data: nil, width: 180, height: 40, bitsPerComponent: 8,
             bytesPerRow: 720, space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -129,7 +143,12 @@ extension NSImage {
             }
         }
         let font = CTFontCreateWithName("TimesNewRomanPS-BoldMT" as CFString, 28, nil)
-        let color = noisy ? CGColor(red: 35/255.0, green: 99/255.0, blue: 25/255.0, alpha: 1)
+        let inks: [(Double, Double, Double)] = [
+            (35, 99, 25), (130, 7, 135), (167, 50, 15), (17, 139, 194),
+            (172, 141, 159), (1, 47, 76), (149, 163, 99), (9, 6, 6)
+        ]
+        let ink = inks[seed % inks.count]
+        let color = noisy ? CGColor(red: ink.0/255, green: ink.1/255, blue: ink.2/255, alpha: 1)
             : CGColor(gray: 0, alpha: 1)
         for (index, digit) in text.enumerated() {
             let attributes: [NSAttributedString.Key: Any] = [
@@ -137,15 +156,104 @@ extension NSImage {
                 .init(kCTForegroundColorAttributeName as String): color
             ]
             let line = CTLineCreateWithAttributedString(NSAttributedString(string: String(digit), attributes: attributes))
-            context.textPosition = CGPoint(x: 8 + index * 28, y: noisy ? 4 + (index * 3) % 8 : 8)
+            context.textPosition = CGPoint(x: 8 + index * (seed == 0 ? 28 : 18 + seed % 10), y: noisy ? 4 + (index * 3 + seed) % 12 : 8)
             CTLineDraw(line, context)
         }
         let cg = context.makeImage()!
         return NSImage(cgImage: cg, size: NSSize(width: 180, height: 40))
     }
 
-    static func main() async {
+    struct Sample: Decodable { let path: String; let expected: String }
+
+    static func benchmark(_ manifest: String?) async throws {
+        var samples: [(NSImage, String)] = []
+        if let manifest {
+            let url = URL(fileURLWithPath: manifest)
+            let items = try JSONDecoder().decode([Sample].self, from: Data(contentsOf: url))
+            for item in items {
+                guard item.expected.count == 5, item.expected.allSatisfy({ $0 >= "0" && $0 <= "9" }),
+                      let image = NSImage(contentsOf: URL(fileURLWithPath: item.path, relativeTo: url.deletingLastPathComponent()))
+                else { fatalError("Invalid offline sample") }
+                samples.append((image, item.expected))
+            }
+        } else {
+            for index in 0..<120 {
+                let digits = String(format: "%05d", (index * 7919 + 52131) % 100000)
+                samples.append((image(digits, noisy: true, seed: index), digits))
+            }
+        }
+        precondition(!samples.isEmpty)
+        var correct = 0, wrong = 0, rejected = 0
+        var times: [Double] = []
+        for (image, expected) in samples {
+            let start = ProcessInfo.processInfo.systemUptime
+            let result = await SSOCaptchaProcessor.shared.recognizeAttendance(from: image)
+            times.append((ProcessInfo.processInfo.systemUptime - start) * 1000)
+            if result == expected { correct += 1 }
+            else if result == nil { rejected += 1 }
+            else { wrong += 1 }
+        }
+        let warm = Array(times.dropFirst()).sorted()
+        func percentile(_ fraction: Double) -> Double {
+            warm.isEmpty ? 0 : warm[min(warm.count - 1, Int(ceil(Double(warm.count) * fraction)) - 1)]
+        }
+        let report: [String: Any] = ["samples": samples.count, "correct": correct, "wrong": wrong,
+            "rejected": rejected, "first_ms": times[0], "warm_p50_ms": percentile(0.5),
+            "warm_p95_ms": percentile(0.95), "dataset": manifest == nil ? "synthetic" : "offline-manifest"]
+        let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+        print("BENCHMARK " + String(decoding: data, as: UTF8.self))
+    }
+
+    static func main() async throws {
         setbuf(stdout, nil)
+        if CommandLine.arguments.count > 1 {
+            try await benchmark(CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : nil)
+            return
+        }
+        #if !BENCHMARK
+        // Exhaustively compare early exits with all possible later votes. This
+        // includes low confidence, invalid digits and the literal-ink fallback.
+        let possibilities = [
+            candidate("12345", ""), candidate("67890", ""), candidate("11111", ""),
+            candidate("12345", "", 0.2), candidate("67890", "", 0.34), candidate("1234x", ""),
+            SSOCaptchaProcessor.AttendanceCandidate(family: "", digits: "12345", confidence: 1, unmodifiedDigits: true)
+        ]
+        func verifyPrefixes(_ prefix: [SSOCaptchaProcessor.AttendanceCandidate]) {
+            let remaining = 4 - prefix.count
+            if let early = SSOCaptchaProcessor.stableAttendanceCandidate(prefix, remaining: remaining) {
+                func complete(_ values: [SSOCaptchaProcessor.AttendanceCandidate]) {
+                    if values.count == 4 {
+                        precondition(SSOCaptchaProcessor.selectAttendanceCandidate(values) == early,
+                            "Early exit must equal the full vote")
+                        return
+                    }
+                    for option in possibilities {
+                        let next = SSOCaptchaProcessor.AttendanceCandidate(family: "family-\(values.count)",
+                            digits: option.digits, confidence: option.confidence, unmodifiedDigits: option.unmodifiedDigits)
+                        complete(values + [next])
+                    }
+                }
+                complete(prefix)
+            }
+            if remaining > 0 {
+                for option in possibilities {
+                    let next = SSOCaptchaProcessor.AttendanceCandidate(family: prefix.isEmpty ? "ink" : "family-\(prefix.count)",
+                        digits: option.digits, confidence: option.confidence, unmodifiedDigits: option.unmodifiedDigits)
+                    verifyPrefixes(prefix + [next])
+                }
+            }
+        }
+        verifyPrefixes([])
+        precondition(SSOCaptchaProcessor.stableAttendanceCandidate(
+            [candidate("12345", "ink"), candidate("12345", "ink")], remaining: 1) == nil)
+        let literalInk = SSOCaptchaProcessor.AttendanceCandidate(family: "ink", digits: "12345", confidence: 1, unmodifiedDigits: true)
+        precondition(SSOCaptchaProcessor.selectAttendanceCandidate([literalInk]) == "12345")
+        precondition(SSOCaptchaProcessor.selectAttendanceCandidate([literalInk, candidate("67890", "original", 0.2)]) == nil)
+        let erodedInk = SSOCaptchaProcessor.AttendanceCandidate(family: "ink-core", digits: "12345", confidence: 1, unmodifiedDigits: true)
+        precondition(SSOCaptchaProcessor.selectAttendanceCandidate([erodedInk]) == nil,
+            "Eroded digit strokes require corroboration, even with confidence 1.0")
+        precondition(SSOCaptchaProcessor.selectAttendanceCandidate([erodedInk, candidate("12345", "original")]) == "12345")
+        #endif
         let select = SSOCaptchaProcessor.selectAttendanceCandidate
         precondition(select([candidate("12345", "green")]) == nil, "Length alone must not pass")
         let literalGreen = SSOCaptchaProcessor.AttendanceCandidate(
@@ -178,10 +286,16 @@ extension NSImage {
             let result = await processor.recognizeAttendance(from: image(text, noisy: true))
             precondition(result == text, "Synthetic colored CAPTCHA mismatch: \(text), got \(result ?? "nil")")
         }
+        for seed in 1..<8 {
+            let result = await processor.recognizeAttendance(from: image("52131", noisy: true, seed: seed))
+            precondition(result == "52131", "Non-green ink regression for palette \(seed)")
+        }
         let monochrome = await processor.recognizeAttendance(from: image("12345", noisy: false))
         precondition(monochrome == "12345", "Monochrome fallback must still work")
         let blank = await processor.recognizeAttendance(from: image("", noisy: false))
         precondition(blank == nil, "Blank image must not yield a code")
+        let shapes = await processor.recognizeAttendance(from: image("", noisy: true, seed: 6))
+        precondition(shapes == nil, "Colored background shapes must not produce a code")
         let invalidLength = await processor.recognize(from: image("12345", noisy: false), expectedLength: 0)
         precondition(invalidLength == nil)
         let sso = await processor.recognize(from: image("123456", noisy: false))
@@ -193,7 +307,7 @@ extension NSImage {
         cancelled.cancel()
         let cancelledResult = await cancelled.value
         precondition(cancelledResult == nil, "Cancelled OCR must not yield a usable code")
-        print("PASS: four noisy colored images, monochrome fallback, blank, SSO and cancellation")
+        print("PASS: noisy images across eight ink colors, monochrome fallback, blank, SSO and cancellation")
     }
 }
 '''
@@ -203,16 +317,21 @@ with tempfile.TemporaryDirectory(prefix="niu-captcha-test-") as directory:
     manager_swift = directory / "ManagerChecks.swift"
     manager_swift.write_text(manager_fixture)
     manager_binary = directory / "manager-checks"
-    subprocess.run([
-        "xcrun", "swiftc", "-parse-as-library", "-module-cache-path", str(directory / "ModuleCache"),
-        str(manager_swift), "-o", str(manager_binary),
-    ], check=True)
-    subprocess.run([str(manager_binary)], check=True, timeout=10)
+    if not (args.benchmark or args.manifest):
+        subprocess.run([
+            "xcrun", "swiftc", "-parse-as-library", "-module-cache-path", str(directory / "ModuleCache"),
+            str(manager_swift), "-o", str(manager_binary),
+        ], check=True)
+        subprocess.run([str(manager_binary)], check=True, timeout=10)
     swift = directory / "Checks.swift"
     swift.write_text(fixture)
     binary = directory / "checks"
     subprocess.run([
-        "xcrun", "swiftc", "-parse-as-library", "-module-cache-path", str(directory / "ModuleCache"),
-        str(root / "Core/Services/SSOCaptchaProcessor.swift"), str(swift), "-o", str(binary),
+        "xcrun", "swiftc", "-O", "-parse-as-library", "-module-cache-path", str(directory / "ModuleCache"),
+        *(["-D", "BENCHMARK"] if args.benchmark or args.manifest else []),
+        str(args.processor or root / "Core/Services/SSOCaptchaProcessor.swift"), str(swift), "-o", str(binary),
     ], check=True)
-    subprocess.run([str(binary)], check=True, timeout=120)
+    benchmark_arguments = ["--benchmark"] if args.benchmark or args.manifest else []
+    if args.manifest:
+        benchmark_arguments.append(str(args.manifest.resolve()))
+    subprocess.run([str(binary), *benchmark_arguments], check=True, timeout=180)

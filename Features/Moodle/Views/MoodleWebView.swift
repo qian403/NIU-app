@@ -619,6 +619,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         let attempt = attendanceLoginAttempts
         let generation = loadGeneration
         let navigationGeneration = attendanceNavigationGeneration
+        let captureStarted = ProcessInfo.processInfo.systemUptime
         captureAttendanceCaptcha(
             webView,
             attempt: 1,
@@ -630,6 +631,8 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                   navigationGeneration == self.attendanceNavigationGeneration,
                   webView === self.storedWebView else { return }
 
+            let captureMS = Int((ProcessInfo.processInfo.systemUptime - captureStarted) * 1000)
+            print("[MoodleAttendance] captcha captureMs=\(captureMS) attempt=\(attempt) ready=\(image != nil)")
             guard let payload else {
                 self.showAttendanceLoginPage()
                 return
@@ -646,12 +649,15 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 }
                 self.attendanceCaptchaTask?.cancel()
                 self.attendanceCaptchaTask = Task { [weak self, weak webView] in
+                    let recognitionStarted = ProcessInfo.processInfo.systemUptime
                     let code = await SSOCaptchaProcessor.shared.recognizeAttendance(from: image)
                     guard let self, let webView, self.hasStarted,
                           !Task.isCancelled,
                           generation == self.loadGeneration,
                           navigationGeneration == self.attendanceNavigationGeneration,
                           webView === self.storedWebView else { return }
+                    let recognitionMS = Int((ProcessInfo.processInfo.systemUptime - recognitionStarted) * 1000)
+                    print("[MoodleAttendance] captcha ocrMs=\(recognitionMS) recognized=\(code != nil)")
                     guard let code, code.count == 5 else {
                         self.retryAttendanceLoginPage(
                             webView,
@@ -967,8 +973,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         )
     }
 
-    private func isSSODefaultPage(_ urlString: String) -> Bool {
-        urlString.contains("ccsys.niu.edu.tw/SSO/Default.aspx")
+    private func isSSOSessionExpiredPage(_ urlString: String) -> Bool {
+        guard let url = URL(string: urlString) else { return false }
+        return SSOGUIDBridge.isSessionExpiredURL(url)
     }
 
     private func currentTargetRequest() -> URLRequest? {
@@ -1351,9 +1358,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
         switch phase {
         case .resolvingEuni:
-            if url.contains("Default.aspx") {
+            if isSSOSessionExpiredPage(url) {
                 if isAssignmentUploadTarget {
-                    attemptSilentRefreshAndRetry("resolvingEuni/default")
+                    attemptSilentRefreshAndRetry("resolvingEuni/session-expired")
                 } else {
                     // SSO not valid now; target may still be publicly reachable.
                     fallbackToTargetAfterSSOFailure()
@@ -1369,13 +1376,13 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 fallbackToTargetAfterSSOFailure()
                 return
             }
-            if isSSODefaultPage(url) {
+            if isSSOSessionExpiredPage(url) {
                 if isAssignmentUploadTarget {
-                    resolveEuniInSameWebViewForUpload(reason: "SSO redirect landed on Default.aspx")
+                    resolveEuniInSameWebViewForUpload(reason: "SSO redirect session expired")
                 } else {
                     // JumpTo token/session expired; silently refresh SSO then retry.
-                    print("[MoodleWeb] SSO redirect landed on Default.aspx, trigger silent refresh")
-                    attemptSilentRefreshAndRetry("ssoRedirect/default")
+                    print("[MoodleWeb] SSO redirect session expired, trigger silent refresh")
+                    attemptSilentRefreshAndRetry("ssoRedirect/session-expired")
                 }
                 return
             }

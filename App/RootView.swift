@@ -77,6 +77,10 @@ struct RootView: View {
             router.open(destination)
         }
         .preferredColorScheme(currentAppearanceMode.colorScheme)
+        .task(id: appState.isAuthenticated && scenePhase == .active) {
+            guard appState.isAuthenticated, scenePhase == .active else { return }
+            await sessionService.refreshIfNeeded()
+        }
         .onChange(of: scenePhase) { _, newValue in
             switch newValue {
             case .active:

@@ -64,7 +64,8 @@ enum SSOGUIDBridge {
         if host == "ccsys1.niu.edu.tw", path == "/sso" || path.hasPrefix("/sso/") {
             return true
         }
-        return path.hasSuffix("/timeoutpage.aspx")
+        return (host == "acade.niu.edu.tw" && path == "/niu/logout.aspx")
+            || path.hasSuffix("/timeoutpage.aspx")
             || path.hasSuffix("/default.aspx")
             || (path.hasSuffix("/login.aspx") && !(URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.contains { $0.name.caseInsensitiveCompare("guid") == .orderedSame && !($0.value ?? "").isEmpty } ?? false))

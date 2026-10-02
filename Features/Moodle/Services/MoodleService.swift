@@ -646,7 +646,7 @@ final class MoodleService {
         }
 
         #if DEBUG
-        print("[MoodleUpload] All fallbacks failed: \(failureReasons.joined(separator: " | "))")
+        print("[MoodleUpload] All fallbacks failed: attempts=\(failureReasons.count)")
         #endif
         throw MoodleError.apiError(
             "伺服器未接收檔案內容（upload.php/core_files_upload/repository_ajax 皆失敗）\n" +
@@ -773,7 +773,7 @@ final class MoodleService {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             if logDecodeError {
-                print("[Moodle] Decode error for \(function): \(error)")
+                print("[Moodle] Decode error for \(function): code=\((error as NSError).code) bytes=\(data.count)")
             }
             throw MoodleError.decodeFailed(error.localizedDescription)
         }
@@ -804,7 +804,7 @@ final class MoodleService {
         do {
             return try JSONDecoder().decode(MoodleAutologinResponse.self, from: data)
         } catch {
-            print("[Moodle] Decode error for tool_mobile_get_autologin_key(POST): \(error)")
+            print("[Moodle] Decode error for tool_mobile_get_autologin_key(POST): code=\((error as NSError).code) bytes=\(data.count)")
             throw MoodleError.decodeFailed(error.localizedDescription)
         }
     }
@@ -1619,6 +1619,12 @@ final class MoodleService {
         throw MoodleError.decodeFailed("core_files_upload 回傳格式無法解析")
     }
 
+    /// Diagnostics must never include one-time keys, query strings or fragments.
+    private func diagnosticLocation(for url: URL?) -> String {
+        guard let url else { return "nil" }
+        return (url.host ?? "") + url.path
+    }
+
     private func uploadAssignmentFileViaRepositoryCrawler(
         filename: String,
         fileData: Data,
@@ -1633,7 +1639,7 @@ final class MoodleService {
         var target = direct
         var usedAutologin = false
         #if DEBUG
-        print("[MoodleCrawlerUpload] load editsubmission: \(target.absoluteString)")
+        print("[MoodleCrawlerUpload] load editsubmission: \(diagnosticLocation(for: target))")
         #endif
 
         func loadHTML(_ url: URL) async throws -> (html: String, finalURL: URL?) {
@@ -1706,7 +1712,7 @@ final class MoodleService {
 
         guard let sesskey = resolvedSesskey, !sesskey.isEmpty else {
             #if DEBUG
-            print("[MoodleCrawlerUpload] failed to parse sesskey, html prefix: \(html.prefix(180))")
+            print("[MoodleCrawlerUpload] failed to parse sesskey, htmlBytes=\(html.utf8.count)")
             #endif
             throw MoodleError.apiError("無法從作業頁取得 sesskey")
         }
@@ -1823,7 +1829,7 @@ final class MoodleService {
                 if let repositories = dict["repositories"] as? [[String: Any]], let id = findUploadID(in: repositories) { return id }
                 if let error = dict["error"] as? String, !error.isEmpty {
                     #if DEBUG
-                    print("[MoodleCrawlerUpload] repository list error: \(error)")
+                    print("[MoodleCrawlerUpload] repository list error: status=\(http.statusCode) bytes=\(data.count)")
                     #endif
                 }
             } else if let arr = json as? [[String: Any]], let id = findUploadID(in: arr) {
@@ -1885,7 +1891,7 @@ final class MoodleService {
         )
 
         #if DEBUG
-        print("[MoodleCrawlerUpload] cmid=\(assignmentCMID) draft=\(effectiveDraftItemID) repo=\(repoID) repoFromList=\(repoIDFromList.map(String.init) ?? "nil") repoCandidates=\(uploadRepoCandidates.prefix(6)) ctx=\(ctxID) bytes=\(fileData.count) autologin=\(usedAutologin) silentRefresh=\(didSilentRefresh) finalURL=\(finalURL?.absoluteString ?? "nil") env=\(hiddenEnv) p=\(hiddenP) page=\(hiddenPage) htmlCtxCandidates=\(htmlContextCandidates.prefix(6)) moduleCtx=\(moduleContextId.map(String.init) ?? "nil")")
+        print("[MoodleCrawlerUpload] cmid=\(assignmentCMID) draft=\(effectiveDraftItemID) repo=\(repoID) repoFromList=\(repoIDFromList.map(String.init) ?? "nil") repoCandidates=\(uploadRepoCandidates.prefix(6)) ctx=\(ctxID) bytes=\(fileData.count) autologin=\(usedAutologin) silentRefresh=\(didSilentRefresh) finalURL=\(diagnosticLocation(for: finalURL)) htmlCtxCandidates=\(htmlContextCandidates.prefix(6)) moduleCtx=\(moduleContextId.map(String.init) ?? "nil")")
         #endif
 
         let (data, response) = try await URLSession.shared.data(for: uploadReq)

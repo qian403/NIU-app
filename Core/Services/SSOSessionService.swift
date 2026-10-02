@@ -47,6 +47,11 @@ final class SSOSessionService: ObservableObject {
     private let credentialsProvider: @MainActor () -> (username: String, password: String)?
     private let applicationIsActive: @MainActor () -> Bool
     private let tokenIsValid: @MainActor () -> Bool
+    private let onRefreshSuccess: @MainActor () -> Void
+    #if DEBUG
+    private var timingStart = ProcessInfo.processInfo.systemUptime
+    private var timingPrevious = ProcessInfo.processInfo.systemUptime
+    #endif
 
     /// Avoid repeatedly hammering SSO when session is unstable.
     private var lastRefreshAttemptAt: Date?
@@ -66,12 +71,14 @@ final class SSOSessionService: ObservableObject {
             UIApplication.shared.applicationState == .active
         },
         tokenIsValid: @escaping @MainActor () -> Bool = { SSOTokenStore.shared.isLikelyValid },
+        onRefreshSuccess: @escaping @MainActor () -> Void = { MoodleSessionManager.shared.fetchEUNILink() },
         backgroundTimeout: Duration = .seconds(15),
         refreshTimeout: Duration = .seconds(180)
     ) {
         self.credentialsProvider = credentialsProvider
         self.applicationIsActive = applicationIsActive
         self.tokenIsValid = tokenIsValid
+        self.onRefreshSuccess = onRefreshSuccess
         self.backgroundTimeout = backgroundTimeout
         self.refreshTimeout = refreshTimeout
     }
@@ -84,6 +91,7 @@ final class SSOSessionService: ObservableObject {
 
     /// Disables refresh and fails any pending refresh requests immediately.
     func disableAutoRefresh() {
+        if isRefreshing { trace("停止更新登入") }
         autoRefreshEnabled = false
         refreshTimeoutTask?.cancel()
         refreshTimeoutTask = nil
@@ -104,6 +112,12 @@ final class SSOSessionService: ObservableObject {
         drainPending(success: false)
     }
 
+    /// One foreground check; the caller owns cancellation and no timer repeats it.
+    func refreshIfNeeded() async {
+        guard autoRefreshEnabled, applicationIsActive(), !Task.isCancelled, !tokenIsValid() else { return }
+        _ = await requestRefresh()
+    }
+
     // MARK: - Called by feature ViewModels on session expiry
 
     /// Re-authenticates using stored credentials in RootView's SSOLoginWebView
@@ -122,9 +136,6 @@ final class SSOSessionService: ObservableObject {
         }
         guard applicationIsActive() else {
             return rejectRefresh("請回到 App 後再更新", reason: "inactive")
-        }
-        guard credentialsProvider() != nil else {
-            return rejectRefresh("找不到已儲存的登入資料，請到設定重新登入", reason: "missing-credentials")
         }
 
         let now = Date()
@@ -170,9 +181,15 @@ final class SSOSessionService: ObservableObject {
         guard autoRefreshEnabled else { return false }
         guard applicationIsActive() else { return false }
 
+        #if DEBUG
+        timingStart = ProcessInfo.processInfo.systemUptime
+        timingPrevious = timingStart
+        #endif
+        trace("讀取登入資料")
         guard let creds = credentialsProvider() else {
-            return false
+            return rejectRefresh("找不到已儲存的登入資料，請到設定重新登入", reason: "missing-credentials")
         }
+        trace("登入資料已備妥")
 
         if isRefreshing {
             // Another refresh is already in progress – join the queue
@@ -182,7 +199,7 @@ final class SSOSessionService: ObservableObject {
         lastRefreshAttemptAt = Date()
         lastFailureMessage = nil
         refreshID = UUID()
-        print("[SSORefresh] 開始更新登入")
+        trace("開始更新登入")
         refreshAccount = creds.username
         refreshPassword = creds.password
         isRefreshing = true
@@ -251,6 +268,7 @@ final class SSOSessionService: ObservableObject {
         guard isRefreshing, requestID == refreshID else { return }
         backgroundTimeoutTask?.cancel()
         backgroundTimeoutTask = nil
+        if !showRefreshWebView { trace("需要互動驗證") }
         showRefreshWebView = true
     }
 
@@ -264,6 +282,7 @@ final class SSOSessionService: ObservableObject {
 
     func markInteractionReady(requestID: UUID) {
         guard isRefreshing, showRefreshWebView, requestID == refreshID else { return }
+        trace("互動頁已備妥")
         isRefreshPageReadyForInteraction = true
     }
 
@@ -283,7 +302,6 @@ final class SSOSessionService: ObservableObject {
         isRefreshPageReadyForInteraction = false
         isRefreshing = false
         refreshID = UUID()
-        print("[SSORefresh] 完成 success=\(success)")
         refreshPassword = ""
         refreshAccount = ""
 
@@ -292,15 +310,27 @@ final class SSOSessionService: ObservableObject {
             lastRefreshSuccessAt = Date()
             lastRefreshFailureAt = nil
             consecutiveFailures = 0
+            // fetchEUNILink owns its ready/working guards and bounded extraction.
+            onRefreshSuccess()
+            trace("EUNI 入口檢查完成")
         } else if recordFailure {
             lastRefreshFailureAt = Date()
             consecutiveFailures += 1
         }
 
+        trace("完成 success=\(success)")
         drainPending(success: success)
     }
 
     // MARK: - Private helpers
+
+    private func trace(_ event: String) {
+        #if DEBUG
+        let now = ProcessInfo.processInfo.systemUptime
+        print("[SSORefresh] \(event) elapsed_ms=\(Int((now - timingStart) * 1000)) stage_ms=\(Int((now - timingPrevious) * 1000))")
+        timingPrevious = now
+        #endif
+    }
 
     private func drainPending(success: Bool) {
         let continuations = pendingContinuations
@@ -315,7 +345,7 @@ final class SSOSessionService: ObservableObject {
         refreshTimeoutTask = Task { [weak self] in
             do { try await Task.sleep(until: deadline, clock: .continuous) } catch { return }
             guard let self, self.isRefreshing, self.refreshID == requestID else { return }
-            print("[SSORefresh] 等待登入逾時")
+            trace("等待登入逾時")
             self.lastFailureMessage = "校務登入逾時，請重新更新並完成登入驗證"
             self.completeRefresh(success: false)
         }
@@ -334,7 +364,7 @@ final class SSOSessionService: ObservableObject {
 
     private func rejectRefresh(_ message: String, reason: String) -> Bool {
         lastFailureMessage = message
-        print("[SSORefresh] 未開始 reason=\(reason)")
+        trace("未開始 reason=\(reason)")
         return false
     }
 

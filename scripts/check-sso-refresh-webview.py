@@ -46,6 +46,11 @@ config.websiteDataStore = .nonPersistent()
 config.setURLSchemeHandler(FixturePortal(), forURLScheme: "fixture")
 """)
 web = web.replace("let webView = WKWebView(frame:", "let webView = FixtureBrowser(frame:")
+# The isolated browser uses an in-memory scheme. Adapt only its scheme check;
+# retain the production hostname/path guards and leave the app source untouched.
+protocol_guard = "location.protocol !== 'https:'"
+assert web.count(protocol_guard) == 1
+web = web.replace(protocol_guard, "location.protocol !== 'fixture:'")
 source = r'''
 import SwiftUI
 import WebKit
@@ -86,6 +91,11 @@ import Combine
     static let shared = SSOTokenStore()
     var isLikelyValid = false
     func save(token: String, exp: String?, account: String) { Fixture.tokenWrites += 1 }
+}
+@MainActor final class MoodleSessionManager {
+    static let shared = MoodleSessionManager()
+    private(set) var refreshCount = 0
+    func fetchEUNILink() { refreshCount += 1 }
 }
 @MainActor final class SSOCaptchaProcessor {
     static let shared = SSOCaptchaProcessor()
@@ -219,6 +229,8 @@ struct CheckFailure: Error { let reason: String }
             let silentResult = await silent.value
             try require(silentResult && Fixture.tokenWrites == 1 && Fixture.profileWrites == 1,
                         "Background login did not finish")
+            try require(MoodleSessionManager.shared.refreshCount == 1,
+                        "Successful SSO refresh must request the EUNI entry once")
             try await reset()
 
             Fixture.phase = "challenge fallback"
@@ -262,7 +274,7 @@ struct CheckFailure: Error { let reason: String }
             let handedOffPassword = try await queuedBrowser.evaluateJavaScript("document.getElementById('password').value") as? String
             let queuedSubmits = try await queuedBrowser.evaluateJavaScript("window.fixtureSubmits") as? Int
             try require(handedOffPassword == "user-edit-after-handoff" && queuedSubmits == 1,
-                        "An old automatic script edited or submitted the form after handoff")
+                        "Automatic handoff changed manual form: preserved=\(handedOffPassword == "user-edit-after-handoff"), submits=\(String(describing: queuedSubmits))")
             _ = try await queuedBrowser.evaluateJavaScript("finishFixtureLogin()")
             let queuedResult = await queued.value
             try require(queuedResult, "Queued-script handoff prevented manual recovery")

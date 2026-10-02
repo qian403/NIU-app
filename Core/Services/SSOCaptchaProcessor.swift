@@ -63,16 +63,33 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
     public func recognizeAttendance(from image: CaptchaImage) async -> String? {
         guard !Task.isCancelled else { return nil }
         var candidates: [AttendanceCandidate] = []
-        for variant in buildAttendanceVariants(from: image) {
+        let variants = buildAttendanceVariants(from: image)
+        for (index, variant) in variants.enumerated() {
             guard !Task.isCancelled else { return nil }
-            guard let candidate = recognizeVariant(variant, expectedLength: 5, attendance: true),
-                  candidate.digits.count == 5 else { continue }
+            var recognized = recognizeVariant(variant, expectedLength: 5, attendance: true)
+            var family = variant.name
+            // Keep one vote for the foreground family, even when trying another
+            // edge treatment. Thin or touching glyphs sometimes need solid ink.
+            if variant.name == "ink", recognized?.digits.count != 5 {
+                for treatment in ["ink-core", "green"] {
+                    guard !Task.isCancelled else { return nil }
+                    let foreground = treatment == "ink-core"
+                        ? attendanceInkImage(image, preserveEdges: false) : attendanceImage(image, greenOnly: true)
+                    guard let foreground, let padded = paddedAndScaled(foreground) else { continue }
+                    let alternative = recognizeVariant(ImageVariant(name: treatment, image: padded), expectedLength: 5, attendance: true)
+                    if alternative?.digits.count == 5 { recognized = alternative; family = treatment; break }
+                }
+            }
+            guard let candidate = recognized, candidate.digits.count == 5 else { continue }
             candidates.append(AttendanceCandidate(
-                family: variant.name,
+                family: family,
                 digits: candidate.digits,
                 confidence: candidate.confidence,
                 unmodifiedDigits: candidate.raw.filter { !$0.isWhitespace } == candidate.digits
             ))
+            if let stable = Self.stableAttendanceCandidate(candidates, remaining: variants.count - index - 1) {
+                return Task.isCancelled ? nil : stable
+            }
         }
         guard !Task.isCancelled else { return nil }
         return Self.selectAttendanceCandidate(candidates)
@@ -85,6 +102,19 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
         var unmodifiedDigits = false
     }
 
+    static func stableAttendanceCandidate(_ candidates: [AttendanceCandidate], remaining: Int) -> String? {
+        guard remaining >= 0 else { return nil }
+        let valid = candidates.filter {
+            $0.confidence >= 0.35 && $0.digits.count == 5 && $0.digits.allSatisfy { $0 >= "0" && $0 <= "9" }
+        }
+        let ranked = Dictionary(grouping: valid, by: \.digits).map { digits, votes in
+            (digits: digits, count: Set(votes.map(\.family)).count)
+        }.sorted { $0.count > $1.count }
+        guard let winner = ranked.first, winner.count >= 2,
+              winner.count > (ranked.dropFirst().first?.count ?? 0) + remaining else { return nil }
+        return winner.digits
+    }
+
     static func selectAttendanceCandidate(_ candidates: [AttendanceCandidate]) -> String? {
         // Agreement must come from different treatments, not copies of one image.
         let complete = candidates.filter {
@@ -95,12 +125,14 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
         let ranked = grouped.map { digits, votes in
             (digits: digits, count: Set(votes.map(\.family)).count)
         }.sorted { $0.count > $1.count }
-        // A clean, literal reading of the school's dark green ink can stand
+        // A clean, literal reading of the isolated text ink can stand
         // alone when every other treatment is unreadable, but never override
         // a conflicting complete reading.
+        // Solid-ink fallback erodes edges and cannot stand alone, even when
+        // Vision reports confidence 1.0; require another treatment to agree.
         if Set(complete.map(\.digits)).count == 1,
            let foreground = valid.first(where: {
-               $0.family == "green" && $0.unmodifiedDigits && $0.confidence >= 0.85
+               ["green", "ink"].contains($0.family) && $0.unmodifiedDigits && $0.confidence >= 0.85
            }) {
             return foreground.digits
         }
@@ -111,8 +143,11 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
 
     private func buildAttendanceVariants(from image: CaptchaImage) -> [ImageVariant] {
         var variants: [ImageVariant] = []
-        if let foreground = attendanceImage(image, greenOnly: true),
+        if let foreground = attendanceInkImage(image),
            let padded = paddedAndScaled(foreground) {
+            variants.append(ImageVariant(name: "ink", image: padded))
+        } else if let foreground = attendanceImage(image, greenOnly: true),
+                  let padded = paddedAndScaled(foreground) {
             variants.append(ImageVariant(name: "green", image: padded))
         }
         if let padded = paddedAndScaled(image) {
@@ -128,6 +163,129 @@ public nonisolated final class SSOCaptchaProcessor: Sendable {
             variants.append(ImageVariant(name: "cleaned", image: padded))
         }
         return variants
+    }
+
+    /// Find antialiased text ink from the image palette. The school randomizes
+    /// the digit color; a fixed green threshold also captures background shapes.
+    private func attendanceInkImage(_ image: CaptchaImage, preserveEdges: Bool = true) -> CaptchaImage? {
+        guard let cg = image.cgImage, cg.width <= 512, cg.height <= 256 else { return nil }
+        let width = cg.width, height = cg.height
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn, !Task.isCancelled else { return nil }
+        var histogram: [Int: Int] = [:]
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            let color = Int(pixels[offset]) << 16 | Int(pixels[offset + 1]) << 8 | Int(pixels[offset + 2])
+            histogram[color, default: 0] += 1
+        }
+        func channels(_ color: Int) -> [Double] {
+            [Double((color >> 16) & 255), Double((color >> 8) & 255), Double(color & 255)]
+        }
+        let palette = histogram.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+        guard let background = palette.first else { return nil }
+        let bg = channels(background.key)
+        var ink: [Double]?
+        var bestScore = 0
+        for entry in palette.prefix(16) where entry.value >= max(30, width * height / 48) {
+            let foreground = channels(entry.key)
+            let vector = zip(foreground, bg).map(-)
+            let norm = vector.reduce(0) { $0 + $1 * $1 }
+            guard norm >= 1600 else { continue }
+            var score = 0, shades = 0
+            for shade in palette where shade.value >= 3 {
+                let color = channels(shade.key)
+                let alpha = (0..<3).reduce(0.0) { $0 + (color[$1] - bg[$1]) * vector[$1] } / norm
+                if alpha > 0.15 && alpha < 0.85,
+                   (0..<3).allSatisfy({ abs(color[$0] - bg[$0] - alpha * vector[$0]) < 3 }) {
+                    score += shade.value
+                    shades += 1
+                }
+            }
+            if shades >= 3, score > bestScore {
+                bestScore = score
+                ink = foreground
+            }
+        }
+        guard let ink, !Task.isCancelled else { return nil }
+        let vector = zip(ink, bg).map(-)
+        let norm = vector.reduce(0) { $0 + $1 * $1 }
+        var core = [Bool](repeating: false, count: width * height)
+        var mask = core
+        for index in core.indices {
+            core[index] = (0..<3).allSatisfy { abs(Double(pixels[index * 4 + $0]) - ink[$0]) <= 4 }
+        }
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = y * width + x
+                if core[index] { mask[index] = true; continue }
+                guard preserveEdges else { continue }
+                // Preserve edge pixels only next to solid ink, so similarly colored
+                // shapes and thin interference lines cannot fill the whole mask.
+                let adjacent = (max(0, y - 1)...min(height - 1, y + 1)).contains { row in
+                    (max(0, x - 1)...min(width - 1, x + 1)).contains { core[row * width + $0] }
+                }
+                guard adjacent else { continue }
+                let color = (0..<3).map { Double(pixels[index * 4 + $0]) }
+                let alpha = (0..<3).reduce(0.0) { $0 + (color[$1] - bg[$1]) * vector[$1] } / norm
+                mask[index] = alpha >= 0.5 && alpha <= 1.1
+                    && (0..<3).allSatisfy { abs(color[$0] - bg[$0] - alpha * vector[$0]) < 3 }
+            }
+        }
+        var visited = [Bool](repeating: false, count: mask.count)
+        var components: [[Int]] = []
+        for start in mask.indices where mask[start] && !visited[start] {
+            var component = [start], cursor = 0
+            visited[start] = true
+            while cursor < component.count {
+                let index = component[cursor], x = index % width, y = index / width
+                cursor += 1
+                for row in max(0, y - 1)...min(height - 1, y + 1) {
+                    for column in max(0, x - 1)...min(width - 1, x + 1) {
+                        let neighbor = row * width + column
+                        if mask[neighbor] && !visited[neighbor] {
+                            visited[neighbor] = true
+                            component.append(neighbor)
+                        }
+                    }
+                }
+            }
+            if component.count >= 8 { components.append(component) }
+        }
+        guard !components.isEmpty, !Task.isCancelled else { return nil }
+        // Align separate groups without cutting touching digits through a stroke.
+        // The solid-ink fallback preserves the original layout for comparison.
+        let align = preserveEdges && components.count <= 5
+        components.sort { ($0.map { $0 % width }.min() ?? 0) < ($1.map { $0 % width }.min() ?? 0) }
+        var output = [UInt8](repeating: 255, count: pixels.count)
+        var left = 8
+        for component in components {
+            let minX = component.map { $0 % width }.min() ?? 0
+            let minY = component.map { $0 / width }.min() ?? 0
+            let maxX = component.map { $0 % width }.max() ?? 0
+            for index in component {
+                let x = align ? left + index % width - minX : index % width
+                let y = align ? 8 + index / width - minY : index / width
+                guard x < width, y < height else { return nil }
+                let offset = (y * width + x) * 4
+                output[offset] = 0; output[offset + 1] = 0; output[offset + 2] = 0
+            }
+            left += maxX - minX + 9
+        }
+        return output.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+                let result = context.makeImage() else { return nil }
+            return makeImage(result)
+        }
     }
 
     private func attendanceImage(_ image: CaptchaImage, greenOnly: Bool) -> CaptchaImage? {
