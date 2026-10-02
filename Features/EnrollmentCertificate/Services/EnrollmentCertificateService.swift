@@ -2,10 +2,23 @@ import Foundation
 import WebKit
 import PDFKit
 
+nonisolated enum EnrollmentLoadStage: Int, CaseIterable {
+    case connecting, signingIn, opening, reading
+
+    var title: String {
+        switch self {
+        case .connecting: return "連接教務系統"
+        case .signingIn: return "確認登入狀態"
+        case .opening: return "開啟註冊查詢"
+        case .reading: return "讀取註冊結果"
+        }
+    }
+}
+
 @MainActor
 final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
     let webView: WKWebView
-    var onProgress: ((String) -> Void)?
+    var onProgress: ((EnrollmentLoadStage) -> Void)?
     private var continuation: CheckedContinuation<EnrollmentSnapshot, Error>?
     private var pollTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
@@ -15,6 +28,10 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
     private var bridgeTask: Task<Void, Never>?
     private var account = ""
     private var navigationGeneration = UUID()
+    #if DEBUG
+    private let timingStart = ProcessInfo.processInfo.systemUptime
+    private var timingPrevious = ProcessInfo.processInfo.systemUptime
+    #endif
     private let mainFrameURL: URL?
     private let allowsNavigation: (URL) -> Bool
 
@@ -31,13 +48,14 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         }
         super.init()
         self.webView.navigationDelegate = self
+        trace("WebView 已備妥")
     }
 
     func load(account: String) async throws -> EnrollmentSnapshot {
         try Task.checkCancellation()
         guard let mainFrame = mainFrameURL else { throw EnrollmentError.invalidResponse }
         self.account = account
-        report("正在讀取校務資料…")
+        report(.connecting)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 self.continuation = continuation
@@ -62,7 +80,7 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
                                 guard self.mainFrameReady, self.navigationGeneration == navigationGeneration else { continue }
                                 if menu as? String == "opened-registration" {
                                     self.didOpenRegistration = true
-                                    self.report("正在讀取註冊結果…")
+                                    self.report(.reading)
                                 }
                             }
                             let value = try await self.webView.evaluateJavaScript(EnrollmentPageScript.snapshot)
@@ -110,16 +128,24 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         onProgress = nil
         if waiting != nil {
             switch result {
-            case .success: print("[Enrollment] 註冊查詢完成")
-            case .failure(let error): print("[Enrollment] 註冊查詢結束 code=\((error as NSError).code)")
+            case .success: trace("註冊查詢完成")
+            case .failure(let error): trace("註冊查詢結束 code=\((error as NSError).code)")
             }
         }
         waiting?.resume(with: result)
     }
 
-    private func report(_ message: String) {
-        print("[Enrollment] \(message)")
-        onProgress?(message)
+    private func trace(_ event: String) {
+        #if DEBUG
+        let now = ProcessInfo.processInfo.systemUptime
+        print("[Enrollment] \(event) elapsed_ms=\(Int((now - timingStart) * 1000)) stage_ms=\(Int((now - timingPrevious) * 1000))")
+        timingPrevious = now
+        #endif
+    }
+
+    private func report(_ stage: EnrollmentLoadStage) {
+        trace("\(stage.title)")
+        onProgress?(stage)
     }
 
     private func connectUsingExistingSSO() {
@@ -132,27 +158,36 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         mainFrameReady = false
         didOpenRegistration = false
         webView.stopLoading()
-        report("正在沿用既有登入連接教務系統…")
+        report(.signingIn)
         bridgeTask = Task { [weak self] in
             guard let self else { return }
             do {
+                self.trace("請求 GUID")
                 let guid = try await SSOGUIDBridge.requestGUID(account: self.account)
                 guard !Task.isCancelled, self.continuation != nil else { return }
                 guard let url = SSOGUIDBridge.acadeLoginURL(guid: guid) else { throw EnrollmentError.invalidResponse }
+                self.trace("GUID 已備妥，載入 bridge")
                 self.bridgeTask = nil
                 self.webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
             } catch {
                 guard !Task.isCancelled, self.continuation != nil else { return }
                 let expired = (error as? URLError)?.code == .userAuthenticationRequired
+                self.trace("GUID 請求結束 authRequired=\(expired) code=\((error as NSError).code)")
                 self.finish(.failure(expired ? EnrollmentError.sessionExpired : error))
             }
         }
     }
 
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // A main document response has arrived; its login state is still being resolved.
+        guard continuation != nil, !mainFrameReady, !didOpenRegistration else { return }
+        report(.signingIn)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard continuation != nil, bridgeTask == nil, let url = webView.url else { return }
         // Only log a path: Login.aspx query strings contain the one-use GUID.
-        print("[Enrollment] 已載入 path=\(url.path)")
+        trace("已載入 path=\(url.path)")
         if SSOGUIDBridge.isSessionExpiredURL(url) {
             connectUsingExistingSSO()
         } else if EnrollmentEndpoint.isLegacyPortalLanding(url) {
@@ -160,7 +195,7 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         } else if url.host?.lowercased() == "acade.niu.edu.tw",
                   url.path.lowercased() == "/niu/mainframe.aspx", !mainFrameReady {
             mainFrameReady = true
-            report("正在開啟註冊查詢…")
+            report(.opening)
         }
     }
 
@@ -168,6 +203,7 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if action.targetFrame?.isMainFrame != false, SSOGUIDBridge.isSessionExpiredURL(url) {
+            trace("登入失效 path=\(url.path)")
             decisionHandler(.cancel)
             connectUsingExistingSSO()
         } else if let frame = action.targetFrame, SSOGUIDBridge.isSessionExpiredURL(url) {

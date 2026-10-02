@@ -12,7 +12,7 @@ final class EnrollmentCertificateViewModel: ObservableObject {
     @Published private(set) var updatedAt: Date?
     @Published private(set) var certificateLoginURL: URL?
     @Published private(set) var registrationWebView: WKWebView?
-    @Published private(set) var loadingMessage = "正在查詢註冊資料…"
+    @Published private(set) var loadStage = EnrollmentLoadStage.connecting
 
     private var task: Task<Void, Never>?
     private var registrationService: EnrollmentRegistrationService?
@@ -57,6 +57,10 @@ final class EnrollmentCertificateViewModel: ObservableObject {
         let operation = generation
         task = Task { [weak self] in
             guard let self else { return }
+            #if DEBUG
+            let startedAt = ProcessInfo.processInfo.systemUptime
+            defer { print("[Enrollment] 整體查詢結束 elapsed_ms=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))") }
+            #endif
             do {
                 let result = try await self.fetchRegistrationWithRetry(operation: operation)
                 guard self.isCurrent(operation) else { return }
@@ -85,9 +89,9 @@ final class EnrollmentCertificateViewModel: ObservableObject {
         let service = makeRegistrationService()
         registrationService = service
         registrationWebView = service.webView
-        service.onProgress = { [weak self, weak service] message in
+        service.onProgress = { [weak self, weak service] stage in
             guard let self, let service, self.registrationService === service else { return }
-            self.loadingMessage = message
+            self.loadStage = stage
         }
         defer {
             if registrationService === service {
@@ -146,7 +150,7 @@ final class EnrollmentCertificateViewModel: ObservableObject {
         registrationService?.cancel()
         registrationService = nil
         registrationWebView = nil
-        loadingMessage = "正在查詢註冊資料…"
+        loadStage = .connecting
         snapshot = nil
         pdfData = nil
         updatedAt = nil
