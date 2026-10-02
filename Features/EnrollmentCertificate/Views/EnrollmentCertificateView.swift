@@ -11,6 +11,14 @@ struct EnrollmentCertificateView: View {
     @State private var showSchoolLogin = false
     @State private var schoolLoginError: String?
     @State private var showRegistrationPage = false
+    @State private var isWaitingLong = false
+
+    private static let queryTimeFormat = Date.FormatStyle(
+        date: .long, time: .shortened,
+        locale: Locale(identifier: "zh_Hant_TW"),
+        calendar: Calendar(identifier: .gregorian),
+        timeZone: TimeZone(identifier: "Asia/Taipei") ?? .gmt
+    )
 
     init(model: EnrollmentCertificateViewModel? = nil) {
         _model = StateObject(wrappedValue: model ?? EnrollmentCertificateViewModel())
@@ -26,15 +34,17 @@ struct EnrollmentCertificateView: View {
                     .allowsHitTesting(isShowingRegistrationPage)
                     .accessibilityHidden(!isShowingRegistrationPage)
             }
-            registrationList
+            registrationContent
                 .opacity(isShowingRegistrationPage ? 0 : 1)
                 .allowsHitTesting(!isShowingRegistrationPage)
                 .accessibilityHidden(isShowingRegistrationPage)
         }
         .safeAreaInset(edge: .bottom) {
-            if showRegistrationPage, model.registrationWebView != nil {
+            if isShowingRegistrationPage {
                 Text("若校方要求登入或驗證，請在此完成。取得註冊資料後會自動返回。")
-                    .font(.footnote).padding().frame(maxWidth: .infinity).background(.regularMaterial)
+                    .font(.footnote).padding().frame(maxWidth: .infinity).background(.bar)
+            } else if let snapshot = model.snapshot {
+                certificateActionBar(canPrint: snapshot.canPrint)
             }
         }
         .toolbar {
@@ -46,9 +56,13 @@ struct EnrollmentCertificateView: View {
         }
         .task(id: model.registrationWebView.map(ObjectIdentifier.init)) {
             showRegistrationPage = false
+            isWaitingLong = false
             guard model.registrationWebView != nil else { return }
-            // Keep the same mounted WebView when revealing a slow or interactive school page.
+            // Keep the same mounted WebView for both manual and automatic reveals.
             do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            guard model.isLoading, model.registrationWebView != nil else { return }
+            isWaitingLong = true
+            do { try await Task.sleep(for: .seconds(12)) } catch { return }
             if model.isLoading, model.registrationWebView != nil { showRegistrationPage = true }
         }
         .navigationTitle("在學證明")
@@ -66,84 +80,146 @@ struct EnrollmentCertificateView: View {
         .sheet(isPresented: $showSchoolLogin) { schoolLoginSheet }
     }
 
+    private var registrationContent: some View {
+        ZStack {
+            // Keep the refresh host mounted: refresh() clears the snapshot before loading.
+            registrationList
+                .opacity(model.snapshot == nil ? 0 : 1)
+                .allowsHitTesting(model.snapshot != nil)
+                .accessibilityHidden(model.snapshot == nil)
+            if model.snapshot == nil {
+                if let message = model.errorMessage, !model.isLoading {
+                    failureView(message: message)
+                } else {
+                    EnrollmentConnectingView(stage: model.loadStage, isWaitingLong: isWaitingLong) {
+                        showRegistrationPage = true
+                    }
+                }
+            }
+        }
+    }
+
     private var registrationList: some View {
         List {
-            Section {
-                Label("在學證明", systemImage: "doc.text")
-                    .font(.title2.bold())
-                Text("查詢當學期註冊狀態，取得校方核發的在學證明 PDF。")
-                    .foregroundStyle(.secondary)
-            }
-            if model.isLoading {
-                Section {
-                    HStack(spacing: Theme.Spacing.medium) {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .controlSize(.regular)
-                            .accessibilityHidden(true)
-                        Text(model.loadingMessage)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .accessibilityElement(children: .combine)
-                }
-            }
-            if let snapshot = model.snapshot {
-                if snapshot.records.isEmpty {
-                    Section { ContentUnavailableView("查無註冊資料", systemImage: "doc.text.magnifyingglass", description: Text("校方尚未回傳你的註冊紀錄。")) }
-                }
-                ForEach(snapshot.records) { record in
-                    Section(record.semesterTitle) {
-                        field("姓名", record.name)
-                        field("學號", record.studentID)
-                        field("系所", record.department)
-                        field("年級", record.grade)
-                        field("在學狀態", record.studentStatus)
-                        field("註冊狀態", record.registrationStatus)
-                        field("註冊日期", record.registrationDate)
-                    }
-                }
-                Section {
-                    Button {
-                        model.showCertificate()
-                    } label: {
-                        HStack {
-                            Label("顯示在學證明", systemImage: "doc.richtext")
-                            Spacer()
-                            if model.isLoadingPDF { ProgressView() }
-                        }
-                        .frame(minHeight: 44)
-                    }
-                    .disabled(!snapshot.canPrint || model.isLoadingPDF)
-                } footer: {
-                    Text(snapshot.canPrint
-                         ? "開啟校方原始 PDF 後，可列印、分享或儲存至「檔案」。證明效期與內容以校方文件為準。"
-                         : "校方目前未提供可列印的在學證明。請確認註冊狀態或稍後重試。")
-                }
-            }
             if let message = model.errorMessage {
                 Section {
                     Label(message, systemImage: "exclamationmark.triangle")
-                    if model.certificateLoginURL != nil {
-                        Button("開啟校方登入頁") { schoolLoginError = nil; showSchoolLogin = true }.frame(minHeight: 44)
+                        .fixedSize(horizontal: false, vertical: true)
+                    recoveryActions
+                }
+            }
+            if let snapshot = model.snapshot {
+                let records = snapshot.records.sorted {
+                    $0.semester.compare($1.semester, options: .numeric) == .orderedDescending
+                }
+                if let current = records.first {
+                    Section {
+                        EnrollmentCurrentSemesterView(record: current)
+                            .padding(.vertical, Theme.Spacing.xsmall)
                     }
-                    Button("重新查詢") { model.refresh() }.frame(minHeight: 44)
+                    if records.count > 1 {
+                        Section("其他學期") {
+                            ForEach(Array(records.dropFirst())) { record in
+                                EnrollmentSemesterRow(record: record)
+                            }
+                        }
+                    }
+                } else {
+                    Section {
+                        ContentUnavailableView("查無註冊資料", systemImage: "doc.text.magnifyingglass",
+                                               description: Text("校方尚未回傳你的註冊紀錄，可下拉重新查詢。"))
+                    }
                 }
             }
-            Section {
-                Text("繳費狀態並非即時更新，請以校務系統的註冊結果為準。")
-                if let updated = model.updatedAt {
-                    Text("查詢時間：\(updated.formatted(date: .abbreviated, time: .shortened))")
+            Section {} footer: {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xxsmall) {
+                    Text("繳費狀態並非即時更新，請以校務系統的註冊結果為準。")
+                    if let updated = model.updatedAt {
+                        Text("查詢時間：\(Self.queryTimeFormat.format(updated))")
+                    }
+                    Text("資料來源：國立宜蘭大學教務行政資訊系統")
                 }
-                Text("資料來源：國立宜蘭大學教務行政資訊系統")
+                .font(.footnote)
+                .foregroundStyle(Theme.Colors.secondaryLabel)
+                .textCase(nil)
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(Theme.Colors.groupedBackground)
         .refreshable { await model.refreshAndWait() }
+    }
+
+    private func failureView(message: String) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundStyle(Theme.Colors.warning)
+                    .accessibilityHidden(true)
+                Text("無法查詢註冊資料")
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Text(message)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+                recoveryActions
+            }
+            .padding(Theme.Spacing.large)
+            .frame(maxWidth: 520, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Theme.Colors.groupedBackground)
+    }
+
+    private var recoveryActions: some View {
+        VStack(spacing: Theme.Spacing.xsmall) {
+            Button(action: model.refresh) {
+                Label("重新查詢", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            if model.certificateLoginURL != nil {
+                Button {
+                    schoolLoginError = nil
+                    showSchoolLogin = true
+                } label: {
+                    Label("開啟校方登入頁", systemImage: "safari")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .tint(Theme.Colors.accent)
+    }
+
+    private func certificateActionBar(canPrint: Bool) -> some View {
+        VStack(spacing: Theme.Spacing.xsmall) {
+            Text(canPrint
+                 ? "校方原始 PDF 可列印、分享或儲存；效期與內容以文件為準。"
+                 : "校方目前未提供可列印的在學證明。請確認註冊狀態或稍後重試。")
+                .font(.footnote)
+                .foregroundStyle(Theme.Colors.secondaryLabel)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: model.showCertificate) {
+                HStack(spacing: Theme.Spacing.small) {
+                    if model.isLoadingPDF {
+                        ProgressView().tint(Theme.Colors.secondaryLabel)
+                            .accessibilityHidden(true)
+                    }
+                    Label("顯示在學證明", systemImage: "doc.richtext")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.Colors.accent)
+            .disabled(!canPrint || model.isLoadingPDF || model.isLoading)
+            .accessibilityValue(model.isLoadingPDF ? "正在取得 PDF" : "")
+        }
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
+        .background(.bar)
     }
 
     @ViewBuilder private var schoolLoginSheet: some View {
@@ -164,8 +240,192 @@ struct EnrollmentCertificateView: View {
         }
     }
 
-    private func field(_ title: String, _ value: String) -> some View {
-        LabeledContent(title) { Text(value.isEmpty ? "—" : value).multilineTextAlignment(.trailing) }
+}
+
+private struct EnrollmentConnectingView: View {
+    let stage: EnrollmentLoadStage
+    let isWaitingLong: Bool
+    let showSchoolPage: () -> Void
+    @ScaledMetric(relativeTo: .body) private var stageIconSize: CGFloat = 24
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.large) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.largeTitle)
+                        .foregroundStyle(Theme.Colors.accent)
+                        .accessibilityHidden(true)
+                    Text("正在查詢註冊資料")
+                        .font(.title2.bold())
+                        .accessibilityAddTraits(.isHeader)
+                    Text("使用你在 App 的登入，向教務系統查詢註冊狀態。")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.Colors.secondaryLabel)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                    ForEach(EnrollmentLoadStage.allCases, id: \.self) { item in
+                        stageRow(item)
+                    }
+                }
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+                .padding(Theme.Spacing.medium)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+                if isWaitingLong {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                        Text("比平常久一些").font(.headline)
+                        Text("校方可能要求登入或驗證，請查看校方頁面並完成操作。")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.Colors.secondaryLabel)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(action: showSchoolPage) {
+                            Label("查看校方頁面", systemImage: "safari")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+            .padding(Theme.Spacing.large)
+            .frame(maxWidth: 520, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Theme.Colors.groupedBackground)
+        .tint(Theme.Colors.accent)
+    }
+
+    private func stageRow(_ item: EnrollmentLoadStage) -> some View {
+        let done = item.rawValue < stage.rawValue
+        let active = item == stage
+        return HStack(alignment: .center, spacing: Theme.Spacing.small) {
+            ZStack(alignment: .center) {
+                if active {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .scaleEffect(stageIconSize / 24)
+                        .frame(width: stageIconSize, height: stageIconSize)
+                } else {
+                    Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: stageIconSize * 0.75))
+                        .foregroundStyle(done ? Theme.Colors.accent : Theme.Colors.secondaryLabel)
+                        .frame(width: stageIconSize, height: stageIconSize)
+                }
+            }
+            .frame(width: stageIconSize, height: stageIconSize)
+            Text(item.title)
+                .font(.body)
+                .foregroundStyle(active ? Theme.Colors.label : Theme.Colors.secondaryLabel)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(minHeight: 32)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.title)，\(done ? "已完成" : active ? "進行中" : "等待中")")
+    }
+}
+
+private struct EnrollmentCurrentSemesterView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let record: EnrollmentRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+            Text(record.semesterTitle)
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) { statusBadges }
+            } else {
+                HStack(alignment: .top, spacing: Theme.Spacing.xsmall) { statusBadges }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
+                EnrollmentDetail(title: "姓名", value: record.name)
+                EnrollmentDetail(title: "學號", value: record.studentID)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Theme.Spacing.medium) { departmentAndGrade }
+                        .fixedSize(horizontal: true, vertical: false)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) { departmentAndGrade }
+                }
+                EnrollmentDetail(title: "註冊日期", value: record.registrationDate)
+            }
+        }
+    }
+
+    @ViewBuilder private var statusBadges: some View {
+        statusBadge("在學狀態", value: record.studentStatus, icon: "person.crop.rectangle")
+        statusBadge("註冊狀態", value: record.registrationStatus, icon: "checklist")
+    }
+
+    private func statusBadge(_ title: String, value: String, icon: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.xsmall) {
+            Image(systemName: icon)
+                .foregroundStyle(Theme.Colors.accent)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xxsmall) {
+                Text(title).font(.caption).foregroundStyle(Theme.Colors.secondaryLabel)
+                Text(value.isEmpty ? "—" : value).font(.headline)
+            }
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.Spacing.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.tertiaryFill,
+                    in: RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var departmentAndGrade: some View {
+        EnrollmentDetail(title: "系所", value: record.department)
+        EnrollmentDetail(title: "年級", value: record.grade)
+    }
+}
+
+private struct EnrollmentSemesterRow: View {
+    let record: EnrollmentRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
+            Text(record.semesterTitle).font(.headline)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Theme.Spacing.medium) { statuses }
+                    .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) { statuses }
+            }
+            EnrollmentDetail(title: "註冊日期", value: record.registrationDate)
+                .font(.footnote)
+        }
+        .padding(.vertical, Theme.Spacing.xsmall)
+    }
+
+    @ViewBuilder private var statuses: some View {
+        EnrollmentDetail(title: "註冊狀態", value: record.registrationStatus)
+        EnrollmentDetail(title: "在學狀態", value: record.studentStatus)
+    }
+}
+
+private struct EnrollmentDetail: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let title: String
+    let value: String
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xxsmall))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Spacing.xsmall))
+        layout {
+            Text(title).foregroundStyle(Theme.Colors.secondaryLabel)
+            Text(value.isEmpty ? "—" : value)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
     }
 }
 

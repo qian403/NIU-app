@@ -14,6 +14,9 @@ import time
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--device', required=True)
+parser.add_argument('--screenshot', help='Save the final synthetic registration screen')
+parser.add_argument('--large-text', action='store_true')
+parser.add_argument('--dark', action='store_true')
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 bundle = 'dev.chien.niuapp.enrollment-lifecycle-checks'
@@ -21,7 +24,6 @@ source = r'''
 import SwiftUI
 import WebKit
 
-@MainActor enum Theme { enum Spacing { static let medium: CGFloat = 12 } }
 @MainActor enum StorageKeys { static let authSessionID = "isolated-ui-test" }
 @MainActor enum SSOGUIDBridge {
     static var requests = 0
@@ -150,6 +152,8 @@ struct User { let username: String }
         WindowGroup {
             NavigationStack { EnrollmentCertificateView(model: model) }
                 .environmentObject(state)
+                .preferredColorScheme(FIXTURE_COLOR)
+                .dynamicTypeSize(FIXTURE_TYPE)
                 .task { await check() }
         }
     }
@@ -164,6 +168,12 @@ struct User { let username: String }
     @MainActor private func require(_ value: Bool, _ reason: String) throws {
         if !value { throw CheckFailure(reason: reason) }
     }
+    @MainActor private func acceptsTouches(_ webView: WKWebView) -> Bool {
+        guard let window = webView.window,
+              let hit = window.hitTest(webView.convert(CGPoint(x: webView.bounds.midX, y: webView.bounds.midY), to: window), with: nil)
+        else { return false }
+        return hit === webView || hit.isDescendant(of: webView)
+    }
     @MainActor private func check() async {
         var result: [String: String]
         do {
@@ -171,8 +181,11 @@ struct User { let username: String }
             guard let first = model.registrationWebView else { throw CheckFailure(reason: "Missing WebView") }
             try require(first.bounds.width > 300 && first.bounds.height > 300, "WebView has no usable layout")
             try require(!first.isHidden && first.alpha == 1, "WebView must remain visible behind native List")
-            // Exercise the actual automatic reveal without rebuilding the browser session.
+            // At eight seconds the native UI offers manual recovery; at twenty
+            // seconds the same mounted browser must actually become interactive.
             try await Task.sleep(for: .seconds(9))
+            try require(!acceptsTouches(first), "Native loading screen must still cover the browser after nine seconds")
+            try await waitFor { acceptsTouches(first) }
             try require(model.registrationWebView === first && first.window != nil, "Revealing school page replaced the WebView")
             try require(first.url?.path.lowercased() == "/niu/mainframe.aspx", "Query replaced the MainFrame shell")
             try require(SSOGUIDBridge.requests == 0, "An existing acade session must not request a new GUID")
@@ -231,7 +244,8 @@ struct User { let username: String }
             _ = try await fresh.evaluateJavaScript("finishRegistrationFixture()")
             try await waitFor { model.snapshot != nil || !model.isLoading }
             try require(model.snapshot?.records.first?.name == "測試學生" && SSOGUIDBridge.requests == 3, "Fresh document must replace the previous record without re-login")
-            result = ["status": "passed", "checks": "mounted WebView, retained MainFrame/menu context, real nested-frame parsing, shared-session reuse with no GUID, bounded expired-session bridge, cleanup, replacement, cancellation"]
+            try await Task.sleep(for: .milliseconds(500))
+            result = ["status": "passed", "checks": "mounted WebView, timed automatic reveal and hit testing, retained MainFrame/menu context, real nested-frame parsing, shared-session reuse with no GUID, bounded expired-session bridge, cleanup, replacement, cancellation"]
 
         } catch {
             model.cancel()
@@ -253,6 +267,8 @@ with tempfile.TemporaryDirectory(prefix='niu-enrollment-lifecycle-') as temp:
     app = folder / 'EnrollmentLifecycleChecks.app'
     app.mkdir()
     swift = folder / 'Checks.swift'
+    source = source.replace('FIXTURE_COLOR', '.dark' if args.dark else '.light')
+    source = source.replace('FIXTURE_TYPE', '.accessibility2' if args.large_text else '.large')
     swift.write_text(source)
     plist = dict(CFBundleIdentifier=bundle, CFBundleName='EnrollmentLifecycleChecks',
                  CFBundleExecutable='EnrollmentLifecycleChecks', CFBundlePackageType='APPL',
@@ -263,7 +279,7 @@ with tempfile.TemporaryDirectory(prefix='niu-enrollment-lifecycle-') as temp:
     files = sorted((root / 'Features/EnrollmentCertificate').rglob('*.swift'))
     run('xcrun', 'swiftc', '-swift-version', '5', '-sdk', sdk,
         '-target', 'arm64-apple-ios26.0-simulator', '-parse-as-library',
-        '-module-cache-path', str(folder / 'ModuleCache'), *map(str, files), str(swift),
+        '-module-cache-path', str(folder / 'ModuleCache'), *map(str, files), str(root / 'Shared/Theme/Theme.swift'), str(swift),
         '-o', str(app / 'EnrollmentLifecycleChecks'))
     run('codesign', '--force', '--sign', '-', str(app), stdout=subprocess.DEVNULL)
     # A unique test bundle cannot replace the user's app or share its WK data store.
@@ -283,6 +299,8 @@ with tempfile.TemporaryDirectory(prefix='niu-enrollment-lifecycle-') as temp:
             diagnostic = Path('/private/tmp/niu-enrollment-webview-failure.swift')
             diagnostic.write_text(source)
             raise RuntimeError(result)
+        if args.screenshot:
+            run('xcrun', 'simctl', 'io', args.device, 'screenshot', args.screenshot)
         print('PASS: ' + result['checks'])
     finally:
         subprocess.run(['xcrun', 'simctl', 'terminate', args.device, bundle], check=False, capture_output=True)

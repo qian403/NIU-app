@@ -26,7 +26,7 @@ extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 }
 @MainActor final class EnrollmentRegistrationService {
     var webView: WKWebView { fatalError("Live WebView must not be used") }
-    var onProgress: ((String) -> Void)?
+    var onProgress: ((EnrollmentLoadStage) -> Void)?
     func load(account: String) async throws -> EnrollmentSnapshot { fatalError("Live registration must not be used") }
     func cancel() {}
 }
@@ -49,7 +49,10 @@ nonisolated struct EnrollmentPDFService {
         for host in ["ccsys.niu.edu.tw", "ccsys1.niu.edu.tw"] {
             precondition(SSOGUIDBridge.isSessionExpiredURL(URL(string: "https://" + host + "/SSO/login")!))
         }
-        for raw in ["https://acade.niu.edu.tw/NIU/Login.aspx?GUID=synthetic", "https://acade.niu.edu.tw/NIU/MainFrame.aspx", "https://ccsys.niu.edu.tw/SSO/Std002.aspx", "https://ccsys.niu.edu.tw/SSO/StdMain.aspx", "https://example.com/SSO/login"] {
+        for raw in ["https://acade.niu.edu.tw/NIU/logout.aspx", "https://ACADE.niu.edu.tw/NIU/Logout.aspx?GUID=synthetic"] {
+            precondition(SSOGUIDBridge.isSessionExpiredURL(URL(string: raw)!))
+        }
+        for raw in ["https://example.com/NIU/logout.aspx", "https://ccsys.niu.edu.tw/NIU/logout.aspx", "https://euni.niu.edu.tw/login/logout.php", "https://acade.niu.edu.tw/other/logout.aspx", "https://acade.niu.edu.tw/NIU/Login.aspx?GUID=synthetic", "https://acade.niu.edu.tw/NIU/MainFrame.aspx", "https://ccsys.niu.edu.tw/SSO/Std002.aspx", "https://ccsys.niu.edu.tw/SSO/StdMain.aspx", "https://example.com/SSO/login"] {
             precondition(!SSOGUIDBridge.isSessionExpiredURL(URL(string: raw)!))
         }
         for path in ["/SSO/Std002.aspx", "/SSO/StdMain.aspx"] {
@@ -83,6 +86,7 @@ nonisolated struct EnrollmentPDFService {
         precondition(model.pdfData != nil, "Identical PDF can be opened again after dismissal")
         model.cancel()
         precondition(model.snapshot == nil && model.pdfData == nil && model.updatedAt == nil)
+        precondition(model.loadStage == .connecting, "Cancellation resets query progress")
 
         loads = 0; refreshes = 0
         let expired = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, refreshSession: { refreshes += 1; return true }, loadRegistration: { _ in loads += 1; throw EnrollmentError.sessionExpired })
@@ -142,7 +146,135 @@ nonisolated struct EnrollmentPDFService {
 with tempfile.TemporaryDirectory(prefix='niu-enrollment-state-') as directory:
     folder = Path(directory)
     checks = folder / 'Checks.swift'
-    checks.write_text(stubs)
+    # Compile the production stage enum alongside the isolated service stub.
+    service = (root / 'Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift').read_text()
+    stage = service.split('@MainActor\nfinal class EnrollmentRegistrationService', 1)[0]
+    checks.write_text(stage + stubs)
     binary = folder / 'checks'
-    subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', str(folder / 'ModuleCache'), '-parse-as-library', str(models), str(viewmodel), str(root / 'Core/Services/SSOGUIDBridge.swift'), str(checks), '-o', str(binary)], check=True)
+    subprocess.run(['xcrun', 'swiftc', '-D', 'DEBUG', '-swift-version', '5', '-module-cache-path', str(folder / 'ModuleCache'), '-parse-as-library', str(models), str(viewmodel), str(root / 'Core/Services/SSOGUIDBridge.swift'), str(checks), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=20)
+
+# Run the actual registration state machine and GUID HTTP handling with fake WebKit
+# and transport objects. No school network, real token, cookies or Keychain is used.
+bridge_fixture = r'''
+import Foundation
+import CoreGraphics
+extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
+final class SSOTokenStore {
+    static let shared = SSOTokenStore()
+    var token: String? = "synthetic-token"
+    func clear(ifMatching value: String) { if token == value { token = nil } }
+}
+enum FixtureHTTP {
+    static var status = 200
+    static var calls = 0
+    static func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        calls += 1
+        return (Data(#"{"guid":"synthetic"}"#.utf8),
+                HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }
+}
+protocol WKNavigationDelegate {}
+final class WKNavigation {}
+enum WKNavigationActionPolicy { case allow, cancel }
+final class WKFrameInfo { var isMainFrame = true }
+final class WKNavigationAction {
+    let request: URLRequest
+    let targetFrame: WKFrameInfo? = WKFrameInfo()
+    init(_ url: URL) { request = URLRequest(url: url) }
+}
+struct WKContentWorld { static let page = WKContentWorld() }
+final class WKWebsiteDataStore { static func `default`() -> WKWebsiteDataStore { WKWebsiteDataStore() } }
+final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.default() }
+@MainActor final class WKWebView {
+    var navigationDelegate: (any WKNavigationDelegate)?
+    var url: URL?
+    var requests: [URLRequest] = []
+    init(frame: CGRect, configuration: WKWebViewConfiguration) {}
+    func load(_ request: URLRequest) { requests.append(request); url = request.url }
+    func stopLoading() {}
+    func evaluateJavaScript(_ script: String) async throws -> Any? { nil }
+    func evaluateJavaScript(_ script: String, in frame: WKFrameInfo, in world: WKContentWorld,
+                            completionHandler: (Result<Any, Error>) -> Void) { completionHandler(.success(false)) }
+}
+@main struct BridgeChecks {
+    @MainActor static func settle() async throws { try await Task.sleep(for: .milliseconds(20)) }
+    @MainActor static func redirect(_ service: EnrollmentRegistrationService, _ path: String) {
+        let url = URL(string: "https://acade.niu.edu.tw" + path)!
+        service.webView(service.webView, decidePolicyFor: WKNavigationAction(url)) { policy in
+            precondition(policy == .cancel)
+        }
+    }
+    @MainActor static func main() async throws {
+        for status in [401, 200] {
+            FixtureHTTP.status = status
+            FixtureHTTP.calls = 0
+            SSOTokenStore.shared.token = "synthetic-token"
+            let service = EnrollmentRegistrationService()
+            var completed = false
+            let load = Task {
+                defer { completed = true }
+                do { _ = try await service.load(account: "synthetic"); fatalError("Expected expired session") }
+                catch { precondition(error as? EnrollmentError == .sessionExpired) }
+            }
+            try await settle()
+            redirect(service, "/NIU/Default.aspx")
+            try await settle()
+            precondition(FixtureHTTP.calls == 1)
+            if status == 401 {
+                precondition(completed && service.webView.requests.count == 1,
+                             "401 must fail before loading any acade GUID bridge")
+                precondition(SSOTokenStore.shared.token == nil)
+            } else {
+                precondition(!completed && service.webView.requests.count == 2)
+                // A GUID-bearing Login.aspx finishing is not a failure yet.
+                service.webView(service.webView, didFinish: nil)
+                precondition(!completed)
+                // An unrelated hidden subframe must not expire the session.
+                let hidden = WKNavigationAction(URL(string: "https://acade.niu.edu.tw/NIU/logout.aspx")!)
+                hidden.targetFrame?.isMainFrame = false
+                service.webView(service.webView, decidePolicyFor: hidden) { precondition($0 == .allow) }
+                precondition(!completed)
+                redirect(service, "/NIU/logout.aspx")
+                try await settle()
+                precondition(completed && FixtureHTTP.calls == 1 && service.webView.requests.count == 2,
+                             "Logout after GUID must fail immediately without polling or another bridge")
+            }
+            await load.value
+        }
+        // The didFinish fallback must also detect logout without waiting for a timeout.
+        FixtureHTTP.status = 200
+        SSOTokenStore.shared.token = "synthetic-token"
+        let service = EnrollmentRegistrationService()
+        var completed = false
+        let load = Task {
+            defer { completed = true }
+            do { _ = try await service.load(account: "synthetic"); fatalError("Expected expiry") }
+            catch { precondition(error as? EnrollmentError == .sessionExpired) }
+        }
+        try await settle()
+        redirect(service, "/NIU/Default.aspx")
+        try await settle()
+        service.webView.url = URL(string: "https://acade.niu.edu.tw/NIU/logout.aspx")!
+        service.webView(service.webView, didFinish: nil)
+        try await settle()
+        precondition(completed)
+        await load.value
+        print("PASS: production GUID 401 fast-path, immediate logout failure, single bridge and unrelated-frame isolation")
+    }
+}
+'''
+with tempfile.TemporaryDirectory(prefix='niu-enrollment-bridge-') as directory:
+    folder = Path(directory)
+    registration = service.split('/// A per-request ephemeral session', 1)[0]
+    registration = registration.replace('import WebKit\n', '').replace('import PDFKit\n', '')
+    bridge = (root / 'Core/Services/SSOGUIDBridge.swift').read_text()
+    bridge = bridge.replace('URLSession.shared.data(for: request)', 'FixtureHTTP.data(for: request)')
+    assert 'URLSession.' not in bridge, 'Offline fixture must replace all live GUID transport'
+    checks = folder / 'Checks.swift'
+    checks.write_text(registration + bridge + bridge_fixture)
+    binary = folder / 'checks'
+    subprocess.run(['xcrun', 'swiftc', '-D', 'DEBUG', '-swift-version', '5', '-module-cache-path',
+                    str(folder / 'ModuleCache'), '-parse-as-library', str(models), str(checks),
+                    '-o', str(binary)], check=True)
+    subprocess.run([str(binary)], check=True, timeout=10)
