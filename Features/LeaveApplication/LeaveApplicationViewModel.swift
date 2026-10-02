@@ -29,6 +29,7 @@ final class LeaveApplicationViewModel: ObservableObject {
     @Published private(set) var loadError: String?
     @Published private(set) var didAttemptSubmit = false
     @Published private(set) var canReview = false
+    @Published private(set) var needsReconnect = false
     @Published private(set) var loadingMessage = "正在讀取請假表單…"
     @Published private(set) var loadStage = LeaveLoadStage.connecting
     @Published var leaveType = "" { didSet { if leaveType != oldValue { invalidateReview() } } }
@@ -66,7 +67,7 @@ final class LeaveApplicationViewModel: ObservableObject {
 
     /// 補檔 needs at least one attachment on the school form before「送出」.
     var canSubmitSupplement: Bool {
-        isSupplement && page?.mode == "DETAIL" && !attachmentNames.isEmpty && !uploadUncertain && !didAttemptSubmit && !isBusy
+        isSupplement && page?.mode == "DETAIL" && !attachmentNames.isEmpty && !uploadUncertain && !didAttemptSubmit && !needsReconnect && !isBusy
     }
 
     var dateKey: String { LeaveApplicationDate.string(startDate) + "|" + LeaveApplicationDate.string(endDate) }
@@ -88,7 +89,7 @@ final class LeaveApplicationViewModel: ObservableObject {
     }
 
     var hasValidDraft: Bool {
-        page?.kind == "form" && missingRequirement == nil && startDate <= endDate && !didAttemptSubmit && !isBusy
+        page?.kind == "form" && missingRequirement == nil && startDate <= endDate && !didAttemptSubmit && !needsReconnect && !isBusy
     }
 
     var currentStep: Step {
@@ -104,27 +105,80 @@ final class LeaveApplicationViewModel: ObservableObject {
         owner = UserDefaults.standard.string(forKey: "app.user.username") ?? ""
         session = UserDefaults.standard.string(forKey: StorageKeys.authSessionID)
         guard !owner.isEmpty, session != nil else { loadError = "請先登入 App 後再使用請假功能。"; return }
-        let service = makeService()
-        let id = generation
-        let entry = self.entry
-        perform("正在連接教務系統…", failsLoad: true) { [self] operationID in
-            do { try self.apply(try await service.load(account: self.owner, entry: entry), operation: operationID) }
-            catch {
-                let expired = (error as? LeaveApplicationError) == .expired
-                    || (error as? URLError)?.code == .userAuthenticationRequired
-                guard expired else { throw error }
-                // One SSO refresh, then rebuild the WebView; never loop on a stale GUID.
-                self.loadStage = .signingIn
-                guard self.current(id), await SSOSessionService.shared.requestRefresh(force: true), self.current(id) else {
-                    throw LeaveApplicationError.expired
-                }
-                service.close()
-                let retry = self.makeService()
-                try self.apply(try await retry.load(account: self.owner, entry: entry), operation: operationID)
-            }
-            try self.validateOwner()
+        perform("正在連接教務系統…", failsLoad: true) { operationID in
+            try self.apply(try await self.loadFreshPage(operationID), operation: operationID)
             self.prefillSavedValues()
         }
+    }
+
+    /// A fresh WebView first tries the acade session / GUID bridge. Refresh SSO only
+    /// if that bridge reports login failure, and retry it once, never the form action.
+    private func loadFreshPage(_ operationID: UUID) async throws -> LeavePage {
+        try requireCurrent(operationID)
+        service?.close()
+        let service = makeService()
+        let result: LeavePage
+        do { result = try await service.load(account: owner, entry: entry) }
+        catch {
+            try requireCurrent(operationID)
+            guard Self.isExpired(error) else { throw error }
+            loadStage = .signingIn
+            guard await SSOSessionService.shared.requestRefresh(force: true) else {
+                throw LeaveApplicationError.expired
+            }
+            try requireCurrent(operationID)
+            service.close()
+            result = try await makeService().load(account: owner, entry: entry)
+        }
+        try requireCurrent(operationID)
+        guard result.kind != "form" || result.studentID?.lowercased() == owner.lowercased() else {
+            throw LeaveApplicationError.changed
+        }
+        return result
+    }
+
+    /// Keep native draft fields intact; only school-owned state is replaced. Neither
+    /// the interrupted action nor an upload/submission is replayed by this recovery.
+    private func recoverSession(_ operationID: UUID) async throws {
+        try requireCurrent(operationID)
+        guard !didAttemptSubmit else { throw LeaveApplicationError.expired }
+        needsReconnect = true
+        datesChanged()
+        let oldAttachments = attachmentNames
+        loadingMessage = "教務系統閒置逾時，正在重新連線…"
+        var reloaded = try await loadFreshPage(operationID)
+        if reloaded.kind == "notice", let service {
+            // The user already accepted (or was accepting) the notice in this visit.
+            _ = try await service.run(LeaveApplicationScript.acceptNotice)
+        }
+        if reloaded.kind == "notice" || reloaded.attachmentNames == nil, let service {
+            reloaded = try await service.waitForPage(kind: "form", matches: { $0.attachmentNames != nil })
+        }
+        try requireCurrent(operationID)
+        guard reloaded.kind == "form", reloaded.studentID?.lowercased() == owner.lowercased() else {
+            throw LeaveApplicationError.changed
+        }
+        try apply(reloaded, operation: operationID)
+        existingPeriods = reloaded.existingPeriods ?? []
+        uploadUncertain = false
+        needsReconnect = false
+        message = isSupplement
+            ? "教務系統閒置逾時，已重新連線。請重新檢查附件後再送出補交。"
+            : "教務系統閒置逾時，已重新連線。請重新查詢節次後再檢查送出。"
+        if oldAttachments.sorted() != attachmentNames.sorted() {
+            message? += " 附件清單已變更，請確認檔案是否齊全；遺失的附件需重新附加。"
+        }
+    }
+
+    func reconnect() {
+        guard needsReconnect, !isBusy, !didAttemptSubmit else { return }
+        perform("正在重新連接教務系統…") { operationID in
+            try await self.recoverSession(operationID)
+        }
+    }
+
+    private static func isExpired(_ error: Error) -> Bool {
+        (error as? LeaveApplicationError) == .expired || (error as? URLError)?.code == .userAuthenticationRequired
     }
 
     /// 修改: start from what the school saved. Periods are re-queried so CLASS_INFO is
@@ -142,8 +196,8 @@ final class LeaveApplicationViewModel: ObservableObject {
     }
 
     func acceptNotice() {
-        guard let service, page?.kind == "notice", !isBusy else { return }
-        perform("正在開啟申請表單…") { operationID in
+        guard let service, page?.kind == "notice", !needsReconnect, !isBusy else { return }
+        perform("正在開啟申請表單…", recoversExpiry: true) { operationID in
             _ = try await service.run(LeaveApplicationScript.acceptNotice)
             try self.apply(try await service.waitForPage(kind: "form"), operation: operationID)
             try self.validateOwner()
@@ -165,11 +219,11 @@ final class LeaveApplicationViewModel: ObservableObject {
     }
 
     func loadPeriods() {
-        guard let service, !isBusy, !didAttemptSubmit, startDate <= endDate else { return }
+        guard let service, !needsReconnect, !isBusy, !didAttemptSubmit, startDate <= endDate else { return }
         selected = []; invalidateReview(); periodDates = nil
         let key = dateKey
         let arguments: [String: Any] = ["startDate": LeaveApplicationDate.string(startDate), "endDate": LeaveApplicationDate.string(endDate)]
-        perform("正在查詢這段期間的課程…") { operationID in
+        perform("正在查詢這段期間的課程…", recoversExpiry: true) { operationID in
             _ = try await service.run(LeaveApplicationScript.openPeriods, arguments: arguments)
             let result = try await service.waitForPage(kind: "periods", script: LeaveApplicationScript.periods)
             try self.requireCurrent(operationID)
@@ -190,7 +244,7 @@ final class LeaveApplicationViewModel: ObservableObject {
         guard hasValidDraft, let service else { return }
         let ids = selected.sorted()
         invalidateReview()
-        perform("正在把節次填入校方表單…") { operationID in
+        perform("正在把節次填入校方表單…", recoversExpiry: true) { operationID in
             let before = try await service.snapshot()
             if Set((before.selected ?? "").split(separator: ",").map(String.init)) != Set(ids) {
                 _ = try await service.run(LeaveApplicationScript.openPeriods, arguments: [
@@ -210,14 +264,14 @@ final class LeaveApplicationViewModel: ObservableObject {
     }
 
     func upload(_ url: URL) {
-        guard let service, !isBusy, !didAttemptSubmit, !uploadUncertain else { return }
+        guard let service, !needsReconnect, !isBusy, !didAttemptSubmit, !uploadUncertain else { return }
         let ext = url.pathExtension.lowercased()
         guard ["pdf", "jpg", "jpeg", "png"].contains(ext) else {
             message = LeaveApplicationError.invalidFile.localizedDescription; return
         }
         let old = page?.attachmentNames ?? []
         invalidateReview()
-        perform("正在附加證明文件…") { operationID in
+        perform("正在附加證明文件…", recoversExpiry: true) { operationID in
             // Read the picked file off the main thread; it may be up to 10 MB.
             let data = try await Task.detached(priority: .userInitiated) { () throws -> Data in
                 let access = url.startAccessingSecurityScopedResource()
@@ -273,6 +327,9 @@ final class LeaveApplicationViewModel: ObservableObject {
         for _ in 0..<16 where message == nil && schoolConfirmation == nil {
             try await Task.sleep(for: .milliseconds(500))
             try requireCurrent(operationID)
+            if let page = try await service?.snapshot(), page.kind == "expired" {
+                throw LeaveApplicationError.expired
+            }
         }
         if message == nil {
             message = "已按下校方的送出按鈕，但未收到校方回應。請到「我的假單」或校務系統確認。"
@@ -328,7 +385,7 @@ final class LeaveApplicationViewModel: ObservableObject {
         id == generation && session != nil && session == UserDefaults.standard.string(forKey: StorageKeys.authSessionID)
             && owner.lowercased() == UserDefaults.standard.string(forKey: "app.user.username")?.lowercased()
     }
-    private func perform(_ progress: String, failsLoad: Bool = false,
+    private func perform(_ progress: String, failsLoad: Bool = false, recoversExpiry: Bool = false,
                          operation: @escaping @MainActor (UUID) async throws -> Void) {
         guard !isBusy else { return }
         isBusy = true; message = nil; loadError = nil; loadingMessage = progress
@@ -339,11 +396,18 @@ final class LeaveApplicationViewModel: ObservableObject {
                 guard self.current(id), !Task.isCancelled else { throw CancellationError() }
                 try await operation(id)
             } catch {
-                if self.current(id), !(error is CancellationError) {
+                var failure: Error? = error
+                if self.current(id), recoversExpiry, !self.didAttemptSubmit, Self.isExpired(error) {
+                    do { try await self.recoverSession(id); failure = nil }
+                    catch { failure = error }
+                }
+                if let failure, self.current(id), !(failure is CancellationError) {
                     let text = self.didAttemptSubmit
                         ? "送出結果尚未確認。請先到校務系統查看紀錄與附件，再決定是否重新申請。"
+                        : self.needsReconnect
+                        ? "重新連線未完成。\(LeaveApplicationError.message(for: failure)) 草稿已保留，請按「重新連線」。"
                         : self.uploadUncertain ? "附件上傳結果尚未確認，請前往校務系統檢查，避免重複附加。"
-                        : LeaveApplicationError.message(for: error)
+                        : LeaveApplicationError.message(for: failure)
                     if failsLoad || self.page == nil { self.loadError = text } else { self.message = text }
                 }
             }
@@ -356,7 +420,7 @@ final class LeaveApplicationViewModel: ObservableObject {
         generation = UUID(); task?.cancel(); task = nil
         answerSchoolConfirmation(false); service?.close(); service = nil
         page = nil; periods = []; selected = []; acknowledged = false; canReview = false
-        isBusy = false; message = nil; loadError = nil; periodDates = nil; uploadUncertain = false; session = nil
+        isBusy = false; needsReconnect = false; message = nil; loadError = nil; periodDates = nil; uploadUncertain = false; session = nil
         loadingMessage = "正在讀取請假表單…"; loadStage = .connecting
         leaveType = ""; reason = ""; supplementLater = false; existingPeriods = []
     }

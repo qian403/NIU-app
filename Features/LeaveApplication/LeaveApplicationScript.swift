@@ -14,6 +14,7 @@ nonisolated enum LeaveApplicationScript {
       return ((e && (e.value || e.textContent)) || '').trim();
     }
     function form() {
+      if (leaveExpired()) throw Error('SESSION_EXPIRED');
       const w = find('/SEC2010_01.aspx');
       if (!w || !w.document.querySelector('#M_HOLIDAY_CODE')) throw Error('FORM_CHANGED');
       const studentID = studentNumber(w.document);
@@ -40,20 +41,29 @@ nonisolated enum LeaveApplicationScript {
       return [...grid.rows].filter(r => !r.querySelector('th')).map(r => ({row: r,
         get: name => { const i = head.indexOf(name); return i < 0 ? '' : cellText(r.cells[i]); }}));
     }
-    // MainFrame preloads a hidden timeout page. Only the frame we opened (and its
-    // children) can report that this leave session expired; its old document is skipped.
+    // timeoutFrame (/NIU/timeout.aspx) is a permanent hidden overlay, not expiry.
+    function expiredLocation(location) {
+      if (/\/(?:TimeoutPage|Default)\.aspx$/i.test(location.pathname)) return true;
+      return /\/Login\.aspx$/i.test(location.pathname)
+        && ![...new URLSearchParams(location.search || '')].some(([key, value]) => key.toLowerCase() === 'guid' && value);
+    }
     function leaveExpired() {
       const target = window.__niuLeaveTarget;
       if (!target) return false;
       function scan(w) {
         try {
-          if (w === target && w.document === window.__niuLeavePrevious) return false;
-          if (/\/(?:TimeoutPage|Default|Login)\.aspx$/i.test(w.location.pathname)) return true;
+          if (!w || /\/timeout\.aspx$/i.test(w.location.pathname)) return false;
+          // Navigation may expose the previous document until the new one commits.
+          if ((w === target && w.document === window.__niuLeavePrevious)
+              || w.document === window.__niuLeaveViewPrevious
+              || w.document === window.__niuLeavePreviousPickerDocument) return false;
+          if (expiredLocation(w.location)) return true;
           for (let i = 0; i < w.frames.length; i++) if (scan(w.frames[i])) return true;
         } catch (_) {}
         return false;
       }
-      return scan(target);
+      // viewFrame is a sibling of mainFrame when opening modify/detail/supplement.
+      return scan(target) || scan(window.frames['viewFrame']);
     }
     """#
 
@@ -66,6 +76,8 @@ nonisolated enum LeaveApplicationScript {
     if (!/^\/NIU\/Application\/SEC\/SEC\d+\/SEC\d+_\.aspx\?progcd=SEC\d+$/.test(path)) throw Error('FORM_CHANGED');
     window.__niuLeaveTarget = frame;
     try { window.__niuLeavePrevious = frame.document; } catch (_) { window.__niuLeavePrevious = null; }
+    try { window.__niuLeaveViewPrevious = window.frames['viewFrame']?.document || null; } catch (_) { window.__niuLeaveViewPrevious = null; }
+    window.__niuLeavePreviousPickerDocument = null;
     window.__niuLeaveQuery = null;
     frame.location.href = path;
     try { if (typeof window.hideView === 'function') window.hideView(); } catch (_) {}
@@ -75,6 +87,7 @@ nonisolated enum LeaveApplicationScript {
     // Runs the list page's own「查詢」(a partial postback) once, then parses its DataGrid.
     // Records come from 請假紀錄; actions only exist on 學生請假修改 rows.
     static let list = helpers + #"""
+    if (leaveExpired()) return JSON.stringify({kind: 'expired'});
     const w = find(listPage);
     if (!w || w.document === window.__niuLeavePrevious) return JSON.stringify({kind: leaveExpired() ? 'expired' : 'waiting'});
     const d = w.document, q = window.__niuLeaveQuery;
@@ -104,13 +117,14 @@ nonisolated enum LeaveApplicationScript {
     // Opens one form from the current list the way tapping its cell does: the school posts
     // Mode=MOD/DETAIL with PKNO/FORM_NO into viewFrame (SEC2010_01.aspx).
     static let openRecord = helpers + #"""
+    if (leaveExpired()) throw Error('SESSION_EXPIRED');
     const w = find(listPage);
     if (!w) throw Error('FORM_CHANGED');
     const row = (gridRows(w.document) || []).find(r => r.get('假單序號') === formNo);
     if (!row) throw Error('RECORD_MISSING');
     const cell = [...row.row.cells].find(c => (c.getAttribute('onclick') || '').includes("'" + mode + "'"));
     if (!cell) throw Error('RECORD_MISSING');
-    const view = find('/SEC2010_01.aspx');
+    const view = window.frames['viewFrame'] || find('/SEC2010_01.aspx');
     window.__niuLeaveViewPrevious = view ? view.document : null;
     cell.click();
     return 'opened';
@@ -122,6 +136,7 @@ nonisolated enum LeaveApplicationScript {
     // javascript: URL: it never passes the navigation filter, and MS Ajax's __doPostBack
     // inspects its caller and throws when called from strict code.
     static let withdraw = helpers + #"""
+    if (leaveExpired()) throw Error('SESSION_EXPIRED');
     const w = find('/SEC2015_01.aspx');
     if (!w) throw Error('FORM_CHANGED');
     const row = (gridRows(w.document) || []).find(r => r.get('假單序號') === formNo);
@@ -140,6 +155,7 @@ nonisolated enum LeaveApplicationScript {
     // Whether the withdraw postback finished: the page was replaced, or the grid was
     // re-rendered without the form once the school's busy overlay is gone.
     static let withdrawSettled = helpers + #"""
+    if (leaveExpired()) return 'expired';
     const w = find('/SEC2015_01.aspx');
     if (!w || w.document !== window.__niuLeaveWithdrawDocument) return 'reloaded';
     if (w.document.querySelector('.blockUI')) return 'waiting';
@@ -150,6 +166,7 @@ nonisolated enum LeaveApplicationScript {
     // 簽核流程: the same read-only page the form's「簽核流程」button opens
     // (FLO3020_01.aspx with FORM_CODE / APPROVE_FLOW_CODE / FORM_NO from the open form).
     static let flow = helpers + #"""
+    if (leaveExpired()) return JSON.stringify({kind: 'expired'});
     const w = find('/SEC2010_01.aspx');
     if (!w) throw Error('FORM_CHANGED');
     const d = w.document;
@@ -163,12 +180,13 @@ nonisolated enum LeaveApplicationScript {
     let page;
     try {
       const response = await w.fetch(url, {credentials: 'same-origin', signal: controller.signal});
-      if (!/\/FLO3020_01\.aspx$/i.test(new URL(response.url).pathname) || response.status === 401) return JSON.stringify({kind: 'expired'});
-      if (!response.ok) return JSON.stringify({kind: 'unavailable'});
+      if (expiredLocation(new URL(response.url)) || response.status === 401) return JSON.stringify({kind: 'expired'});
+      if (!/\/FLO3020_01\.aspx$/i.test(new URL(response.url).pathname) || !response.ok) return JSON.stringify({kind: 'unavailable'});
       page = new w.DOMParser().parseFromString(await response.text(), 'text/html');
     } finally {
       clearTimeout(timeout);
     }
+    if (leaveExpired()) return JSON.stringify({kind: 'expired'});
     const text = c => String((c && c.textContent) || '').replace(/\s+/g, ' ').trim();
     const cells = [...page.querySelectorAll('td')];
     const labelled = label => { const i = cells.findIndex(c => text(c) === label); return i < 0 ? '' : text(cells[i + 1]); };
@@ -197,6 +215,7 @@ nonisolated enum LeaveApplicationScript {
     """#
 
     static let snapshot = helpers + #"""
+    if (leaveExpired()) return JSON.stringify({kind: 'expired'});
     const notice = find('/SEC2010_02.aspx');
     if (notice) {
       const text = notice.document.body.innerText;
@@ -219,8 +238,12 @@ nonisolated enum LeaveApplicationScript {
     const options = [...(d.querySelector('#M_HOLIDAY_CODE')?.options || [])]
       .filter(o => o.value).map(o => ({id:o.value, title:o.text.trim()}));
     const upload = find('/UploadFile_HasUseId.aspx', w);
-    const attachmentNames = upload ? [...upload.document.querySelectorAll('#UploadGrid tr')]
-      .filter(r => r.querySelector('a')).map(r => r.innerText.replace(/\s+/g,' ').trim()) : [];
+    // null means the attachment iframe is not ready; [] is a verified empty list.
+    const uploadReady = upload && upload.document.readyState === 'complete'
+      && (upload.document.getElementById('UploadGrid')
+          || (upload.document.getElementById('tmpfile') && upload.document.getElementById('attach')));
+    const attachmentNames = uploadReady ? [...upload.document.querySelectorAll('#UploadGrid tr')]
+      .filter(r => r.querySelector('a')).map(r => r.innerText.replace(/\s+/g,' ').trim()) : null;
     const type = d.getElementById('M_HOLIDAY_CODE'), later = d.getElementById('CheckBox1');
     const current = {leaveType: type.value || '', startDate: roc(val(d, 'M_HOLIDAY_DATE_S')), endDate: roc(val(d, 'M_HOLIDAY_DATE_E')),
       reason: val(d, 'M_APP_ORIGIN'), supplementLater: !!(later && later.checked)};
@@ -233,6 +256,7 @@ nonisolated enum LeaveApplicationScript {
     """#
 
     static let acceptNotice = helpers + #"""
+    if (leaveExpired()) throw Error('SESSION_EXPIRED');
     const w = find('/SEC2010_02.aspx');
     const button = w?.document.getElementById('SAVE_BTN2');
     if (!button || button.value !== '同意') throw Error('FORM_CHANGED');
@@ -249,6 +273,7 @@ nonisolated enum LeaveApplicationScript {
     """#
 
     static let periods = helpers + #"""
+    if (leaveExpired()) return JSON.stringify({kind: 'expired'});
     const w = find('/SEC2010_03.aspx');
     if (!w || !w.document.getElementById('table2') || w.document === window.__niuLeavePreviousPickerDocument)
       return JSON.stringify({kind:'waiting'});

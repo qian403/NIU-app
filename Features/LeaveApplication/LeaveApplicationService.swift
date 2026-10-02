@@ -105,7 +105,15 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
         for _ in 0..<24 {
             try await Task.sleep(for: .milliseconds(500))
             try check()
-            let state = try? await run(LeaveApplicationScript.withdrawSettled, arguments: ["formNo": formNo])
+            let state: String?
+            do { state = try await run(LeaveApplicationScript.withdrawSettled, arguments: ["formNo": formNo]) }
+            catch LeaveApplicationError.expired { throw LeaveApplicationError.expired }
+            catch is CancellationError { throw CancellationError() }
+            catch {
+                // Postback can replace the JS context mid-read; keep the bounded poll.
+                state = nil
+            }
+            if state == "expired" { throw LeaveApplicationError.expired }
             if state == "reloaded" || state == "removed" { break }
         }
         let after = try await list(LeaveSchoolPage.manage, listPage: LeaveSchoolPage.manageList)
@@ -187,6 +195,7 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func run(_ source: String, arguments: [String: Any] = [:]) async throws -> String {
         try check()
+        if sessionExpired { throw LeaveApplicationError.expired }
         guard webView.url?.host?.lowercased() == "acade.niu.edu.tw" else { throw LeaveApplicationError.expired }
         var args = arguments; args["account"] = account
         let id = UUID()
@@ -202,7 +211,8 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
                         waiter.resume(returning: text)
                     case .failure(let error):
                         let message = (error as NSError).userInfo["WKJavaScriptExceptionMessage"] as? String ?? ""
-                        waiter.resume(throwing: message.contains("RECORD_MISSING")
+                        waiter.resume(throwing: message.contains("SESSION_EXPIRED") ? LeaveApplicationError.expired
+                                      : message.contains("RECORD_MISSING")
                                       ? LeaveApplicationError.recordMissing : LeaveApplicationError.changed)
                     }
                 }

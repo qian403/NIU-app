@@ -68,7 +68,7 @@ assert.match(mainFrame.location.href,/\/NIU\/Application\/SEC\/SEC20\/SEC2010_\.
 assert.equal(portal.__niuLeaveTarget,mainFrame); assert.equal(hideCalls,1);
 assert.equal(run('openPage',{path:'/NIU/Application/SEC/SEC40/SEC4030_.aspx?progcd=SEC4030'},{location:{pathname:'/NIU/MainFrame.aspx'},frames:{length:0}}),'waiting');
 assert.throws(()=>run('openPage',{path:'https://example.com/'},portal),/FORM_CHANGED/);
-// A hidden timeout frame outside the leave target is not an expired leave session.
+// An unrelated frame outside the leave target is not an expired leave session.
 const hidden={location:{pathname:'/NIU/TimeoutPage.aspx'},frames:[],document:{}};
 const target={location:{pathname:'/NIU/Blank.aspx'},frames:[],document:{}};
 const shell={location:{pathname:'/NIU/MainFrame.aspx'},frames:[hidden,target],__niuLeaveTarget:target,__niuLeavePrevious:target.document};
@@ -78,6 +78,47 @@ target.location.pathname='/NIU/Default.aspx';
 assert.equal(JSON.parse(run('snapshot',{},shell)).kind,'waiting');
 target.document={};
 assert.equal(JSON.parse(run('snapshot',{},shell)).kind,'expired');
+// TimeoutPage is a committed document, not an alert. Expiry wins over a still
+// readable form/list/picker elsewhere, including viewFrame outside mainFrame.
+for (const pathname of ['/NIU/TimeoutPage.aspx', '/NIU/Default.aspx', '/NIU/Login.aspx']) {
+  for (const placement of ['mainFrame', 'viewFrame', 'picker']) {
+    const expired = {location:{pathname}, document:{}, frames:[]};
+    const main = placement === 'mainFrame' ? expired : {...form, frames:placement === 'picker' ? [expired] : []};
+    const frames = [main]; frames.mainFrame = main;
+    if (placement === 'viewFrame') { frames.push(expired); frames.viewFrame = expired; }
+    const root = {location:{pathname:'/NIU/MainFrame.aspx'}, frames, __niuLeaveTarget:main};
+    for (const script of ['periods', 'snapshot', 'list']) {
+      assert.equal(JSON.parse(run(script, {listPage:'/SEC2015_01.aspx'}, root)).kind, 'expired', `${script}: ${pathname} in ${placement}`);
+    }
+    assert.equal(run('withdrawSettled', {formNo:'fixture'}, root), 'expired');
+    for (const script of ['openRecord', 'acceptNotice', 'openPeriods', 'bindPeriods', 'upload', 'submit', 'submitSupplement', 'withdraw']) {
+      assert.throws(() => run(script, {}, root), /SESSION_EXPIRED/, `${script} refuses expired documents`);
+    }
+  }
+}
+const overlay = {location:{pathname:'/NIU/timeout.aspx'}, document:{}, frames:[]};
+const liveMain = {...form, frames:[overlay]};
+const liveFrames = [liveMain, overlay, picker]; liveFrames.mainFrame = liveMain; liveFrames.timeoutFrame = overlay;
+const liveRoot = {location:{pathname:'/NIU/MainFrame.aspx'}, frames:liveFrames, __niuLeaveTarget:liveMain};
+assert.equal(JSON.parse(run('snapshot', {}, liveRoot)).kind, 'form', 'permanent timeoutFrame is harmless, even under mainFrame');
+assert.equal(JSON.parse(run('periods', {}, liveRoot)).kind, 'periods');
+const login = {location:{pathname:'/NIU/Login.aspx',search:'?GuId=synthetic'}, document:{}, frames:[]};
+liveMain.frames = [login];
+assert.equal(JSON.parse(run('snapshot', {}, liveRoot)).kind, 'form', 'GUID-bearing bridge is not expired');
+login.location.search = '?GUID=';
+assert.equal(JSON.parse(run('snapshot', {}, liveRoot)).kind, 'expired', 'empty GUID is expired');
+for (const marker of ['__niuLeaveViewPrevious', '__niuLeavePreviousPickerDocument']) {
+  liveRoot[marker] = login.document;
+  for (const script of ['snapshot', 'periods']) assert.notEqual(JSON.parse(run(script, {}, liveRoot)).kind, 'expired', `${marker}: stale document skipped`);
+  delete liveRoot[marker];
+}
+// A sibling's stale timeout document is skipped until record navigation commits.
+liveMain.frames = [];
+liveFrames.viewFrame = login; liveFrames.push(login);
+liveRoot.__niuLeaveViewPrevious = login.document;
+assert.equal(JSON.parse(run('snapshot', {}, liveRoot)).kind, 'form');
+login.document = {};
+assert.equal(JSON.parse(run('snapshot', {}, liveRoot)).kind, 'expired');
 // The notice drops its heading, padding lines and the trailing server timestamp.
 const noticePage={location:{pathname:'/NIU/Application/SEC/SEC20/SEC2010_02.aspx'},frames:[],
   document:{body:{innerText:'SEC2010_學生請假申請\n請假注意事項\n\n請假注意事項：\n一、考試週請假。\t\n\n\n\n十三、李先生，電話 03-931-7077。　\n\n\n\n\n10/02/2026 18:15:34\n'}}};
@@ -114,6 +155,29 @@ assert.equal(listed.kind,'list');
 assert.deepEqual(listed.records[0],{formNo:'1150005007',appliedDate:'115/10/02',type:'事假',startDate:'115/10/08',endDate:'115/10/08',
   startPeriod:'10',endPeriod:'10',totalPeriods:'1',status:'申請中'},'unformatted 1151008 becomes 115/10/08');
 assert.deepEqual(listed.actions[0],{formNo:'1150005007',withdraw:true,modify:true,supplement:true});
+// A healthy list may coexist with the permanent timeout overlay.
+listTop.__niuLeaveTarget = listFrame;
+listFrame.frames.push(overlay);
+assert.equal(JSON.parse(run('list',{listPage:'/SEC2015_01.aspx'},listTop)).kind,'list');
+// A stale target document never reports expiry while navigation is committing.
+for (const script of ['periods', 'list', 'snapshot']) {
+  const stale = {location:{pathname:'/NIU/TimeoutPage.aspx'},document:{},frames:[]};
+  const root = {frames:[stale], __niuLeaveTarget:stale, __niuLeavePrevious:stale.document};
+  assert.equal(JSON.parse(run(script, {listPage:'/SEC2015_01.aspx'}, root)).kind, 'waiting');
+}
+// Parent form readiness must not fabricate an empty attachment list.
+assert.equal(JSON.parse(run('snapshot')).attachmentNames, null);
+const uploadNodes = {tmpfile:{}, attach:{}};
+let attachmentRows = [];
+const uploadFrame = {location:{pathname:'/NIU/UploadFile_HasUseId.aspx'}, frames:[],
+  document:{readyState:'loading', getElementById:id=>uploadNodes[id], querySelectorAll:()=>attachmentRows}};
+form.frames.push(uploadFrame);
+assert.equal(JSON.parse(run('snapshot')).attachmentNames, null);
+uploadFrame.document.readyState = 'complete';
+assert.deepEqual(JSON.parse(run('snapshot')).attachmentNames, [], 'loaded empty uploader');
+attachmentRows = [{querySelector:()=>({}), innerText:'proof.pdf'}];
+assert.deepEqual(JSON.parse(run('snapshot')).attachmentNames, ['proof.pdf'], 'loaded attachments');
+form.frames.pop();
 // Opening a record taps the matching row's own cell; an unknown form is refused.
 assert.equal(run('openRecord',{listPage:'/SEC2015_01.aspx',formNo:'1150005007',mode:'Mod'},listTop),'opened');
 assert.equal(manageGrid.rows[1].cells[1].clicks,1);
@@ -222,6 +286,19 @@ assert.throws(()=>run('submitSupplement',{expectedFormNo:'1150005007'},detTop),/
   assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'expired');
   status = 200; served = {querySelectorAll: () => []};
   assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'unavailable', 'changed markup is not expired login');
+  for (const pathname of ['/NIU/TimeoutPage.aspx', '/NIU/Login.aspx']) {
+    finalPath = pathname;
+    assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'expired');
+  }
+  finalPath = '/NIU/timeout.aspx';
+  assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'unavailable', 'timeout overlay is not expiry');
+  finalPath = '/NIU/Application/FLO/FLO30/FLO3020_01.aspx';
+  flowTop.__niuLeaveTarget = flowForm;
+  flowForm.frames = [{location:{pathname:'/NIU/TimeoutPage.aspx'},document:{},frames:[]}];
+  fetched = null;
+  assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'expired');
+  assert.equal(fetched, null, 'expired child prevents flow fetch');
+  flowForm.frames = [];
   stalled = true;
   const pending = runAsync('flow', {formNo:'1150005007'});
   abortRead();
