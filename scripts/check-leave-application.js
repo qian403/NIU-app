@@ -176,4 +176,57 @@ assert.throws(()=>run('submitSupplement',{expectedFormNo:'1150009999'},detTop),/
 assert.throws(()=>run('submitSupplement',{expectedFormNo:'1150005007'},modTop),/FORM_CHANGED|ALREADY_SUBMITTED/);
 assert.equal(run('submitSupplement',{expectedFormNo:'1150005007'},detTop),'attempted'); assert.equal(detailSends,1);
 assert.throws(()=>run('submitSupplement',{expectedFormNo:'1150005007'},detTop),/ALREADY_SUBMITTED/); assert.equal(detailSends,1);
+
+// ---- 簽核流程: parsed from the same read-only FLO3020_01 page the form's button opens.
+(async () => {
+  const td = t => ({textContent:t});
+  const flowRows = [['簽核狀況','簽核日期','關卡說明','簽核單位','簽核人','簽核意見'],
+    ['已簽核','115/03/26 20:06:28','填單','測試學系','測試學生','(申請送出)'],
+    ['退回','115/03/31 14:05:00','承辦人歸檔','測試組','測試承辦','需檢附核准公文。'],
+    ['簽核中','','填單','測試學系','測試學生','']];
+  const flowGrid = {rows: flowRows.map(r => ({cells:r.map(td), textContent:r.join(' ')}))};
+  const page = (formNo) => ({querySelectorAll: sel => sel === 'td'
+      ? [td('申請單編號：'), td(formNo), td('簽核流程：'), td('01- 學生請假三日內(日間)')]
+      : sel === 'table' ? [flowGrid] : []});
+  let fetched = null, served = page('1150005007'), finalPath = '/NIU/Application/FLO/FLO30/FLO3020_01.aspx';
+  let status = 200, stalled = false, abortRead, timerCleared = false;
+  const flowNodes = {M_FORM_NO:{value:'1150005007'}, H_FORM_CODE:{value:'01'}, H_APPROVE_FLOW_CODE:{value:'01'}};
+  const flowForm = {location:{pathname:'/NIU/Application/SEC/SEC20/SEC2010_01.aspx'}, frames:[],
+    document:{getElementById:id=>flowNodes[id]},
+    fetch: async (url, options) => {
+      fetched = url;
+      assert.equal(options.credentials, 'same-origin');
+      if (stalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('ABORTED'))));
+      return {url:'https://acade.niu.edu.tw' + finalPath, status, ok:status === 200, text: async () => ''};
+    },
+    DOMParser: function () { this.parseFromString = () => served; }};
+  const flowTop = {location:{pathname:'/NIU/MainFrame.aspx'}, frames:[flowForm]};
+  const runAsync = (name, extra) => vm.runInNewContext(`(async function(){${blocks.helpers}\n${blocks[name]}})()`,
+    {window:flowTop, URL, URLSearchParams, AbortController,
+      setTimeout(callback, delay) { assert.equal(delay, 15000); abortRead = callback; timerCleared = false; return 1; },
+      clearTimeout(timer) { assert.equal(timer, 1); timerCleared = true; }, ...args, ...extra});
+  const flow = JSON.parse(await runAsync('flow', {formNo:'1150005007'}));
+  assert.equal(fetched, '/NIU/Application/FLO/FLO30/FLO3020_01.aspx?FORM_CODE=01&APPROVE_FLOW_CODE=01&FORM_NO=1150005007&STAFF_ID=');
+  assert.equal(flow.kind, 'flow'); assert.equal(flow.name, '學生請假三日內(日間)');
+  assert.equal(flow.steps.length, 3);
+  assert.deepEqual(flow.steps[1], {status:'退回', date:'115/03/31 14:05:00', stage:'承辦人歸檔', unit:'測試組', person:'測試承辦', comment:'需檢附核准公文。'});
+  await assert.rejects(runAsync('flow', {formNo:'1150009999'}), /FORM_CHANGED/, 'only the open form');
+  served = page('1150009999');
+  await assert.rejects(runAsync('flow', {formNo:'1150005007'}), /FORM_CHANGED/, 'page for another form');
+  served = page('1150005007'); finalPath = '/NIU/Default.aspx';
+  assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'expired', 'login redirect is a lapsed session');
+  assert.equal(timerCleared, true, 'redirect clears the timeout');
+  finalPath = '/NIU/Application/FLO/FLO30/FLO3020_01.aspx'; status = 503;
+  assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'unavailable', 'server failure is not expired login');
+  status = 401;
+  assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'expired');
+  status = 200; served = {querySelectorAll: () => []};
+  assert.equal(JSON.parse(await runAsync('flow', {formNo:'1150005007'})).kind, 'unavailable', 'changed markup is not expired login');
+  stalled = true;
+  const pending = runAsync('flow', {formNo:'1150005007'});
+  abortRead();
+  await assert.rejects(pending, /ABORTED/, 'a stalled request is bounded');
+  assert.equal(timerCleared, true, 'aborted request clears the timeout');
+  console.log('PASS: approval flow request, parsing, form identity, lapsed-session redirect, failure distinction and bounded fetch.');
+})().catch(error => { console.error(error); process.exitCode = 1; });
 console.log('PASS: records/actions list, open record, one-shot withdraw via school confirm and postback, modify/supplement form checks, mainFrame entry, notice cleanup, scoped expiry, required acknowledgement, account identity, school options, exact periods, missing controls, one-attempt submission, course parsing and disabled selection.');

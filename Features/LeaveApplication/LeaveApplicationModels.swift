@@ -29,6 +29,8 @@ nonisolated struct LeavePage: Decodable {
     var editable: Bool?
     var current: LeaveCurrentValues?
     var existingPeriods: [LeaveExistingPeriod]?
+    /// Read separately from 簽核流程; nil when not requested or unavailable.
+    var flow: LeaveApprovalFlow?
 }
 
 /// Values already saved on an existing leave form (modify / supplement / detail).
@@ -54,6 +56,36 @@ nonisolated struct LeaveExistingPeriod: Decodable, Identifiable, Hashable {
         let parts = periodID.split(separator: "|", omittingEmptySubsequences: false)
         guard parts.count >= 2 else { return false }
         return String(parts[0]) == date.replacingOccurrences(of: "/", with: "") && String(parts[1]) == period
+    }
+}
+
+/// 簽核流程 (FLO3020_01): each stage with the school's own wording.
+nonisolated struct LeaveApprovalFlow: Decodable, Equatable {
+    let kind: String
+    let name: String?
+    let steps: [LeaveApprovalStep]?
+
+    /// The newest 退回 comment, i.e. why the school returned the form.
+    var returnReason: String? {
+        steps?.last { $0.isReturned && !$0.comment.isEmpty }?.comment
+    }
+}
+
+nonisolated struct LeaveApprovalStep: Decodable, Equatable, Identifiable {
+    let status: String
+    let date: String
+    let stage: String
+    let unit: String
+    let person: String
+    let comment: String
+    var id: String { "\(stage)|\(status)|\(date)|\(person)" }
+
+    var isDone: Bool { status.contains("已簽核") }
+    var isReturned: Bool { status.contains("退回") }
+    var isCurrent: Bool { status.contains("簽核中") }
+    /// The school fills these automatically; they say nothing beyond the status.
+    var hasMeaningfulComment: Bool {
+        !comment.isEmpty && !["(已簽核，查無簽核意見。)", "(申請送出)", "(自動歸檔)"].contains(comment)
     }
 }
 

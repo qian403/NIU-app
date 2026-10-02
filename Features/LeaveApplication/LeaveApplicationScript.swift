@@ -147,6 +147,41 @@ nonisolated enum LeaveApplicationScript {
     return row ? 'waiting' : 'removed';
     """#
 
+    // 簽核流程: the same read-only page the form's「簽核流程」button opens
+    // (FLO3020_01.aspx with FORM_CODE / APPROVE_FLOW_CODE / FORM_NO from the open form).
+    static let flow = helpers + #"""
+    const w = find('/SEC2010_01.aspx');
+    if (!w) throw Error('FORM_CHANGED');
+    const d = w.document;
+    if (val(d, 'M_FORM_NO') !== formNo) throw Error('FORM_CHANGED');
+    const formCode = val(d, 'H_FORM_CODE'), flowCode = val(d, 'H_APPROVE_FLOW_CODE');
+    if (!formCode || !flowCode) throw Error('FORM_CHANGED');
+    const url = '/NIU/Application/FLO/FLO30/FLO3020_01.aspx?FORM_CODE=' + encodeURIComponent(formCode)
+      + '&APPROVE_FLOW_CODE=' + encodeURIComponent(flowCode) + '&FORM_NO=' + encodeURIComponent(formNo) + '&STAFF_ID=';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let page;
+    try {
+      const response = await w.fetch(url, {credentials: 'same-origin', signal: controller.signal});
+      if (!/\/FLO3020_01\.aspx$/i.test(new URL(response.url).pathname) || response.status === 401) return JSON.stringify({kind: 'expired'});
+      if (!response.ok) return JSON.stringify({kind: 'unavailable'});
+      page = new w.DOMParser().parseFromString(await response.text(), 'text/html');
+    } finally {
+      clearTimeout(timeout);
+    }
+    const text = c => String((c && c.textContent) || '').replace(/\s+/g, ' ').trim();
+    const cells = [...page.querySelectorAll('td')];
+    const labelled = label => { const i = cells.findIndex(c => text(c) === label); return i < 0 ? '' : text(cells[i + 1]); };
+    if (labelled('申請單編號：') && labelled('申請單編號：') !== formNo) throw Error('FORM_CHANGED');
+    const grid = [...page.querySelectorAll('table')].find(t => t.rows.length && /簽核狀況/.test(text(t.rows[0])) && /關卡說明/.test(text(t.rows[0])));
+    if (!grid) return JSON.stringify({kind: 'unavailable'});
+    const head = [...grid.rows[0].cells].map(text);
+    const get = (r, name) => { const i = head.indexOf(name); return i < 0 ? '' : text(r.cells[i]); };
+    const steps = [...grid.rows].slice(1).map(r => ({status: get(r, '簽核狀況'), date: get(r, '簽核日期'), stage: get(r, '關卡說明'),
+      unit: get(r, '簽核單位'), person: get(r, '簽核人'), comment: get(r, '簽核意見')})).filter(s => s.status || s.stage);
+    return JSON.stringify({kind: 'flow', name: labelled('簽核流程：').replace(/^\d+-\s*/, ''), steps});
+    """#
+
     // Evaluated in a subframe before a cross-origin login redirect commits.
     static let isLeaveFrame = #"""
     (() => {
