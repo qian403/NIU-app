@@ -147,6 +147,87 @@ actor PageGate {
         precondition(PostalQueryViewModel.message(for: PostalError.invalidResponse).contains("格式"))
         print("PASS: stale requests, filter edits, reset/account cleanup, empty vs network/parse errors")
 
+        let ownGate = Gate()
+        let personal = PostalQueryViewModel(makeService: {
+            StubPostalService(load: { query in try await ownGate.load(query) })
+        })
+        personal.prepare(account: " A001 ", name: " 測試同學 ")
+        try await settle { await ownGate.count == 1 }
+        precondition(personal.query == PostalQuery(name: "測試同學") && personal.isLoading)
+        personal.prepare(account: "a001", name: "測試同學")
+        try await ownGate.resolve(0)
+        try await settle { !personal.isLoading }
+        precondition(personal.resultQuery?.name == "測試同學")
+        let ownSearchCount = await ownGate.count
+        precondition(ownSearchCount == 1)
+        personal.query = PostalQuery(name: "其他同學", phone: "0912000000", trackingNumber: "OTHER", status: .returned)
+        personal.searchOwnMail()
+        try await settle { await ownGate.count == 2 }
+        precondition(personal.query == PostalQuery(name: "測試同學"))
+        personal.prepare(account: "b002", name: "另一位同學")
+        try await settle { await ownGate.count == 3 }
+        try await ownGate.resolve(1)
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(personal.records.isEmpty && personal.isLoading && personal.ownName == "另一位同學")
+        try await ownGate.resolve(2)
+        try await settle { !personal.isLoading }
+        precondition(personal.resultQuery?.name == "另一位同學")
+        personal.searchOwnMail()
+        try await settle { await ownGate.count == 4 }
+        personal.prepare(account: nil, name: nil)
+        try await ownGate.resolve(3)
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(personal.ownName == nil && personal.records.isEmpty && !personal.query.canSearch)
+        personal.prepare(account: "b002", name: "另一位同學")
+        try await settle { await ownGate.count == 5 }
+        try await ownGate.resolve(4)
+        try await settle { !personal.isLoading }
+        precondition(personal.resultQuery?.name == "另一位同學")
+
+        personal.selectOwnStatus(.collected)
+        try await settle { await ownGate.count == 6 }
+        precondition(personal.isLoading && personal.query.status == .collected)
+        personal.selectOwnStatus(.returned)
+        try await settle { await ownGate.count == 7 }
+        try await ownGate.resolve(5)
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(personal.resultQuery == nil && personal.isLoading)
+        try await ownGate.resolve(6)
+        try await settle { !personal.isLoading }
+        precondition(personal.resultQuery?.status == .returned)
+        personal.selectOwnStatus(.returned)
+        precondition(!personal.isLoading)
+        personal.search()
+        try await settle { await ownGate.count == 8 }
+        try await ownGate.resolve(7)
+        try await settle { !personal.isLoading }
+        precondition(personal.resultQuery?.status == .returned)
+        personal.prepare(account: "b002", name: "更新姓名")
+        try await settle { await ownGate.count == 9 }
+        try await ownGate.resolve(8)
+        try await settle { !personal.isLoading }
+        precondition(personal.resultQuery == PostalQuery(name: "更新姓名", status: .returned))
+        personal.prepare(account: "b002", name: "")
+        precondition(personal.ownName == nil && personal.resultQuery == nil && personal.records.isEmpty)
+        print("PASS: status changes auto-search, rapid switches reject stale results, refresh retains status, profile changes refresh identity")
+
+        let fallback = PostalQueryViewModel(makeService: {
+            StubPostalService(load: { query in try PostalHTML.page(fixture(), query: query) })
+        })
+        fallback.prepare(account: "a001", name: " \n ")
+        precondition(fallback.ownName == nil && !fallback.isLoading && !fallback.query.canSearch)
+        fallback.prepare(account: "a001", name: "A001")
+        precondition(fallback.ownName == nil && !fallback.isLoading)
+        fallback.query.name = "手動查詢"
+        fallback.prepare(account: "a001", name: "測試同學")
+        precondition(fallback.ownName == "測試同學" && fallback.query.name == "手動查詢" && !fallback.isLoading)
+        fallback.reset()
+        fallback.prepare(account: "a001", name: nil)
+        fallback.prepare(account: "a001", name: "測試同學")
+        try await settle { !fallback.isLoading }
+        precondition(fallback.resultQuery?.name == "測試同學")
+        print("PASS: automatic own-mail lookup, shortcut clears filters, account switch/logout discard stale results, reentry, missing/late profile")
+
         let factory = ServiceGate()
         let discarded = Mutex(0)
         let started = Mutex(0)

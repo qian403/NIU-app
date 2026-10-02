@@ -14,7 +14,9 @@ final class PostalQueryViewModel: ObservableObject {
     @Published private(set) var resultQuery: PostalQuery?
     @Published private(set) var updatedAt: Date?
     @Published private(set) var page: PostalPage?
+    @Published private(set) var ownName: String?
 
+    private var account: String?
     private let makeService: @Sendable () async -> any PostalServing
     private var service: (any PostalServing)?
     private var work: Task<Void, Never>?
@@ -30,6 +32,41 @@ final class PostalQueryViewModel: ObservableObject {
     }
 
     var filtersChanged: Bool { resultQuery.map { $0 != query.normalized } ?? false }
+
+    func prepare(account: String?, name: String?) {
+        let account = account?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        guard !account.isEmpty else { reset(); return }
+        if self.account != account {
+            reset()
+            self.account = account
+        }
+        let name = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let previousName = ownName
+        ownName = !name.isEmpty && name.lowercased() != account ? name : nil
+        if previousName != nil, ownName == nil {
+            reset()
+            self.account = account
+            return
+        }
+        // A late profile update may fill an untouched form, but must not replace manual filters.
+        guard ownName != previousName else { return }
+        if let previousName, query.normalized == PostalQuery(name: previousName, status: query.status) {
+            searchOwnMail(status: query.status)
+        } else if query == PostalQuery(), resultQuery == nil, !isLoading {
+            searchOwnMail()
+        }
+    }
+
+    func searchOwnMail(status: PostalStatus = .waiting) {
+        guard let ownName else { return }
+        query = PostalQuery(name: ownName, status: status)
+        search()
+    }
+
+    func selectOwnStatus(_ status: PostalStatus) {
+        guard ownName != nil, query.status != status else { return }
+        searchOwnMail(status: status)
+    }
 
     func search() {
         cancelWork()
@@ -106,6 +143,8 @@ final class PostalQueryViewModel: ObservableObject {
 
     func reset() {
         cancelWork()
+        account = nil
+        ownName = nil
         service?.invalidate()
         service = nil
         query = PostalQuery()
