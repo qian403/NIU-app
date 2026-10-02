@@ -31,6 +31,10 @@ struct SpecialThanksView: View {
                             .padding(Theme.Spacing.medium)
                             .background(Color(.secondarySystemGroupedBackground),
                                         in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                                    .strokeBorder(Theme.Colors.separator, lineWidth: 0.5)
+                            }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -56,7 +60,7 @@ struct SpecialThanksView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.large)
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Theme.Colors.groupedBackground.ignoresSafeArea())
         .navigationTitle("特別感謝")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await viewModel.load(force: true) }
