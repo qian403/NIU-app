@@ -78,6 +78,7 @@
 		BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */; };
 		C01100010000000000000001 /* Core/Services/ConnectionStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000001 /* Core/Services/ConnectionStatusService.swift */; };
 		C01100010000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift */; };
+		C0DE11010000000000000001 /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE11020000000000000001 /* AppUpdateChecker.swift */; };
 		C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE10020000000000000001 /* UsageHeartbeatClient.swift */; };
 		C0DE1100C0DE1100C0DE1100 /* LibraryEquipmentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1200C0DE1200C0DE1200 /* LibraryEquipmentModels.swift */; };
 		C0DE1101C0DE1101C0DE1101 /* LibraryEquipmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1201C0DE1201C0DE1201 /* LibraryEquipmentService.swift */; };
@@ -258,6 +259,7 @@
 		BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleFileViewer.swift; sourceTree = "<group>"; };
 		C01100020000000000000001 /* Core/Services/ConnectionStatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Services/ConnectionStatusService.swift; sourceTree = SOURCE_ROOT; };
 		C01100020000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/SettingsConnectionViewModel.swift; sourceTree = SOURCE_ROOT; };
+		C0DE11020000000000000001 /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
 		C0DE10020000000000000001 /* UsageHeartbeatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageHeartbeatClient.swift; sourceTree = "<group>"; };
 		C0DE1200C0DE1200C0DE1200 /* LibraryEquipmentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentModels.swift; sourceTree = "<group>"; };
 		C0DE1201C0DE1201C0DE1201 /* LibraryEquipmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentService.swift; sourceTree = "<group>"; };
@@ -660,6 +662,7 @@
 				10A32DCE2F4327A60009BB45 /* SSOSessionService.swift */,
 				10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */,
 				10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */,
+				C0DE11020000000000000001 /* AppUpdateChecker.swift */,
 				C0DE10020000000000000001 /* UsageHeartbeatClient.swift */,
 			);
 			path = Services;
@@ -1011,6 +1014,7 @@
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,
 				D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */,
 				ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */,
+				C0DE11010000000000000001 /* AppUpdateChecker.swift in Sources */,
 				C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */,
 				C01100010000000000000001 /* Core/Services/ConnectionStatusService.swift in Sources */,
 				C01100010000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift in Sources */,

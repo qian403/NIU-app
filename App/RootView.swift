@@ -3,9 +3,11 @@ import SwiftUI
 struct RootView: View {
     @StateObject private var appState = AppState()
     @StateObject private var router = CampusRouter.shared
+    @StateObject private var updateChecker = AppUpdateChecker.shared
     @ObservedObject private var sessionService = SSOSessionService.shared
     @AppStorage("app.appearance.mode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ZStack {
@@ -77,6 +79,24 @@ struct RootView: View {
             router.open(destination)
         }
         .preferredColorScheme(currentAppearanceMode.colorScheme)
+        .alert("有新版本可下載", isPresented: Binding(
+            get: { updateChecker.availableUpdate != nil },
+            set: { if !$0 { updateChecker.dismissUpdate() } }
+        ), presenting: updateChecker.availableUpdate) { update in
+            Button("前往更新") {
+                openURL(update.url)
+                updateChecker.dismissUpdate()
+            }
+            Button("我知道了", role: .cancel) {
+                updateChecker.dismissUpdate()
+            }
+        } message: { update in
+            Text("NIU-Life \(update.version) 已推出，前往 App Store 下載最新版本。")
+        }
+        .onChange(of: scenePhase, initial: true) { _, newValue in
+            guard newValue == .active else { return }
+            Task { await updateChecker.checkIfNeeded() }
+        }
         .task(id: appState.isAuthenticated && scenePhase == .active) {
             guard appState.isAuthenticated, scenePhase == .active else { return }
             await sessionService.refreshIfNeeded()

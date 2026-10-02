@@ -22,6 +22,11 @@ service = service.replace("static let shared = SSOSessionService()", """
 static let shared = SSOSessionService(backgroundTimeout: .seconds(3), refreshTimeout: .seconds(18))
 """, 1)
 screen = (root / "App/RootView.swift").read_text().split("#Preview")[0]
+updates = (root / "Core/Services/AppUpdateChecker.swift").read_text().replace(
+    "static let shared = AppUpdateChecker()",
+    'static let shared = AppUpdateChecker(session: .shared, defaults: .standard, bundleID: "", currentVersion: "")',
+    1,
+)  # The SSO fixture must not make App Store requests or show unrelated alerts.
 web = (root / "Features/Authentication/Services/SSOLoginWebView.swift").read_text()
 
 
@@ -365,6 +370,7 @@ with tempfile.TemporaryDirectory(prefix="niu-sso-refresh-webview-") as directory
     app.mkdir()
     files = []
     for name, contents in [("SSOSessionService.swift", service), ("RootView.swift", screen),
+                           ("AppUpdateChecker.swift", updates),
                            ("SSOLoginWebView.swift", web), ("Checks.swift", source)]:
         path = folder / name
         path.write_text(contents)
