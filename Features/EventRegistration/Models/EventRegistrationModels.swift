@@ -37,7 +37,7 @@ struct EventShareContent {
 
     var text: String {
         var lines = [name]
-        for (label, value) in [("主辦單位", department), ("活動時間", time),
+        for (label, value) in [("活動編號", url == nil ? "" : eventID), ("主辦單位", department), ("活動時間", time),
                                ("活動地點", location), ("報名時間", registrationTime)] {
             let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
             if !value.isEmpty { lines.append("\(label)：\(value)") }

@@ -32,6 +32,15 @@ checks = r'''
         let applied = try JSONDecoder().decode(EventData_Apply.self, from: data).shareContent
         precondition(available.text == applied.text)
         precondition(available.url?.absoluteString == "https://ccsys.niu.edu.tw/MvcTeam/Act/Apply/12345")
+        precondition(available.text == """
+        測試活動
+        活動編號：12345
+        主辦單位：測試單位
+        活動時間：2026/10/1
+        活動地點：測試教室
+        報名時間：2026/9/30
+        活動連結：https://ccsys.niu.edu.tw/MvcTeam/Act/Apply/12345
+        """, "share text must include the activity ID and link in the requested order")
         for value in ["測試活動", "測試單位", "2026/10/1", "測試教室", "2026/9/30", "活動連結："] {
             precondition(available.text.contains(value))
         }
