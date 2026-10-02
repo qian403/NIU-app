@@ -97,10 +97,6 @@ struct RootView: View {
             guard newValue == .active else { return }
             Task { await updateChecker.checkIfNeeded() }
         }
-        .task(id: appState.isAuthenticated && scenePhase == .active) {
-            guard appState.isAuthenticated, scenePhase == .active else { return }
-            await sessionService.refreshIfNeeded()
-        }
         .onChange(of: scenePhase) { _, newValue in
             switch newValue {
             case .active:

@@ -112,12 +112,6 @@ final class SSOSessionService: ObservableObject {
         drainPending(success: false)
     }
 
-    /// One foreground check; the caller owns cancellation and no timer repeats it.
-    func refreshIfNeeded() async {
-        guard autoRefreshEnabled, applicationIsActive(), !Task.isCancelled, !tokenIsValid() else { return }
-        _ = await requestRefresh()
-    }
-
     // MARK: - Called by feature ViewModels on session expiry
 
     /// Re-authenticates using stored credentials in RootView's SSOLoginWebView
