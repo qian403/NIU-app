@@ -20,6 +20,15 @@ root = Path(__file__).resolve().parents[1]
 source = (root / "Features/Moodle/Views/MoodleWebView.swift").read_text()
 manager_fixture = r'''
 import Foundation
+struct CaptchaImage { init?(data: Data) {} }
+@MainActor enum DispatchQueue {
+    static let main = TestQueue()
+}
+@MainActor final class TestQueue {
+    var pending: [() -> Void] = []
+    func asyncAfter(deadline: DispatchTime, execute: @escaping () -> Void) { pending.append(execute) }
+    func advance() { precondition(!pending.isEmpty); pending.removeFirst()() }
+}
 @MainActor final class WKWebView {
     var url = URL(string: "https://euni.niu.edu.tw/login/index.php")
     var isUserInteractionEnabled = true
@@ -42,6 +51,16 @@ import Foundation
     var attendanceLoginAttempts = 1
     let maxAttendanceLoginAttempts = 3
     var attendanceUsesManualLogin = false
+    var attendanceLoginPageGeneration: Int? = 0
+    var restarted = 0
+    var excludedImage: String?
+    func handleAttendanceLoginPage(_ webView: WKWebView, excludingCaptcha: String? = nil) {
+        precondition(attendanceLoginPageGeneration == nil)
+        attendanceLoginPageGeneration = attendanceNavigationGeneration
+        attendanceLoginAttempts += 1
+        restarted += 1
+        excludedImage = excludingCaptcha
+    }
     var storedWebView: WKWebView? = WKWebView()
     var checks = 0
     func showAttendanceLoginPage() { attendanceUsesManualLogin = true }
@@ -51,7 +70,9 @@ import Foundation
 '''
 for start, end in [
     ("    private func isTrustedAttendanceLoginPage", "    private struct AttendanceCaptchaPayload"),
-    ("    private struct AttendanceLoginSubmission", "    private func handleAttendanceLoginPage"),
+    ("    private struct AttendanceCaptchaPayload", "    private func handleAttendanceLoginPage"),
+    ("    private func refreshAttendanceCaptcha", "    private func retryAttendanceLoginPage"),
+    ("    private func captureAttendanceCaptcha", "    private func submitAttendanceLogin"),
     ("    private func retryAttendanceLoginPage", "    private func captureAttendanceCaptcha"),
     ("    private func submitAttendanceLogin", "    private func checkAttendanceLoginSubmission"),
     ("    private func javascriptLiteral", "    private func showAttendanceLoginPage"),
@@ -109,6 +130,93 @@ manager_fixture += r'''
         staleRetry.storedWebView!.finish(false)
         precondition(staleRetry.storedWebView!.requests.isEmpty)
         print("PASS: queued preparation cancellation/navigation, native POST validation, manual retry and fresh GET")
+        let oldImage = "data:image/png;base64,b2xk"
+        let newImage = "data:image/png;base64,bmV3"
+        func refresh(_ model: Model) {
+            model.refreshAttendanceCaptcha(model.storedWebView!, previousDataURL: oldImage,
+                generation: 0, navigationGeneration: 0)
+        }
+        for status in ["refreshed", "changed"] {
+            let model = Model()
+            refresh(model)
+            model.storedWebView!.finish(status)
+            precondition(model.restarted == 1 && model.excludedImage == oldImage)
+            precondition(model.attendanceLoginAttempts == 2 && model.storedWebView!.requests.isEmpty)
+            refresh(model)
+            model.storedWebView!.finish(status)
+            precondition(model.attendanceLoginAttempts == 3)
+            refresh(model)
+            precondition(model.attendanceUsesManualLogin && model.restarted == 2,
+                "Only three total image recognition attempts; never loop forever")
+        }
+        let manual = Model()
+        refresh(manual)
+        manual.storedWebView!.finish("manual")
+        precondition(manual.attendanceUsesManualLogin && manual.restarted == 0)
+        let unsupported = Model()
+        refresh(unsupported)
+        unsupported.storedWebView!.finish("unavailable")
+        unsupported.storedWebView!.finish(false)
+        precondition(unsupported.storedWebView!.requests.count == 1,
+            "Unsupported click handler retains the fresh-GET fallback")
+        for change in 0..<5 {
+            let model = Model()
+            let webView = model.storedWebView!
+            refresh(model)
+            if change == 0 { model.hasStarted = false }
+            if change == 1 { model.loadGeneration += 1 }
+            if change == 2 { model.attendanceNavigationGeneration += 1 }
+            if change == 3 { model.attendanceUsesManualLogin = true }
+            if change == 4 { model.storedWebView = WKWebView() }
+            webView.finish("refreshed")
+            precondition(model.restarted == 0 && webView.requests.isEmpty)
+        }
+        func payload(_ dataURL: String) -> String {
+            #"{"hasInput":true,"hasImage":true,"complete":true,"width":180,"dataURL":""# + dataURL + #""}"#
+        }
+        let capture = Model()
+        var completions = 0
+        capture.captureAttendanceCaptcha(capture.storedWebView!, attempt: 1,
+            generation: 0, navigationGeneration: 0, excludingDataURL: oldImage) { _, image in
+                precondition(image != nil)
+                completions += 1
+            }
+        capture.storedWebView!.finish(payload(oldImage))
+        precondition(completions == 0, "Clicking alone must not make the old bitmap eligible for OCR")
+        DispatchQueue.main.advance()
+        capture.storedWebView!.finish(payload(newImage))
+        precondition(completions == 1 && DispatchQueue.main.pending.isEmpty)
+        let timeout = Model()
+        var timedOut = false
+        timeout.captureAttendanceCaptcha(timeout.storedWebView!, attempt: 1,
+            generation: 0, navigationGeneration: 0, excludingDataURL: oldImage) { _, image in
+                precondition(image == nil)
+                timedOut = true
+            }
+        for attempt in 1...50 {
+            timeout.storedWebView!.finish(payload(oldImage))
+            if attempt < 50 {
+                precondition(!timedOut)
+                DispatchQueue.main.advance()
+            }
+        }
+        precondition(timedOut && DispatchQueue.main.pending.isEmpty, "Unchanged image wait must be bounded")
+        for change in 0..<4 {
+            let model = Model()
+            model.captureAttendanceCaptcha(model.storedWebView!, attempt: 1,
+                generation: 0, navigationGeneration: 0, excludingDataURL: oldImage) { _, _ in
+                    preconditionFailure("Cancelled capture must not complete")
+                }
+            model.storedWebView!.finish(payload(oldImage))
+            if change == 0 { model.hasStarted = false }
+            if change == 1 { model.loadGeneration += 1 }
+            if change == 2 { model.attendanceNavigationGeneration += 1 }
+            if change == 3 { model.attendanceUsesManualLogin = true }
+            DispatchQueue.main.advance()
+            precondition(model.storedWebView!.pending == nil && DispatchQueue.main.pending.isEmpty)
+        }
+        print("PASS: image-only retries, attempt limit, manual/stale callbacks, fresh image gating, timeout and cancelled polling")
+
     }
 }
 '''
