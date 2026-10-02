@@ -62,11 +62,12 @@ struct LeaveApplicationView: View {
             // After 8 s offer the school page; after 20 s reveal it so a login
             // or verification step the school requires is never left hidden.
             do { try await Task.sleep(for: .seconds(8)) } catch { return }
-            guard model.isBusy, model.page == nil else { return }
+            guard model.isBusy, model.page == nil || model.needsReconnect else { return }
             withAnimation(Theme.Animation.standard) { isWaitingLong = true }
             do { try await Task.sleep(for: .seconds(12)) } catch { return }
-            if model.isBusy, model.page == nil { showSchoolPage = true }
+            if model.isBusy, model.page == nil || model.needsReconnect { showSchoolPage = true }
         }
+        .onChange(of: model.needsReconnect) { _, needed in if !needed { showSchoolPage = false } }
         .onChange(of: model.page?.kind) { _, kind in if kind != nil { showSchoolPage = false } }
         .onDisappear { if !showReview && !showImporter { model.close() } }
         .onChange(of: appState.currentUser?.username) { _, _ in reset() }
@@ -164,6 +165,14 @@ struct LeaveApplicationView: View {
                 LeaveNotice(icon: "info.circle.fill", title: "校方訊息", detail: message, color: Theme.Colors.info)
             }
         }
+        if model.needsReconnect, !model.didAttemptSubmit {
+            Section {
+                Button(action: model.reconnect) {
+                    Label("重新連線", systemImage: "arrow.clockwise").frame(minHeight: 44)
+                }
+                .disabled(model.isBusy)
+            }
+        }
     }
 
     private var notice: some View {
@@ -194,7 +203,7 @@ struct LeaveApplicationView: View {
         } footer: {
             Text("共 \(model.dayCount) 天。考試週請選擇「期中、期末考試假」。")
         }
-        .disabled(model.isBusy)
+        .disabled(model.isBusy || model.needsReconnect)
 
         Section {
             TextField("例如：發燒就醫，附診斷證明", text: $model.reason, axis: .vertical)
@@ -205,7 +214,7 @@ struct LeaveApplicationView: View {
         } footer: {
             Text("如有調課，請選原課表節次，並在事由寫上實際上課日期。")
         }
-        .disabled(model.isBusy)
+        .disabled(model.isBusy || model.needsReconnect)
 
         periodSection
         attachmentSection
@@ -218,7 +227,7 @@ struct LeaveApplicationView: View {
                     Label("查詢這段期間的課程", systemImage: "magnifyingglass")
                         .frame(minHeight: 44)
                 }
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || model.needsReconnect)
             } else if model.periods.isEmpty {
                 Text("這段期間沒有可請假的課程節次，請調整日期。")
                     .foregroundStyle(.secondary)
@@ -246,7 +255,7 @@ struct LeaveApplicationView: View {
                     LeavePeriodRow(period: period, isSelected: model.selected.contains(period.id), tint: tint) {
                         model.togglePeriod(period.id)
                     }
-                    .disabled(model.isBusy)
+                    .disabled(model.isBusy || model.needsReconnect)
                 }
             } header: {
                 HStack {
@@ -255,7 +264,7 @@ struct LeaveApplicationView: View {
                     Button(allSelected ? "取消整天" : "整天") { model.toggleDay(day) }
                         .font(.footnote.weight(.semibold))
                         .textCase(nil)
-                        .disabled(model.isBusy)
+                        .disabled(model.isBusy || model.needsReconnect)
                         .accessibilityLabel(allSelected ? "取消選取 \(LeaveApplicationDate.display(roc: day)) 全部節次"
                                             : "選取 \(LeaveApplicationDate.display(roc: day)) 全部節次")
                 }
@@ -271,10 +280,10 @@ struct LeaveApplicationView: View {
             Button { showImporter = true } label: {
                 Label("附加證明文件", systemImage: "doc.badge.plus").frame(minHeight: 44)
             }
-            .disabled(model.isBusy)
+            .disabled(model.isBusy || model.needsReconnect)
             if !model.isSupplement {
                 Toggle("證明文件稍後補交", isOn: $model.supplementLater)
-                    .disabled(model.isBusy)
+                    .disabled(model.isBusy || model.needsReconnect)
             }
         } header: {
             Text("證明文件")
@@ -364,7 +373,7 @@ struct LeaveApplicationView: View {
                     Text("我已閱讀，開始填寫").fontWeight(.semibold).frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent).tint(tint)
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || model.needsReconnect)
             }
         } else if isForm && !reasonFocused {
             // Hidden while typing: above the keyboard's floating toolbar the bar left
