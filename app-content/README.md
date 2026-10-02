@@ -4,7 +4,7 @@
 
 ## 修改與發布
 
-1. 修改 `entries`：每筆有穩定且唯一的 `id`、`name`、`description`、`projectName`、HTTPS `url` 與整數 `order`（小的先顯示，相同時依 ID 排序）。現有項目改名時保留 ID。
+1. 修改 `entries`：每筆有穩定且唯一的 `id`、`name`、`description`、`projectName`、HTTPS `url` 與整數 `order`（小的先顯示，相同時依 ID 排序）。可選填 HTTPS `avatarURL` 顯示頭像，未提供或載入失敗時顯示預設人物圖示。現有項目改名時保留 ID。
 2. 每次內容變動增加 `revision`，`schemaVersion` 維持 `1`。名單完整取代，可刪除已撤下的項目；空陣列會顯示空結果。
 3. 執行 `python3 scripts/check-credits.py`，確認資料與離線更新回歸通過。
 4. 將資料提交並推送至 GitHub `main`。App 下次開啟此頁時檢查更新，成功檢查後 6 小時內使用快取；下拉更新可立即重試（仍受 GitHub CDN 傳播時間影響）。
