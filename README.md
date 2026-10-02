@@ -23,6 +23,7 @@ NIU-Life 是為國立宜蘭大學學生打造的非官方 iOS 校務輔助工具
 | 活動報名     | 瀏覽校園活動與活動詳情，進入報名流程。                                 |
 | 成績查詢     | 查看歷年成績與 GPA。                                                   |
 | 畢業門檻     | 查詢多元時數、英文與體適能等門檻。                                     |
+| 請假         | 先列出自己的假單與審核結果，校方開放時可撤回、修改或補交證明；新請假原生填寫假別、日期、節次與附件。 |
 | 小工具與快捷 | 在主畫面查看課表、行事曆，從鎖定畫面或控制中心快速開啟點名與圖書館。   |
 | 課表即時動態 | 在鎖定畫面與支援裝置的動態島顯示課程資訊；背景遠端更新需另行同意啟用。 |
 
@@ -114,6 +115,7 @@ View 負責呈現與互動，ViewModel 管理畫面狀態，Service／Repository
 | SSO 登入與儲存           | `node scripts/check-sso-login.js`、`python3 scripts/check-sso-storage.py` |
 | SSO 背景更新與取消       | `python3 scripts/check-sso-refresh.py`                                    |
 | SSO 背景／手動登入畫面（隔離模擬器） | `python3 scripts/check-sso-refresh-webview.py --device <UDID>`              |
+| 請假表單與送出保護       | `node scripts/check-leave-application.js` |
 | 歷年成績                 | `node scripts/check-grade-history.js`                                     |
 | 成績載入與取消           | `python3 scripts/check-grade-state.py`                                    |
 | 首頁／成績導覽（隔離模擬器） | `python3 scripts/check-home-navigation.py --device <UDID>`                |

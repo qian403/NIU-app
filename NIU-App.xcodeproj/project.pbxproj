@@ -132,6 +132,13 @@
 		E880B97A27A0F77D4C7CFF25 /* Features/EventRegistration/Views/EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */; };
 		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
 		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
+		AB7B640F8AE70F5F30711662 /* Features/LeaveApplication/LeaveApplicationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFFEF15665AE96A8536333A9 /* Features/LeaveApplication/LeaveApplicationModels.swift */; };
+		CCFC6B361A9912347758BB9F /* Features/LeaveApplication/LeaveApplicationScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B8AB1F968DF451911034C /* Features/LeaveApplication/LeaveApplicationScript.swift */; };
+		B1B43B8ED8D2514D57CF99CD /* Features/LeaveApplication/LeaveApplicationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37B60B3B17FBC7147D8005B /* Features/LeaveApplication/LeaveApplicationService.swift */; };
+		6837A9CFB155D3637C4AEF0C /* Features/LeaveApplication/LeaveApplicationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */; };
+		A3F92B69AB62F31CCEAE8CA7 /* Features/LeaveApplication/LeaveApplicationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */; };
+		B06CE59EEC4F785ABF96EB5D /* Features/LeaveApplication/LeaveRecordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */; };
+		0CA8802A7377A2C1B84807B5 /* Features/LeaveApplication/LeaveRecordsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -304,6 +311,13 @@
 		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
 		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
 		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
+		DFFEF15665AE96A8536333A9 /* Features/LeaveApplication/LeaveApplicationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationModels.swift; sourceTree = "<group>"; };
+		BC9B8AB1F968DF451911034C /* Features/LeaveApplication/LeaveApplicationScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationScript.swift; sourceTree = "<group>"; };
+		F37B60B3B17FBC7147D8005B /* Features/LeaveApplication/LeaveApplicationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationService.swift; sourceTree = "<group>"; };
+		BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationView.swift; sourceTree = "<group>"; };
+		EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationViewModel.swift; sourceTree = "<group>"; };
+		8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsView.swift; sourceTree = "<group>"; };
+		192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -732,6 +746,13 @@
 				CA4A11020000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift */,
 				CA4A11020000000000000004 /* Features/Mail/Views/MailView.swift */,
 				E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */,
+				EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */,
+				8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */,
+				192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */,
+				BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */,
+				F37B60B3B17FBC7147D8005B /* Features/LeaveApplication/LeaveApplicationService.swift */,
+				BC9B8AB1F968DF451911034C /* Features/LeaveApplication/LeaveApplicationScript.swift */,
+				DFFEF15665AE96A8536333A9 /* Features/LeaveApplication/LeaveApplicationModels.swift */,
 				6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */,
 				62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */,
 				E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */,
@@ -1063,6 +1084,13 @@
 				5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */,
 				07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */,
 				89D0768DA2A7FD7F8E7DEDC9 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift in Sources */,
+				A3F92B69AB62F31CCEAE8CA7 /* Features/LeaveApplication/LeaveApplicationViewModel.swift in Sources */,
+				B06CE59EEC4F785ABF96EB5D /* Features/LeaveApplication/LeaveRecordsView.swift in Sources */,
+				0CA8802A7377A2C1B84807B5 /* Features/LeaveApplication/LeaveRecordsViewModel.swift in Sources */,
+				6837A9CFB155D3637C4AEF0C /* Features/LeaveApplication/LeaveApplicationView.swift in Sources */,
+				B1B43B8ED8D2514D57CF99CD /* Features/LeaveApplication/LeaveApplicationService.swift in Sources */,
+				CCFC6B361A9912347758BB9F /* Features/LeaveApplication/LeaveApplicationScript.swift in Sources */,
+				AB7B640F8AE70F5F30711662 /* Features/LeaveApplication/LeaveApplicationModels.swift in Sources */,
 				9E289C2BD2E28A6F0671725A /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift in Sources */,
 				62AD37F2E5383849FA2B6E5D /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift in Sources */,
 				3A8A81A3C5A9851967C03C98 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift in Sources */,
