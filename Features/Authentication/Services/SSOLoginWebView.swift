@@ -183,6 +183,19 @@ public struct SSOLoginWebView: SSOViewRepresentable {
     #endif
 
     public class Coordinator: NSObject, WKNavigationDelegate {
+        #if DEBUG
+        private let timingStart = ProcessInfo.processInfo.systemUptime
+        private var timingPrevious = ProcessInfo.processInfo.systemUptime
+        #endif
+
+        private func trace(_ event: String) {
+            #if DEBUG
+            let now = ProcessInfo.processInfo.systemUptime
+            print("[SSO] \(event) elapsed_ms=\(Int((now - timingStart) * 1000)) stage_ms=\(Int((now - timingPrevious) * 1000))")
+            timingPrevious = now
+            #endif
+        }
+
         private let appState: AppState
         private let parent: SSOLoginWebView
         private var isProcessingCaptcha = false
@@ -255,13 +268,13 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard !cancelled else { return }
             let urlStr = webView.url?.absoluteString ?? ""
-            print("[SSO] 已載入: \(URL(string: urlStr)?.path ?? "")")
+            self.trace("已載入: \(URL(string: urlStr)?.path ?? "")")
 
             if urlStr.contains("StdMain.aspx") {
                 legacyCaptchaRetryCount = 0
                 didFallbackToLegacyFlow = false
                 getSSOViewState = false  // 重置狀態
-                print("[SSO] 登入成功 → 抓取學生資訊...")
+                self.trace("登入成功 → 抓取學生資訊...")
                 let GetStudentInfoJS = """
                 (function() {
                     function collectText(doc) {
@@ -364,7 +377,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
             if urlStr.contains("AccountLock.aspx") {
                 getSSOViewState = false  // 重置狀態
-                print("[SSO] 帳號鎖定")
+                self.trace("帳號鎖定")
                 eval(webView, "document.querySelector('#ContentPlaceHolder1_lbl_lockTime').textContent", "getLockTime") { val in
                     let lockTime = val as? String
                     self.parent.onResult(.accountLocked(lockTime: lockTime))
@@ -374,7 +387,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
             if urlStr.contains("error.html") {
                 getSSOViewState = false  // 重置狀態
-                print("[SSO] 系統錯誤頁面")
+                self.trace("系統錯誤頁面")
                 parent.onResult(.systemError)
                 return
             }
@@ -411,18 +424,18 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
         public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             let urlStr = webView.url?.absoluteString ?? ""
-            print("[SSO] 開始載入: \(URL(string: urlStr)?.path ?? "")")
+            self.trace("開始載入: \(URL(string: urlStr)?.path ?? "")")
         }
 
         public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             guard !cancelled else { return }
             let urlStr = webView.url?.absoluteString ?? ""
             let nsError = error as NSError
-            print("[SSO] 載入失敗(預備): \(URL(string: urlStr)?.path ?? "") error=\(error.localizedDescription)")
+            self.trace("載入失敗(預備): \(URL(string: urlStr)?.path ?? "") code=\((error as NSError).code)")
             
             // 超時錯誤處理
             if nsError.code == NSURLErrorTimedOut && !lastPostFailed && automaticSubmissionEnabled {
-                print("[SSO] 請求超時，重置狀態並重試...")
+                self.trace("請求超時，重置狀態並重試...")
                 lastPostFailed = true
                 getSSOViewState = false
                 isProcessingCaptcha = false
@@ -441,7 +454,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     }
                 }
             } else if nsError.code == NSURLErrorTimedOut && lastPostFailed {
-                print("[SSO] 重試後仍超時，停止嘗試")
+                self.trace("重試後仍超時，停止嘗試")
                 handleModernLoginOutcome(.systemError, in: webView)
             } else if nsError.code != NSURLErrorCancelled,
                       !modernLoginFinished,
@@ -456,7 +469,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             guard !cancelled else { return }
             let urlStr = webView.url?.absoluteString ?? ""
-            print("[SSO] 載入失敗: \(URL(string: urlStr)?.path ?? "") error=\(error.localizedDescription)")
+            self.trace("載入失敗: \(URL(string: urlStr)?.path ?? "") code=\((error as NSError).code)")
             let nsError = error as NSError
             if nsError.code != NSURLErrorCancelled,
                !modernLoginFinished,
@@ -470,7 +483,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
         public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             guard !modernLoginFinished else { return }
-            print("[SSO] WebContent 程序終止，嘗試恢復登入頁")
+            self.trace("WebContent 程序終止，嘗試恢復登入頁")
 
             guard modernWebContentRecoveryCount < 1 else {
                 handleModernLoginOutcome(
@@ -548,7 +561,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             guard !cancelled, !isProcessingCaptcha, !modernLoginFinished else { return }
             isProcessingCaptcha = true
             modernLoginDeadline = automaticSubmissionEnabled ? Date().addingTimeInterval(120) : nil
-            print("[SSO] 開始新版登入流程")
+            self.trace("開始新版登入流程")
             checkModernLoginState(in: webView)
             fillModernLoginForm(in: webView)
         }
@@ -733,7 +746,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             isProcessingCaptcha = false
             switch outcome {
             case .success(let token):
-                print("[SSO] 已收到登入憑證，驗證中")
+                self.trace("已收到登入憑證，驗證中")
                 finishModernLogin(token: token, in: webView)
             case .credentialsFailed(let message):
                 parent.onResult(.credentialsFailed(message: message))
@@ -774,7 +787,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
         private func finishModernLogin(token: String?, in webView: WKWebView) {
             guard let token, !token.isEmpty else {
-                print("[SSO] 新版登入成功但缺少 token")
+                self.trace("新版登入成功但缺少 token")
                 parent.onResult(.systemError)
                 return
             }
@@ -789,7 +802,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 guard !Task.isCancelled, self.isAttemptActive,
                       generation == self.modernPageGeneration else { return }
                 guard let info else {
-                    print("[SSO] 登入憑證驗證失敗")
+                    self.trace("登入憑證驗證失敗")
                     if self.parent.onInteractionRequired != nil {
                         self.rejectedModernToken = token
                         self.modernLoginFinished = false
@@ -805,7 +818,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 guard self.isAttemptActive, !self.appState.isLoggingOut else { return }
                 SSOTokenStore.shared.save(token: token, exp: self.tokenExpiration(token), account: self.parent.account)
                 self.appState.updateProfileFromSSO(info)
-                print("[SSO] 登入憑證驗證完成")
+                self.trace("登入憑證驗證完成")
                 self.parent.onResult(.success(info: info))
             }
         }
@@ -828,19 +841,19 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     let (data, response) = try await URLSession.shared.data(for: request)
                     let status = (response as? HTTPURLResponse)?.statusCode ?? -1
                     guard status == 200 else {
-                        print("[SSO] Authorization/info attempt=\(attempt) status=\(status)")
+                        self.trace("Authorization/info attempt=\(attempt) status=\(status)")
                         if status == 401 || status == 403 { return nil }
                         try? await Task.sleep(nanoseconds: 600_000_000)
                         continue
                     }
                     let payload = try JSONDecoder().decode(AuthorizationInfoResponse.self, from: data)
                     guard let d = payload.data else {
-                        print("[SSO] Authorization/info attempt=\(attempt) 無 data 欄位")
+                        self.trace("Authorization/info attempt=\(attempt) 無 data 欄位")
                         try? await Task.sleep(nanoseconds: 600_000_000)
                         continue
                     }
                     guard d.acnt?.lowercased() == parent.account.lowercased() else {
-                        print("[SSO] Authorization/info 帳號不符")
+                        self.trace("Authorization/info 帳號不符")
                         return nil
                     }
                     let name = d.chName?.nilIfEmpty ?? parent.account
@@ -851,10 +864,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     } else {
                         grade = ""
                     }
-                    print("[SSO] 新版登入取得學生資訊")
+                    self.trace("新版登入取得學生資訊")
                     return StudentInfo(name: name, department: department, grade: grade)
                 } catch {
-                    print("[SSO] Authorization/info attempt=\(attempt) 失敗: \(error.localizedDescription)")
+                    self.trace("Authorization/info attempt=\(attempt) 失敗 code=\((error as NSError).code)")
                     try? await Task.sleep(nanoseconds: 600_000_000)
                     continue
                 }
@@ -1156,7 +1169,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 }
 
                 if let error {
-                    print("[SSO] fallback 驗證碼下載失敗: \(error.localizedDescription)")
+                    print("[SSO] fallback 驗證碼下載失敗 code=\((error as NSError).code)")
                     finish(nil)
                     return
                 }

@@ -156,6 +156,8 @@ func section(_ id: Int, _ modules: [MoodleModule], visible: Int? = nil) -> Moodl
         precondition(model.errorMessage == nil && !model.isLoading)
         print("PASS: course switching, empty state, logout and account switching")
         checkWebLogin()
+        checkExpiredSSOLanding()
+        try await checkSSOIDCoordinator()
         checkRepeatedOpen()
     }
 }
@@ -165,12 +167,17 @@ WEB_FIXTURE = r'''
 func check(_ value: Bool) { precondition(value) }
 @MainActor final class WKWebView {
     var url: URL?
+    var isUserInteractionEnabled = true
     var navigationDelegate: AnyObject?
     var uiDelegate: AnyObject?
     var requests: [URLRequest] = []
     func load(_ request: URLRequest) { requests.append(request); url = request.url }
     func stopLoading() {}
+    func evaluateJavaScript(_ script: String, completionHandler: (Any?, Error?) -> Void) {
+        completionHandler(#"{"match":"JumpTo.aspx?fixture=synthetic"}"#, nil)
+    }
 }
+protocol WKNavigationDelegate {}
 final class WKNavigation {}
 @MainActor final class SSOEUNISettings {
     static let shared = SSOEUNISettings()
@@ -201,12 +208,16 @@ final class WKNavigation {}
     }
     func showQuestionLogin() { questionNeedsWebInteraction = true; isPageReady = true }
     func isLoginPage(_ value: String) -> Bool { value.contains("/login/") }
-    func isSSODefaultPage(_ value: String) -> Bool { value.contains("Default.aspx") }
+    // PRODUCTION_EXPIRED_PAGE
     func handleAttendanceLoginPage(_ web: WKWebView) { fatalError("Unrelated attendance path") }
-    func extractEUNIRedirectPath(from web: WKWebView) { fatalError("Unrelated SSO extraction") }
-    func fallbackToTargetAfterSSOFailure() { fatalError("Unexpected fallback") }
-    func attemptSilentRefreshAndRetry(_ reason: String) { fatalError("Login must remain visible") }
-    func resolveEuniInSameWebViewForUpload(reason: String) { fatalError("Unrelated upload path") }
+    var extractions = 0
+    var fallbacks = 0
+    var refreshes = 0
+    var uploadResolutions = 0
+    func extractEUNIRedirectPath(from web: WKWebView) { extractions += 1 }
+    func fallbackToTargetAfterSSOFailure() { fallbacks += 1 }
+    func attemptSilentRefreshAndRetry(_ reason: String) { refreshes += 1 }
+    func resolveEuniInSameWebViewForUpload(reason: String) { uploadResolutions += 1 }
     func finishLoading() { phase = .done; isPageReady = true }
     func inspectAttendancePage(_ web: WKWebView) { fatalError("Unrelated attendance path") }
     func failAsNeedsRelogin() { fatalError("Login must remain visible") }
@@ -234,6 +245,7 @@ final class WKNavigation {}
         web.url = URL(string: "https://euni.niu.edu.tw/mod/quiz/view.php?id=1")
         manager.webView(web, didFinish: nil)
         precondition(manager.isPageReady && manager.phase == .done)
+        precondition(manager.refreshes == 0 && manager.fallbacks == 0 && manager.uploadResolutions == 0)
         let loads = manager.targetLoads
         web.url = URL(string: "https://euni.niu.edu.tw/mod/quiz/summary.php?attempt=1")
         manager.webView(web, didFinish: nil)
@@ -241,11 +253,108 @@ final class WKNavigation {}
     }
     print("PASS: visible manual login, initial SSO return target and no attempt replay")
 }
+
+@MainActor func checkExpiredSSOLanding() {
+    for host in ["ccsys.niu.edu.tw", "ccsys1.niu.edu.tw"] {
+        for path in ["/SSO/login", "/SSO/Default.aspx"] {
+            for phase in [WebFixture.Phase.resolvingEuni, .ssoRedirect] {
+                for upload in [false, true] {
+                    let manager = WebFixture()
+                    let web = WKWebView()
+                    manager.storedWebView = web
+                    manager.isQuestionActivityTarget = false
+                    manager.isAssignmentUploadTarget = upload
+                    manager.phase = phase
+                    web.url = URL(string: "https://\(host)\(path)?next=Std002.aspx#synthetic")
+                    manager.webView(web, didFinish: nil)
+                    precondition(manager.refreshes == ((phase == .resolvingEuni && upload)
+                        || (phase == .ssoRedirect && !upload) ? 1 : 0))
+                    precondition(manager.fallbacks == (phase == .resolvingEuni && !upload ? 1 : 0))
+                    precondition(manager.uploadResolutions == (phase == .ssoRedirect && upload ? 1 : 0))
+                    precondition(manager.extractions == 0 && manager.targetLoads == 0)
+                }
+            }
+        }
+    }
+    let manager = WebFixture()
+    let web = WKWebView()
+    manager.storedWebView = web
+    manager.isQuestionActivityTarget = false
+    manager.phase = .resolvingEuni
+    for raw in ["https://ccsys.niu.edu.tw/SSO/JumpTo.aspx?GUID=synthetic",
+                "https://unrelated.example/SSO/login"] {
+        web.url = URL(string: raw)
+        manager.webView(web, didFinish: nil)
+        precondition(manager.refreshes == 0 && manager.fallbacks == 0 && manager.extractions == 0)
+    }
+    web.url = URL(string: "https://ccsys.niu.edu.tw/SSO/Std002.aspx")
+    manager.webView(web, didFinish: nil)
+    precondition(manager.extractions == 1)
+    print("PASS: production resolvingEuni/ssoRedirect route expired SSO landings for both hosts and target types")
+}
+@MainActor func checkSSOIDCoordinator() async throws {
+    for host in ["ccsys.niu.edu.tw", "ccsys1.niu.edu.tw"] {
+        for path in ["/SSO/login", "/SSO/Default.aspx"] {
+            var completions = 0
+            let coordinator = SSOIDCoordinator { result in
+                precondition(result == nil)
+                completions += 1
+            }
+            let web = WKWebView()
+            web.url = URL(string: "https://\(host)\(path)?next=Std002.aspx")
+            coordinator.webView(web, didFinish: nil)
+            coordinator.webView(web, didFinish: nil)
+            try await Task.sleep(for: .milliseconds(30))
+            precondition(completions == 1, "Expired SSO must fail promptly and exactly once")
+        }
+    }
+    for provisional in [false, true] {
+        for error in [NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled),
+                      NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut),
+                      NSError(domain: "SyntheticOtherDomain", code: NSURLErrorCancelled)] {
+            var results: [String?] = []
+            let coordinator = SSOIDCoordinator { results.append($0) }
+            let web = WKWebView()
+            if provisional {
+                coordinator.webView(web, didFailProvisionalNavigation: nil, withError: error)
+            } else {
+                coordinator.webView(web, didFail: nil, withError: error)
+            }
+            try await Task.sleep(for: .milliseconds(30))
+            let ignored = error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled
+            precondition(results.count == (ignored ? 0 : 1))
+            if !ignored { precondition(results[0] == nil) }
+            web.url = URL(string: "https://ccsys.niu.edu.tw/SSO/Std002.aspx")
+            coordinator.webView(web, didFinish: nil)
+            try await Task.sleep(for: .milliseconds(30))
+            precondition(results.count == 1)
+            precondition((results[0] != nil) == ignored,
+                         "Only URL cancellation preserves the pending redirect and accepts its success")
+            coordinator.cancel()
+        }
+    }
+    print("PASS: production SSOIDCoordinator immediate expiry, single completion, cancellation domain/code and redirect recovery")
+}
 '''
 web_source = (ROOT / "Features/Moodle/Views/MoodleWebView.swift").read_text()
 start = web_source.index("    func webView(_ wv: WKWebView, didFinish navigation:")
 end = web_source.index("    func webView(_ wv: WKWebView, didFail navigation:", start)
-CHECKS += WEB_FIXTURE.replace("    // PRODUCTION_DID_FINISH", web_source[start:end])
+bridge_source = (ROOT / "Core/Services/SSOGUIDBridge.swift").read_text()
+bridge_start = bridge_source.index("    static func isSessionExpiredURL(")
+bridge_end = bridge_source.index("\n    }", bridge_start) + len("\n    }")
+CHECKS += "\nenum SSOGUIDBridge {\n" + bridge_source[bridge_start:bridge_end] + "\n}\n"
+helper_start = web_source.index("    private func isSSOSessionExpiredPage(")
+helper_end = web_source.index("\n    }", helper_start) + len("\n    }")
+CHECKS += WEB_FIXTURE.replace("    // PRODUCTION_DID_FINISH", web_source[start:end]).replace(
+    "    // PRODUCTION_EXPIRED_PAGE", web_source[helper_start:helper_end])
+session_source = (ROOT / "Features/Moodle/Services/MoodleSessionManager.swift").read_text()
+CHECKS += session_source[session_source.index("private class SSOIDCoordinator:"):]
+# The existing retry budget must remain in place; no additional refresh loop.
+refresh_start = web_source.index("    private func attemptSilentRefreshAndRetry(")
+refresh_end = web_source.index("    private func fallbackToTargetAfterSSOFailure", refresh_start)
+refresh = web_source[refresh_start:refresh_end]
+assert refresh.index("guard !hasTriedSilentRefresh else") < refresh.index("hasTriedSilentRefresh = true")
+assert refresh.index("hasTriedSilentRefresh = true") < refresh.index("requestRefresh()")
 
 STARTUP = r'''
 @MainActor final class DialogFixture { func cancel() {} }
@@ -268,6 +377,9 @@ STARTUP = r'''
     var questionTimeoutTask: Task<Void, Never>?
     var loadGeneration = 0
     var attendanceNavigationGeneration = 0
+    var attendanceCaptchaTask: Task<Void, Never>?
+    var attendanceLoginPageGeneration: Int?
+    var attendanceUsesManualLogin = false
     var assignmentResolveAttempts = 0
     var attendanceLoginAttempts = 0
     var retriedAfterLoginRedirect = false

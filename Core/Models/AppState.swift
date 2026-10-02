@@ -40,6 +40,9 @@ final class AppState: ObservableObject {
 
     func login(user: User) {
         guard !isLoggingOut else { return }
+        // A new login replaces the session, including any pending refresh/EUNI work.
+        SSOSessionService.shared.disableAutoRefresh()
+        MoodleSessionManager.shared.reset()
         MailViewModel.shared.reset()
         LiveActivityRemoteClient.shared.stop()
         UserDefaults.standard.set(UUID().uuidString, forKey: StorageKeys.authSessionID)

@@ -119,6 +119,7 @@ View 負責呈現與互動，ViewModel 管理畫面狀態，Service／Repository
 | 首頁／成績導覽（隔離模擬器） | `python3 scripts/check-home-navigation.py --device <UDID>`                |
 | 點名回應解析             | `python3 scripts/check-attendance-response.py`                            |
 | 點名驗證碼與登入         | `python3 scripts/check-attendance-captcha.py`、`node scripts/check-attendance-login.js` |
+| 點名 OCR 正確率與耗時（離線） | `python3 scripts/check-attendance-captcha.py --benchmark`；自備已標註圖片可用 `--manifest <JSON>`，舊版比較用 `--processor <Swift>` |
 | 特別感謝名單與快取       | `python3 scripts/check-credits.py`                                        |
 | 非同步工作與生命週期     | `python3 scripts/check-lifetimes.py`                                      |
 | 背景即時動態用戶端       | `python3 scripts/check-live-activity-client.py`                           |
@@ -126,6 +127,8 @@ View 負責呈現與互動，ViewModel 管理畫面狀態，Service／Repository
 | App Store 發行前靜態檢查 | `python3 scripts/check-app-store.py`                                      |
 
 這些檢查不等同校方服務端到端測試，也不能取代模擬器、真機與 Release archive 驗證。請勿以真實 Keychain 憑證或實際點名操作作為自動化回歸資料。
+
+OCR benchmark 分別統計正確、誤讀、拒絕辨識、首次耗時及後續 P50／P95，不會提交登入或點名。預設使用 120 張固定合成圖片；自備 manifest 格式為 `[{"path":"sample.png","expected":"12345"}]`，圖片路徑相對於 manifest。真實驗證圖與標註留在版本庫外；離線圖片正確率不代表實際登入成功率。比較耗時時依序執行，避免同時編譯或跑其他 OCR 影響結果。
 
 ### 公開行事曆資料
 

@@ -18,6 +18,13 @@ def method(signature: str) -> str:
 
 
 assert not re.search(r'URLQueryItem\(name: "wstoken"', source), "wstoken must not be a URL query item"
+# Log statements must not expose raw URLs, HTML, response text or error payloads.
+logs = "\n".join(line for line in source.splitlines() if "print(" in line)
+for unsafe in ["absoluteString", ".query", "html.prefix", r"\(error)", "failureReasons.joined",
+               r"\(hiddenEnv)", r"\(hiddenP)", r"\(hiddenPage)"]:
+    assert unsafe not in logs, f"Unsafe diagnostic: {unsafe}"
+assert r"htmlBytes=\(html.utf8.count)" in logs
+assert logs.count("diagnosticLocation(for:") == 2
 helpers = source[source.index("private extension String {"):]
 attendance = helpers.index("// MARK: - Attendance HTML Patterns")
 request_body = helpers[helpers.index("nonisolated enum MoodleRequestBody"):]
@@ -31,13 +38,21 @@ struct Service {
     let baseURL = "https://euni.niu.edu.tw"
     func applyMoodleMobileHeaders(to request: inout URLRequest) {}
 ''' + method("    func fileURL(for rawURL: String) -> URL? {") + \
-    method("    private func webServiceRequest(").replace("private ", "") + r'''
+    method("    private func webServiceRequest(").replace("private ", "") + \
+    method("    private func diagnosticLocation(").replace("private ", "") + r'''
 }
 
 @main
 struct Checks {
     static func main() async throws {
         let service = Service(token: "SYNTHETIC")
+        for raw in ["https://user:password@euni.niu.edu.tw/admin/tool/mobile/autologin.php?key=SYNTHETIC#private",
+                    "https://euni.niu.edu.tw/admin/tool/mobile/autologin.php?urltogo=secret&token=SYNTHETIC"] {
+            precondition(service.diagnosticLocation(for: URL(string: raw))
+                == "euni.niu.edu.tw/admin/tool/mobile/autologin.php")
+        }
+        precondition(service.diagnosticLocation(for: nil) == "nil")
+        print("PASS: diagnostic URLs retain only host/path; log statements omit HTML and raw errors")
         for raw in ["https://evil.example/a.png", "//evil.example/a.png",
                     "https://euni.niu.edu.tw.evil.example/a.png", "https://euni.niu.edu.tw:8443/a.png",
                     "https://user@euni.niu.edu.tw/a.png"] {

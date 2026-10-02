@@ -128,22 +128,30 @@ private class SSOIDCoordinator: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let url = webView.url?.absoluteString ?? ""
-        print("[MoodleSession] didFinish: \(URL(string: url)?.path ?? "")")
+        guard !isDone, let url = webView.url else { return }
+        print("[MoodleSession] didFinish: \(url.path)")
 
-        if url.contains("Std002.aspx") {
-            extractEUNILink(from: webView, attempt: 0)
-        } else if url.contains("Default.aspx") {
-            print("[MoodleSession] SSO expired (redirected to Default.aspx)")
+        if SSOGUIDBridge.isSessionExpiredURL(url) {
+            print("[MoodleSession] SSO session missing at \(url.path)")
             finish(nil)
+            return
+        }
+        if url.path.contains("Std002.aspx") {
+            extractEUNILink(from: webView, attempt: 0)
         }
     }
 
     func webView(_ wv: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        finish(nil)
+        fail(error)
     }
 
     func webView(_ wv: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        fail(error)
+    }
+
+    private func fail(_ error: Error) {
+        let nsError = error as NSError
+        guard nsError.domain != NSURLErrorDomain || nsError.code != NSURLErrorCancelled else { return }
         finish(nil)
     }
 
