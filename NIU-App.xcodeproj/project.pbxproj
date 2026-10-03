@@ -140,6 +140,21 @@
 		A3F92B69AB62F31CCEAE8CA7 /* Features/LeaveApplication/LeaveApplicationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */; };
 		B06CE59EEC4F785ABF96EB5D /* Features/LeaveApplication/LeaveRecordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */; };
 		0CA8802A7377A2C1B84807B5 /* Features/LeaveApplication/LeaveRecordsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */; };
+		CA4A22010000000000000001 /* NativeMailModels in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000001; };
+		CA4A22010000000000000002 /* NativeMailService in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000002; };
+		CA4A22010000000000000003 /* NativeMailViewModel in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000003; };
+		CA4A22010000000000000004 /* NativeMailView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000004; };
+		CA4A22050000000000000001 = {isa = PBXBuildFile; productRef = CA4A22040000000000000001; };
+		CA4A22050000000000000002 = {isa = PBXBuildFile; productRef = CA4A22040000000000000002; };
+		CA4A22050000000000000003 = {isa = PBXBuildFile; productRef = CA4A22040000000000000003; };
+		CA4A22010000000000000005 /* MailboxListView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000005; };
+		CA4A22010000000000000006 /* MessageListView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000006; };
+		CA4A22010000000000000007 /* MessageDetailView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000007; };
+		CA4A22010000000000000008 /* ComposeView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000008; };
+		CA4A22010000000000000009 /* MailComponents in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000009; };
+		CA4A2201000000000000000A /* NativeMailUIFixtureService in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000A; };
+		CA4A2201000000000000000B /* MailHTMLPolicy in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000B; };
+		CA4A2201000000000000000C /* MailHTMLView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000C; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -320,6 +335,18 @@
 		EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationViewModel.swift; sourceTree = "<group>"; };
 		8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsView.swift; sourceTree = "<group>"; };
 		192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsViewModel.swift; sourceTree = "<group>"; };
+		CA4A22020000000000000001 /* NativeMailModels */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailModels.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000002 /* NativeMailService */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailService.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000003 /* NativeMailViewModel */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailViewModel.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000004 /* NativeMailView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000005 /* MailboxListView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailboxListView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000006 /* MessageListView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MessageListView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000007 /* MessageDetailView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MessageDetailView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000008 /* ComposeView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/ComposeView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000009 /* MailComponents */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailComponents.swift; sourceTree = SOURCE_ROOT; };
+		CA4A2202000000000000000A /* NativeMailUIFixtureService */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailUIFixtureService.swift; sourceTree = SOURCE_ROOT; };
+		CA4A2202000000000000000B /* MailHTMLPolicy */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLPolicy.swift; sourceTree = SOURCE_ROOT; };
+		CA4A2202000000000000000C /* MailHTMLView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLView.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -348,6 +375,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CA4A22050000000000000001,
+				CA4A22050000000000000002,
+				CA4A22050000000000000003,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -744,6 +774,18 @@
 				DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */,
 				CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */,
 				CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */,
+				CA4A22020000000000000001 /* NativeMailModels */,
+				CA4A22020000000000000002 /* NativeMailService */,
+				CA4A22020000000000000003 /* NativeMailViewModel */,
+				CA4A22020000000000000004 /* NativeMailView */,
+				CA4A22020000000000000009 /* MailComponents */,
+				CA4A2202000000000000000B /* MailHTMLPolicy */,
+				CA4A2202000000000000000C /* MailHTMLView */,
+				CA4A2202000000000000000A /* NativeMailUIFixtureService */,
+				CA4A22020000000000000008 /* ComposeView */,
+				CA4A22020000000000000007 /* MessageDetailView */,
+				CA4A22020000000000000006 /* MessageListView */,
+				CA4A22020000000000000005 /* MailboxListView */,
 				CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */,
 				CA4A11020000000000000002 /* Features/Mail/Services/MailService.swift */,
 				CA4A11020000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift */,
@@ -875,6 +917,9 @@
 			);
 			name = "NIU-APP";
 			packageProductDependencies = (
+				CA4A22040000000000000001,
+				CA4A22040000000000000002,
+				CA4A22040000000000000003,
 			);
 			productName = "NIU-APP";
 			productReference = 10A32D662F431B8B0009BB45 /* NIU-APP.app */;
@@ -929,6 +974,7 @@
 			);
 			mainGroup = 10A32D5D2F431B8B0009BB45;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (CA4A22030000000000000001, CA4A22030000000000000002, CA4A22030000000000000003);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 10A32D672F431B8B0009BB45 /* Products */;
 			projectDirPath = "";
@@ -977,6 +1023,18 @@
 			files = (
 				CA4A11010000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift in Sources */,
 				CA4A11010000000000000006 /* Features/Mail/Services/MailBrowser.swift in Sources */,
+				CA4A22010000000000000001 /* NativeMailModels in Sources */,
+				CA4A22010000000000000002 /* NativeMailService in Sources */,
+				CA4A22010000000000000003 /* NativeMailViewModel in Sources */,
+				CA4A22010000000000000004 /* NativeMailView in Sources */,
+				CA4A22010000000000000009 /* MailComponents in Sources */,
+				CA4A2201000000000000000B /* MailHTMLPolicy in Sources */,
+				CA4A2201000000000000000C /* MailHTMLView in Sources */,
+				CA4A2201000000000000000A /* NativeMailUIFixtureService in Sources */,
+				CA4A22010000000000000008 /* ComposeView in Sources */,
+				CA4A22010000000000000007 /* MessageDetailView in Sources */,
+				CA4A22010000000000000006 /* MessageListView in Sources */,
+				CA4A22010000000000000005 /* MailboxListView in Sources */,
 				CA4A11010000000000000001 /* Features/Mail/Models/MailModels.swift in Sources */,
 				CA4A11010000000000000002 /* Features/Mail/Services/MailService.swift in Sources */,
 				CA4A11010000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift in Sources */,
@@ -1117,6 +1175,13 @@
 			targetProxy = 10D1F8872F80C57A00034946 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+		CA4A22030000000000000001 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/Cocoanetics/SwiftMail.git"; requirement = {kind = revision; revision = b45ab8cbb08d989ec7dcad139b8bfbc0f1f080cc; }; };
+		CA4A22040000000000000001 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000001; productName = SwiftMail; };
+		CA4A22030000000000000002 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/scinfu/SwiftSoup.git"; requirement = {kind = exactVersion; version = 2.9.6; }; };
+		CA4A22040000000000000002 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000002; productName = SwiftSoup; };
+		CA4A22030000000000000003 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/apple/swift-log.git"; requirement = {kind = exactVersion; version = 1.6.4; }; };
+		CA4A22040000000000000003 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000003; productName = Logging; };
 
 /* Begin XCBuildConfiguration section */
 		10A32D6F2F431B8C0009BB45 /* Debug */ = {

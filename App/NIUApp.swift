@@ -5,12 +5,26 @@ import BackgroundTasks
 struct NIUApp: App {
     
     init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") || NativeMailUIFixtureScreen.launchScreen() != nil {
+            configureAppearance()
+            return
+        }
+        #endif
         setupApp()
     }
     
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") || NativeMailUIFixtureScreen.launchScreen() != nil {
+                NativeMailUIFixtureRoot()
+            } else {
+                RootView()
+            }
+            #else
             RootView()
+            #endif
         }
     }
     

@@ -126,7 +126,7 @@ struct HomeView: View {
         case .eventRegistration: EventRegistrationView()
         case .gradeHistory: GradeHistoryView()
         case .graduationThreshold: GraduationThresholdView()
-        case .mail: MailView()
+        case .mail: NativeMailView(account: appState.currentUser?.username ?? "", isAuthenticated: appState.isAuthenticated)
         case .enrollmentCertificate: EnrollmentCertificateView()
         case .postalQuery: PostalQueryView()
         case .tools: HomeToolsView()
@@ -506,7 +506,7 @@ struct HomeView: View {
                 FeatureCard(
                     icon: "envelope.fill",
                     title: "校園信箱",
-                    subtitle: "收發郵件、附件與信件管理",
+                    subtitle: "收發郵件、回覆與附件",
                     color: .blue,
                     destination: .mail
                 )
