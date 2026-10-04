@@ -82,17 +82,14 @@ struct EventRegistration_Tab1_View: View {
     }
 
     private func eventRow(_ event: EventData) -> some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: 0))
-        return layout {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
             Button {
                 if viewModel.isSelecting { viewModel.toggleSelection(event) }
                 else { selectedEvent = event }
             } label: {
                 let cardLayout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-                    : AnyLayout(HStackLayout(spacing: 0))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
                 cardLayout {
                     if viewModel.isSelecting {
                         Image(systemName: viewModel.selectedIDs.contains(event.id) ? "checkmark.circle.fill" : "circle")
@@ -102,6 +99,7 @@ struct EventRegistration_Tab1_View: View {
                     }
                     EventRow(event: event)
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
@@ -113,20 +111,41 @@ struct EventRegistration_Tab1_View: View {
                 viewModel.toggleSelection(event)
             }
 
-            Button { viewModel.toggleFavorite(event) } label: {
-                Label(viewModel.favoriteIDs.contains(event.id) ? "取消收藏" : "收藏",
-                      systemImage: viewModel.favoriteIDs.contains(event.id) ? "star.fill" : "star")
-                    .labelStyle(EventFavoriteLabelStyle(showsTitle: dynamicTypeSize.isAccessibilitySize))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .font(.title3)
-                    .foregroundStyle(viewModel.favoriteIDs.contains(event.id) ? Color.orange : Color.secondary)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
+            let footerLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(alignment: .center, spacing: 8))
+            footerLayout {
+                EventStatusBadge(text: event.event_state, color: event.stateColor)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+                favoriteButton(event)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(viewModel.favoriteIDs.contains(event.id) ? "取消收藏" : "收藏")：\(event.name)")
-            .accessibilityValue(viewModel.favoriteIDs.contains(event.id) ? "已收藏" : "未收藏")
         }
+        .padding(Theme.Spacing.medium)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func favoriteButton(_ event: EventData) -> some View {
+        let isFavorite = viewModel.favoriteIDs.contains(event.id)
+        return Button { viewModel.toggleFavorite(event) } label: {
+            Label(isFavorite ? "已收藏" : "收藏", systemImage: isFavorite ? "star.fill" : "star")
+                .font(.subheadline.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(isFavorite ? Color.accentColor : Color.secondary)
+                .padding(.horizontal, Theme.Spacing.small)
+                .frame(minHeight: 44)
+                .background(isFavorite ? Theme.Colors.accentSoft : Color(.tertiarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(isFavorite ? "取消收藏" : "收藏")：\(event.name)")
+        .accessibilityValue(isFavorite ? "已收藏" : "未收藏")
     }
 
     private var selectionActions: some View {
@@ -175,21 +194,6 @@ struct EventRegistration_Tab1_View: View {
             } label: {
                 Label("批次報名", systemImage: "person.badge.plus").frame(minHeight: 44)
             }
-        }
-    }
-}
-
-private struct EventFavoriteLabelStyle: LabelStyle {
-    let showsTitle: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        if showsTitle {
-            HStack(alignment: .firstTextBaseline) {
-                configuration.icon
-                configuration.title
-            }
-        } else {
-            configuration.icon
         }
     }
 }
@@ -411,36 +415,24 @@ extension EventData {
 }
 
 // MARK: - 活動列表項目
+/// The card's detail action keeps the full text width; status and favorite are sibling controls below it.
 struct EventRow: View {
     let event: EventData
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
-            let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xsmall))
-                : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
-            layout {
-                Text(event.name)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                EventStatusBadge(text: event.event_state, color: event.stateColor)
-            }
+            Text(event.name)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             EventInfoLine(icon: "number", text: "活動編號：\(event.eventSerialID)")
             EventInfoLine(icon: "building.2", text: event.department)
             EventInfoLine(icon: "calendar", text: event.eventTime.replacingOccurrences(of: "\n", with: " "))
             EventInfoLine(icon: "mappin.and.ellipse", text: event.eventLocation)
             EventInfoLine(icon: "person.3", text: event.eventPeople.replacingOccurrences(of: "\n", with: " "))
         }
-        .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
     }
 }
