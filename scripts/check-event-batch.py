@@ -394,6 +394,78 @@ import Combine
     }
 }
 '''
+# Run the actual reservation implementation independently of WebKit/TaskLocal macro hosting.
+# The complete state-machine and WebKit suite still runs below by default.
+reservation_checks = r"""
+import Foundation
+import Combine
+extension Notification.Name {
+    static let didChangeEventRegistrationSession = Notification.Name("didChangeEventRegistrationSession")
+}
+@MainActor final class EventRegistrationClient: EventRegistrationServing {
+    let sessionRevision = UUID()
+    func register(eventID: String) async throws -> EventActionOutcome { fatalError("No school writes in reservation tests") }
+    func availableEvents() async throws -> [EventData] { [] }
+    func appliedEvents() async throws -> [EventData_Apply] { [] }
+    func cancelRegistration(eventID: String) async throws -> EventActionOutcome { fatalError() }
+    func registrationForm(eventID: String) async throws -> EventRegistrationForm { fatalError() }
+    func modifyRegistration(eventID: String, form: EventRegistrationForm) async throws -> EventActionOutcome { fatalError() }
+}
+@main struct ReservationChecks {
+    @MainActor static func main() async throws {
+        let registry = EventRegistrationSubmission.shared
+        let session = UUID()
+        let row = EventBatchPreviewFixtures.applied(EventBatchPreviewFixtures.event("1"))
+        var gate: CheckedContinuation<EventActionOutcome, Never>?
+        let sending = Task {
+            try await registry.perform(eventID: "1", session: session) {
+                await withCheckedContinuation { gate = $0 }
+            }
+        }
+        while gate == nil { await Task.yield() }
+        registry.reconcileApplied([row], session: session)
+        precondition(registry.blockedIDs(session: session) == ["1"], "fresh read cannot release active submission")
+        gate?.resume(returning: .uncertain("synthetic"))
+        _ = try await sending.value
+        registry.reconcileApplied([], session: session)
+        precondition(registry.blockedIDs(session: session) == ["1"], "school lag cannot release uncertainty")
+        registry.reconcileApplied([row], session: UUID())
+        precondition(registry.blockedIDs(session: session) == ["1"], "other session cannot release uncertainty")
+        let cancelled = EventBatchPreviewFixtures.applied(EventBatchPreviewFixtures.event("1", state: "活動取消"))
+        registry.reconcileApplied([cancelled], session: session)
+        precondition(registry.blockedIDs(session: session) == ["1"], "cancelled activity does not prove registration")
+        registry.reconcileApplied([row], session: session)
+        precondition(registry.blockedIDs(session: session).isEmpty, "fresh same-session registration resolves uncertainty")
+        var calls = 0
+        _ = try await registry.perform(eventID: "1", session: session) { calls += 1; return .confirmed("synthetic") }
+        precondition(calls == 1, "resolved reservation permits later legitimate action")
+        do {
+            _ = try await registry.perform(eventID: "1", session: session) { throw URLError(.timedOut) }
+        } catch {}
+        registry.reconcileApplied([], session: session)
+        precondition(registry.blockedIDs(session: session) == ["1"], "unknown error remains reserved")
+        registry.reconcileApplied([row], session: session)
+        precondition(registry.blockedIDs(session: session).isEmpty)
+        print("PASS: fresh same-session registered read releases uncertainty; absence, cancelled rows, other sessions and in-flight submissions remain fenced")
+    }
+}
+"""
+with tempfile.TemporaryDirectory(prefix="niu-event-reservations-") as directory:
+    folder = Path(directory)
+    client = (root / "Features/EventRegistration/Services/EventRegistrationClient.swift").read_text()
+    logic = client[client.index("nonisolated enum EventRegistrationError"):client.index("/// One hidden browser")]
+    source = folder / "Checks.swift"
+    source.write_text(reservation_checks + "\n" + logic)
+    binary = folder / "checks"
+    subprocess.run(["xcrun", "swiftc", "-DDEBUG", "-swift-version", "5", "-parse-as-library",
+                    "-module-cache-path", str(folder / "ModuleCache"),
+                    str(root / "Features/EventRegistration/Models/EventRegistrationModels.swift"),
+                    str(root / "Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift"),
+                    str(source), "-o", str(binary)], check=True)
+    subprocess.run([str(binary)], check=True, timeout=30)
+if "--submission-only" in __import__("sys").argv:
+    raise SystemExit(0)
+
 with tempfile.TemporaryDirectory(prefix="niu-event-batch-") as directory:
     folder = Path(directory)
     source = folder / "Checks.swift"

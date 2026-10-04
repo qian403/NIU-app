@@ -80,14 +80,21 @@ checks = r'''
 @MainActor final class AssignmentClient: MoodleAssignmentAPIClientProtocol {
     let fixture = MoodleUIFixtureRepository()
     var failID: Int?
+    var statusError: Error = URLError(.timedOut)
+    var listError: Error?
+    var unknown: [Int: String] = [:]
     var active = 0
     var peak = 0
-    func fetchAssignments(courseId: Int) async throws -> [MoodleAssignment] { fixture.assignments(courseId: courseId) }
+    func fetchAssignments(courseId: Int) async throws -> [MoodleAssignment] {
+        if let listError { throw listError }
+        return fixture.assignments(courseId: courseId)
+    }
     func fetchSubmissionStatus(assignId: Int) async throws -> MoodleSubmissionStatus {
         active += 1; peak = max(peak, active)
         defer { active -= 1 }
         try await Task.sleep(for: .milliseconds(5))
-        if assignId == failID { throw URLError(.timedOut) }
+        if assignId == failID { throw statusError }
+        if let json = unknown[assignId] { return try decode(json) }
         if assignId == 2 {
             return try decode(#"{"lastattempt":{"teamsubmission":{"id":2,"status":"submitted"}}}"#)
         }
@@ -192,9 +199,55 @@ checks = r'''
         precondition(snapshot.submittedStatus[1] == true && snapshot.submittedStatus[2] == true)
         precondition(snapshot.submittedStatus[3] == false && client.peak == 4)
         client.failID = 3
-        do { _ = try await repository.fetchAssignments(courseId: 1); fatalError("Failed status became pending") }
-        catch is URLError {}
-        print("PASS: production assignment status handles individual/team submission, bounded concurrency=4, failures stay failures")
+        let partialStatus = try await repository.fetchAssignments(courseId: 1)
+        precondition(partialStatus.assignments.count == 5 && partialStatus.submittedStatus[3] == nil)
+        precondition(partialStatus.submittedStatus[1] == true && partialStatus.submittedStatus[4] == false)
+        client.unknown = [1: #"{}"#, 2: #"{"lastattempt":{}}"#,
+                          4: #"{"lastattempt":{"submission":{"status":"future-state"}}}"#]
+        let unknown = try await repository.fetchAssignments(courseId: 1)
+        precondition(unknown.assignments.count == 5 && unknown.submittedStatus == [5: false])
+        for error: Error in [CancellationError(), URLError(.cancelled)] {
+            client.statusError = error
+            do { _ = try await repository.fetchAssignments(courseId: 1); fatalError("Cancellation swallowed") }
+            catch is CancellationError {} catch let error as URLError { precondition(error.code == .cancelled) }
+        }
+        client.listError = URLError(.timedOut)
+        do { _ = try await repository.fetchAssignments(courseId: 1); fatalError("List failure swallowed") }
+        catch let error as URLError { precondition(error.code == .timedOut) }
+        let unknownRepo = MoodleAssignmentsRepository()
+        unknownRepo.result = unknown.assignments
+        let unknownDeps = client.fixture.details
+        let unknownModel = MoodleCourseDetailViewModel(course: client.fixture.courses[0], repositories: .init(
+            announcements: unknownDeps.announcements, assignments: unknownRepo, resources: unknownDeps.resources,
+            questions: unknownDeps.questions, attendance: unknownDeps.attendance, grades: unknownDeps.grades,
+            submission: unknownDeps.submission, posts: unknownDeps.posts))
+        await unknownModel.loadOverview()
+        precondition(unknownModel.assignments.assignments.count == 5 && unknownModel.pendingAssignments.isEmpty)
+        precondition(unknownModel.unknownSubmissionCount == 5)
+        precondition(unknownModel.detail(.assignments) == "5 份狀態未知")
+        precondition(unknownModel.pendingEmptyMessage == "5 份作業狀態未知，請到作業頁確認")
+        precondition(unknownModel.nextDeadline(now: Date()) == "狀態未知")
+        unknownModel.assignments.updateSubmission(assignmentID: 1, submitted: true)
+        precondition(unknownModel.unknownSubmissionCount == 4 && unknownModel.pendingAssignments.isEmpty)
+        precondition(unknownModel.detail(.assignments) == "4 份狀態未知")
+        precondition(unknownModel.pendingEmptyMessage == "4 份作業狀態未知，請到作業頁確認")
+        precondition(unknownModel.nextDeadline(now: Date()) == "狀態未知")
+        unknownModel.assignments.updateSubmission(assignmentID: 4, submitted: false)
+        precondition(unknownModel.unknownSubmissionCount == 3 && unknownModel.pendingAssignments.map(\.id) == [4])
+        precondition(unknownModel.detail(.assignments) == "1 份待繳、3 份狀態未知")
+        precondition(unknownModel.nextDeadline(now: Date()) == "未設定截止日")
+        for assignment in unknownModel.assignments.assignments {
+            unknownModel.assignments.updateSubmission(assignmentID: assignment.id, submitted: true)
+        }
+        precondition(unknownModel.unknownSubmissionCount == 0 && unknownModel.pendingAssignments.isEmpty)
+        precondition(unknownModel.detail(.assignments) == "0 份待繳")
+        precondition(unknownModel.pendingEmptyMessage == "沒有待繳作業")
+        precondition(unknownModel.nextDeadline(now: Date()) == "無待繳")
+        unknownRepo.result = []
+        await unknownModel.assignments.load(courseId: 1, force: true)
+        precondition(unknownModel.unknownSubmissionCount == 0 && unknownModel.pendingEmptyMessage == "沒有待繳作業")
+        print("PASS: unknown-only and submitted/unknown overview never claim no pending; known pending, all submitted and empty remain distinct")
+        print("PASS: mixed submitted/team/pending/unknown statuses retain all assignments; unknown excluded from pending; list errors and both cancellations propagate")
         let fixture = MoodleUIFixtureRepository()
         let ann = CountedAnnouncements(fixture)
         let assignments = CountedAssignments(fixture)
@@ -227,6 +280,30 @@ checks = r'''
         await model.loadOverview()
         precondition(assignments.calls == 1 && ann.calls == 1)
         print("PASS: overview loads only four models; summary, chronological pending/undated-last, preview=3, total=4, cached child reuse")
+
+        let overdue = model.assignments.assignments.first { $0.id == 3 }!.dueDateValue!
+        precondition(model.nextAssignment(now: overdue.addingTimeInterval(7 * 86400))?.id == 3)
+        precondition(model.nextAssignment(now: overdue.addingTimeInterval(7 * 86400 + 1))?.id == 2)
+        precondition(model.nextDeadline(now: overdue.addingTimeInterval(7 * 86400 + 1)) != "已逾期 7 天")
+        precondition(model.nextAssignment(now: overdue.addingTimeInterval(40 * 86400))?.id == 4)
+        precondition(model.pendingAssignments.map(\.id) == [3, 2, 5, 4])
+        precondition(model.assignments.assignments.count == 5)
+        print("PASS: next deadline excludes >7-day overdue at exact boundary; full pending/assignment lists retain old and undated work")
+
+        model.preparePage(.resources, query: "資源")
+        model.preparePage(.questions, query: "問題")
+        let resourceIdentity = model.resources!
+        let questionIdentity = model.questions!
+        var bodyPublications = 0
+        let observation = model.objectWillChange.sink { bodyPublications += 1 }
+        for _ in 0..<5 { _ = model.resources; _ = model.questions }
+        precondition(bodyPublications == 0)
+        model.preparePage(.resources, query: "設計")
+        model.preparePage(.questions, query: "設計")
+        precondition(model.resources === resourceIdentity && model.questions === questionIdentity)
+        precondition(resourceIdentity.searchText == "設計" && questionIdentity.searchText == "設計")
+        withExtendedLifetime(observation) {}
+        print("PASS: lifecycle page preparation reuses child models; body reads publish nothing; initial queries apply")
 
         model.searchText = "設計"
         await model.loadSearchExtras()
@@ -401,6 +478,7 @@ assert '.listStyle(.insetGrouped)' in view and '.glassEffect' not in view
 assert 'ContentUnavailableView.search' in view and 'prompt: "搜尋整門課"' in view
 assert 'dynamicTypeSize > .large' in view and '.font(.title2.bold())' in view
 assert 'showsCourseName: false' in view and 'pendingAssignments.count > 3' in view
+assert 'Text(viewModel.pendingEmptyMessage).foregroundStyle(.secondary).frame(minHeight: 44)' in view
 for path, titles in [('CourseDetail/MoodleCourseTabViews.swift', ['作業', '公告', '成績']),
                      ('CourseDetail/MoodleCourseResourcesView.swift', ['資源']),
                      ('Questions/MoodleCourseQuestionsView.swift', ['問答']),

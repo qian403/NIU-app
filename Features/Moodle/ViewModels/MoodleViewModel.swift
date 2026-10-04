@@ -17,6 +17,8 @@ final class MoodleViewModel: ObservableObject {
     
     @Published private(set) var isRefreshing = false
     private var requestID = UUID()
+    private var homeRequestID = UUID()
+    private var completedHomeRequest: Int?
 
     enum ContentState: Equatable {
         case loading, empty, courses
@@ -67,6 +69,41 @@ final class MoodleViewModel: ObservableObject {
 
     var isAuthenticated: Bool { repository.isAuthenticated }
     
+    /// One course load per view lifetime/retry; semester changes only replace upcoming data.
+    func loadHome(upcoming: MoodleUpcomingViewModel, request: Int, force: Bool = false,
+                  credentials: () -> (username: String, password: String)?) async {
+        let owner = UUID()
+        homeRequestID = owner
+        if force || completedHomeRequest != request {
+            upcoming.invalidate(clearState: false)
+            let login: (username: String, password: String)
+            if isAuthenticated {
+                login = ("", "")
+            } else if let saved = credentials() {
+                login = saved
+            } else {
+                let message = "找不到登入資料，請登出後重新登入"
+                loadState = .error(message)
+                upcoming.fail(message)
+                completedHomeRequest = request
+                return
+            }
+            await loadCourses(username: login.username, password: login.password)
+            guard homeRequestID == owner, !Task.isCancelled else { return }
+            completedHomeRequest = request
+        }
+        guard homeRequestID == owner, !Task.isCancelled else { return }
+        guard isAuthenticated else {
+            upcoming.fail("尚未登入 M 園區，請重新登入後重試。")
+            return
+        }
+        if case .error = loadState, coursesBySemester.isEmpty {
+            upcoming.fail("課程載入失敗，請重試。")
+            return
+        }
+        await upcoming.loadIfNeeded(courses: currentSemesterCourses)
+    }
+
     func loadCourses(username: String, password: String) async {
         let request = UUID()
         requestID = request
@@ -131,13 +168,8 @@ final class MoodleViewModel: ObservableObject {
     }
 
     private static func inferSemester(from date: Date) -> String {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .gmt
-        let year = cal.component(.year, from: date) - 1911
-        let month = cal.component(.month, from: date)
-        let term = (month >= 8 || month == 1) ? 1 : 2
-        let academicYear = month == 1 ? (year - 1) : year
-        return "\(academicYear)-\(term)"
+        let code = MoodleScheduleCourseLookupViewModel.currentSemesterCode(now: date)
+        return "\(code.dropLast())-\(code.suffix(1))"
     }
 
     private static func normalizedSemesterLabel(for course: MoodleCourse) -> String {

@@ -25,13 +25,15 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
     static var shared: MoodleService { fatalError("Live service must never be created") }
     var sessionRevision: Int { 0 }
     let calendarCapability = MoodleCalendarCapability()
-    func fetchActionEvents(from: Int, to: Int, after: Int, limit: Int) async throws -> MoodleCalendarActionEvents { fatalError() }
+    // PRODUCTION_CALENDAR_METHOD
     var responseData = Data()
     var functions: [String] = []
     var parameters: [[String: String]] = []
     private func callAPI<T: Decodable>(function: String, params: [String: String]) async throws -> T {
         functions.append(function); parameters.append(params)
-        return try JSONDecoder().decode(T.self, from: responseData)
+        let data = responseData
+        // PRODUCTION_ERROR_HANDLING
+        return try JSONDecoder().decode(T.self, from: data)
     }
     // PRODUCTION_ASSIGNMENT_METHODS
     func fetchSubmissionStatus(assignId: Int) async throws -> MoodleSubmissionStatus {
@@ -84,10 +86,13 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
 }
 @MainActor final class DelayedRepository: MoodleUpcomingRepositoryProtocol {
     var sessionRevision = 0
+    var cancelledReturns = 0
     var pending: [CheckedContinuation<[MoodleUpcomingItem], Error>] = []
     var opening: [CheckedContinuation<MoodleAssignment, Error>] = []
     func fetchUpcoming(courses: [MoodleCourse], now: Date) async throws -> [MoodleUpcomingItem] {
-        try await withCheckedThrowingContinuation { pending.append($0) }
+        let result = try await withCheckedThrowingContinuation { pending.append($0) }
+        if Task.isCancelled { cancelledReturns += 1 }
+        return result
     }
     func resolveAssignment(_ item: MoodleUpcomingItem) async throws -> MoodleAssignment {
         try await withCheckedThrowingContinuation { opening.append($0) }
@@ -106,9 +111,9 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
         let now = date("2026-10-05T12:00:00+08:00")
         let fixture = MoodleUIFixtureRepository()
         let courses = fixture.courses.filter { $0.semesterLabel == "115-1" }
-        func event(_ id: Int, module: String = "assign", actionable: Bool = true, offset: Int = 3600, course: Int = 1) throws -> MoodleCalendarActionEvent {
+        func event(_ id: Int, module: String = "assign", actionable: Bool = true, offset: Int = 3600, course: Int = 1, type: String = "due") throws -> MoodleCalendarActionEvent {
             let data = """
-            {"id":\(id),"name":"作業 &amp; 練習","timesort":\(Int(now.timeIntervalSince1970) + offset),"modulename":"\(module)","instance":\(id),"course":{"id":\(course),"fullname":"課程"},"action":{"actionable":\(actionable),"url":"https://example.invalid/mod/assign/view.php?id=100"},"eventtype":"due","unknown":"tolerated"}
+            {"id":\(id),"name":"作業 &amp; 練習","timesort":\(Int(now.timeIntervalSince1970) + offset),"modulename":"\(module)","instance":\(id),"course":{"id":\(course),"fullname":"課程"},"action":{"actionable":\(actionable),"url":"https://example.invalid/mod/assign/view.php?id=100"},"eventtype":"\(type)","unknown":"tolerated"}
             """
             return try JSONDecoder().decode(MoodleCalendarActionEvent.self, from: Data(data.utf8))
         }
@@ -117,6 +122,19 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
             event(6, offset: -7 * 86400 - 1), event(7, offset: 14 * 86400 + 1), event(8, course: 11), event(1)]
         let items = try MoodleUpcomingRules.calendarItems(events, courses: courses, now: now)
         precondition(items.map(\.id) == [4, 1, 5] && items[1].name == "作業 & 練習")
+        let otherEvents = try [event(1, offset: 1, type: "expectcompletionon"),
+            event(40, actionable: false, type: "expectcompletionon"), event(41, type: "gradingdue"),
+            event(42, type: "unknown"), event(43, type: ""), event(44, module: "quiz"),
+            MoodleCalendarActionEvent(id: 46, name: "無事件類別", timesort: Int(now.timeIntervalSince1970),
+                modulename: "assign", instance: 46, course: .init(id: 1), action: nil, url: nil, eventtype: nil)]
+        let onlyDue = try MoodleUpcomingRules.calendarItems(otherEvents + [event(1)], courses: courses, now: now)
+        precondition(onlyDue.map(\.id) == [1] && onlyDue[0].dueDate == now.addingTimeInterval(3600))
+        let dueClient = Client()
+        dueClient.pages = [.init(events: otherEvents + [try event(45, actionable: false)], lastid: 45)]
+        let dueItems = try await MoodleUpcomingRepository(client: dueClient).fetchUpcoming(courses: courses, now: now)
+        precondition(dueItems.map(\.id) == [45] && dueClient.statusIDs == [45])
+        print("PASS: assignment deadlines accept only due; completion/grading/unknown and other modules neither override deadlines nor trigger status requests")
+
         let response = try JSONDecoder().decode(MoodleCalendarActionEvents.self, from: Data("{\"events\":[],\"firstid\":null,\"lastid\":null,\"extra\":true}".utf8))
         precondition(response.events.isEmpty)
         let missing = MoodleCalendarActionEvent(id: 9, name: "missing", timesort: Int(now.timeIntervalSince1970), modulename: "assign", instance: 9, course: .init(id: 1), action: nil, url: nil, eventtype: "due")
@@ -151,6 +169,17 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
 
         let assignmentService = MoodleService()
         let serviceRepo = MoodleUpcomingRepository(client: assignmentService)
+        for code in ["invalidtoken", "InvalidToken"] {
+            assignmentService.responseData = Data("{\"exception\":\"moodle_exception\",\"errorcode\":\"\(code)\"}".utf8)
+            do { _ = try await assignmentService.fetchActionEvents(from: 0, to: 1, after: 0, limit: 50); fatalError("Token error not mapped") }
+            catch MoodleError.invalidToken {}
+        }
+        assignmentService.responseData = Data(#"{"exception":"webservice_access_exception","errorcode":"accessexception"}"#.utf8)
+        do { _ = try await assignmentService.fetchActionEvents(from: 0, to: 1, after: 0, limit: 50); fatalError() }
+        catch let error as MoodleUpcomingAPIError { precondition(error.isCalendarUnavailable) }
+        assignmentService.functions = []; assignmentService.parameters = []
+        print("PASS: production calendar API maps invalidtoken to authentication error and retains capability fallback")
+
         let warningResponse = MoodleUpcomingAssignmentsResponse(courses: hiddenIntro.courses,
             warnings: [.init(warningcode: "unrelated_permission")])
         assignmentService.responseData = try JSONEncoder().encode(warningResponse)
@@ -284,8 +313,11 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
         delayed.pending[0].resume(returning: [])
         await first.value
         precondition(model.items == items && model.preview(limit: 2).count == 2 && model.grouped.count == 3)
+        await model.loadIfNeeded(courses: Array(courses.prefix(1)))
+        precondition(delayed.pending.count == 2 && model.items == items)
         let refresh = Task { await model.reload() }
         await delayed.wait(3)
+        precondition(model.items == items) // No skeleton while refreshing cached data.
         let newer = Task { await model.reload() }
         await delayed.wait(4)
         delayed.pending[3].resume(returning: [])
@@ -311,6 +343,103 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
         await cancelled.value
         precondition(model.items.isEmpty)
         print("PASS: semester switch, overlapping refresh, failed vs empty, logout clearing and parent cancellation discard stale results")
+
+        let reentryRepo = DelayedRepository()
+        let reentryModel = MoodleUpcomingViewModel(repository: reentryRepo, clock: { now })
+        let disappearing = Task { await reentryModel.loadIfNeeded(courses: courses) }
+        await reentryRepo.wait(1)
+        disappearing.cancel()
+        let reappearing = Task { await reentryModel.loadIfNeeded(courses: courses) }
+        for _ in 0..<20 { await Task.yield() }
+        reentryRepo.pending[0].resume(returning: [])
+        await reentryRepo.wait(2)
+        reentryRepo.pending[1].resume(returning: items)
+        await disappearing.value; await reappearing.value
+        precondition(reentryModel.items == items && reentryRepo.pending.count == 2)
+        print("PASS: reappearance during cancelled load retries once and leaves loading state")
+
+        let submissionRepo = DelayedRepository()
+        let submissionModel = MoodleUpcomingViewModel(repository: submissionRepo, clock: { now })
+        let initialSubmission = Task { await submissionModel.load(courses: courses) }
+        await submissionRepo.wait(1)
+        submissionRepo.pending[0].resume(returning: items)
+        await initialSubmission.value
+        submissionModel.assignment = fixtureClient.assignments[0]
+        func notifySubmission(_ submitted: Bool, revision: Int = 0, courseID: Int? = nil) {
+            NotificationCenter.default.post(name: .moodleSubmissionDidChange, object: MoodleSubmissionChange(
+                assignmentID: items[0].assignmentID, courseID: courseID ?? courses[0].id,
+                submitted: submitted, sessionRevision: revision))
+        }
+        notifySubmission(true, revision: -1)
+        notifySubmission(true, courseID: -1)
+        for _ in 0..<20 { await Task.yield() }
+        precondition(submissionRepo.pending.count == 1 && submissionModel.items == items)
+        notifySubmission(true)
+        precondition(submissionModel.items == Array(items.dropFirst())) // Synchronous removal, no skeleton.
+        await submissionRepo.wait(2)
+        precondition(!submissionModel.items.contains { $0.id == items[0].id })
+        precondition(submissionModel.assignment != nil) // Refresh must not pop the detail.
+        submissionRepo.pending[1].resume(returning: Array(items.dropFirst()))
+        for _ in 0..<30 { await Task.yield() }
+        notifySubmission(false)
+        await submissionRepo.wait(3)
+        submissionRepo.pending[2].resume(returning: items)
+        while submissionModel.items != items { await Task.yield() }
+        let failedRefresh = Task { await submissionModel.reload() }
+        await submissionRepo.wait(4)
+        precondition(submissionModel.items == items)
+        submissionRepo.pending[3].resume(throwing: URLError(.timedOut))
+        await failedRefresh.value
+        precondition(submissionModel.items == items && submissionModel.refreshError != nil)
+        print("PASS: cross-entry submit/undo notification refreshes once without skeleton or dismissing detail; stale-session/unrelated-course signals ignored; failure preserves rows")
+
+        submissionModel.assignment = nil
+        submissionModel.open(items[0], owner: UUID())
+        await submissionRepo.wait(1, navigation: true)
+        let refreshWhileOpening = Task { await submissionModel.reload() }
+        await submissionRepo.wait(5)
+        precondition(submissionModel.openingID == nil)
+        submissionRepo.opening[0].resume(returning: fixtureClient.assignments[0])
+        submissionRepo.pending[4].resume(returning: items)
+        await refreshWhileOpening.value
+        precondition(submissionModel.assignment == nil && submissionModel.openingID == nil)
+        print("PASS: refresh cancels in-flight detail resolution and clears opening indicator")
+
+        notifySubmission(true)
+        await submissionRepo.wait(6)
+        notifySubmission(false)
+        await submissionRepo.wait(7)
+        submissionRepo.pending[6].resume(returning: items)
+        while submissionModel.items != items { await Task.yield() }
+        submissionRepo.pending[5].resume(returning: [])
+        while submissionRepo.cancelledReturns < 1 { await Task.yield() }
+        precondition(submissionModel.items == items)
+        notifySubmission(true)
+        await submissionRepo.wait(8)
+        submissionRepo.logout()
+        notifySubmission(true)
+        submissionRepo.pending[7].resume(returning: items)
+        while submissionRepo.cancelledReturns < 2 { await Task.yield() }
+        precondition(submissionModel.state == .loading && submissionRepo.pending.count == 8)
+        print("PASS: replacement notification fences old responses; session reset cancels notification refresh and rejects late results/signals")
+
+        let lifetimeRepo = DelayedRepository()
+        var lifetimeModel: MoodleUpcomingViewModel? = MoodleUpcomingViewModel(repository: lifetimeRepo, clock: { now })
+        weak let releasedModel = lifetimeModel
+        let lifetimeLoad = Task { await lifetimeModel?.load(courses: courses) }
+        await lifetimeRepo.wait(1)
+        lifetimeRepo.pending[0].resume(returning: items)
+        await lifetimeLoad.value
+        notifySubmission(true)
+        await lifetimeRepo.wait(2)
+        lifetimeModel = nil
+        precondition(releasedModel == nil)
+        lifetimeRepo.pending[1].resume(returning: items)
+        while lifetimeRepo.cancelledReturns < 1 { await Task.yield() }
+        notifySubmission(false)
+        for _ in 0..<20 { await Task.yield() }
+        precondition(lifetimeRepo.pending.count == 2)
+        print("PASS: deinit releases notification observer and cancels in-flight submission refresh")
 
         let owner = UUID()
         model.open(items[0], owner: owner)
@@ -365,6 +494,11 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
 assignment_methods = "\n".join(re.search(r"    func " + name + r"\(.*?\n    \}", service, re.S)[0]
                                for name in ["fetchAssignments", "fetchUpcomingAssignments"])
 checks = checks.replace("    // PRODUCTION_ASSIGNMENT_METHODS", assignment_methods)
+calendar_method = re.search(r"    func fetchActionEvents\(.*?\n    \}", service, re.S)[0]
+error_handling = service[service.index('        if function == "core_calendar_get_action_events_by_timesort"'):service.index('        do {\n            return try JSONDecoder().decode(T.self, from: data)')]
+checks = checks.replace("    // PRODUCTION_CALENDAR_METHOD", calendar_method)
+checks = checks.replace("        // PRODUCTION_ERROR_HANDLING", error_handling)
+
 with tempfile.TemporaryDirectory(prefix="niu-moodle-upcoming-") as directory:
     folder = Path(directory)
     source = folder / "Checks.swift"
@@ -387,6 +521,10 @@ for name in ["authenticate(username:", "logout()"]:
 assert 'function: "core_calendar_get_action_events_by_timesort"' in service
 assert 'params: params' in service and 'response.warnings?.isEmpty != false' not in service
 view = (BASE / "Upcoming/MoodleUpcomingViews.swift").read_text()
+assert 'model.submissionDidChange(' not in view, 'Notification is the only upcoming refresh path'
+assignment_view = (BASE / 'Views/MoodleAssignmentView.swift').read_text()
+assert 'NotificationCenter.default.post(name: .moodleSubmissionDidChange' in assignment_view
+assert 'repository.sessionRevision == sessionRevision' in assignment_view
 assert 'model.preview(limit: 5)' in view and 'model.items.count > 5' in view
 assert '.redacted(reason: .placeholder)' in view and '.accessibilityElement(children: .ignore)' in view
 assert 'dynamicTypeSize > .large' in view and 'minHeight: 44' in view

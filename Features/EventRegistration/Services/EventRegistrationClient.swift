@@ -4,6 +4,7 @@ import Combine
 
 extension Notification.Name {
     static let didChangeEventRegistrationSession = Notification.Name("didChangeEventRegistrationSession")
+    static let didConfirmEventCancellation = Notification.Name("didConfirmEventCancellation")
 }
 
 private nonisolated struct EventOperationSession: Sendable {
@@ -67,14 +68,27 @@ nonisolated struct EventRegistrationNotSubmittedError: LocalizedError {
 final class EventRegistrationSubmission {
     static let shared = EventRegistrationSubmission()
     private var reservations: [UUID: [String: UUID]] = [:]
+    private var uncertain: [UUID: Set<String>] = [:]
     private var resetObserver: AnyCancellable?
 
     private init() {
         resetObserver = NotificationCenter.default.publisher(for: .didChangeEventRegistrationSession)
-            .sink { [weak self] _ in self?.reservations.removeAll() }
+            .sink { [weak self] _ in
+                self?.reservations.removeAll()
+                self?.uncertain.removeAll()
+            }
     }
 
     func blockedIDs(session: UUID) -> Set<String> { Set(reservations[session, default: [:]].keys) }
+
+    /// Only a successful, fresh same-session read can resolve uncertainty; absence may be school lag.
+    func reconcileApplied(_ records: [EventData_Apply], session: UUID) {
+        for record in records where ["已報名", "報名成功", "正取", "錄取"].contains(record.state.trimmingCharacters(in: .whitespacesAndNewlines))
+            && !["取消", "停辦"].contains(where: record.event_state.contains) {
+            guard uncertain[session]?.remove(record.id) != nil else { continue }
+            reservations[session]?[record.id] = nil
+        }
+    }
 
     func submit(eventID: String, service: any EventRegistrationServing, session: UUID) async throws -> EventActionOutcome {
         // Production register owns its fence so direct callers cannot bypass it. Do not reserve twice.
@@ -101,13 +115,16 @@ final class EventRegistrationSubmission {
         }
         do {
             let outcome = try await operation()
-            if case .uncertain = outcome {} else { release() }
+            if case .uncertain = outcome {
+                if reservations[session]?[eventID] == token { uncertain[session, default: []].insert(eventID) }
+            } else { release() }
             return outcome
         } catch let error as EventRegistrationNotSubmittedError {
             release()
             throw error
         } catch {
             // Unknown injected-service errors (including cancellation) cannot prove no mutation.
+            if reservations[session]?[eventID] == token { uncertain[session, default: []].insert(eventID) }
             throw error
         }
     }
@@ -162,6 +179,8 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     private var navigationCount = 0
     private var navigationRevision = UUID()
     private var currentNavigation: WKNavigation?
+    // Weak keys retain callback provenance across prepareNavigation without retaining old navigations.
+    private let navigationRevisions = NSMapTable<WKNavigation, NSUUID>(keyOptions: .weakMemory, valueOptions: .strongMemory)
     private var navigationCompleted = false
     private var acceptsDocumentReady = false
     private var documentReadyTask: Task<Void, Never>?
@@ -416,7 +435,10 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     private func loadApplied() async throws -> [EventData_Apply] {
         try await open(endpoint("/MvcTeam/Act/ApplyMe"))
-        return try await scrape(Scripts.applied)
+        let records: [EventData_Apply] = try await scrape(Scripts.applied)
+        try validateOperationSession()
+        EventRegistrationSubmission.shared.reconcileApplied(records, session: sessionRevision)
+        return records
     }
 
     private func scrape<T: Decodable>(_ script: String) async throws -> [T] {
@@ -532,11 +554,18 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     }
 
     private func load(_ request: URLRequest, acceptDocumentReady: Bool = false) async throws -> URL {
+        try Task.checkCancellation()
+        try validateOperationSession()
+        // A page's delayed JS navigation has no WKNavigation identity until its first
+        // callback. Isolate explicit loads by view identity; keep the same data store
+        // so school cookies survive. In-page login/cancel submits still use their page.
+        discardWebView()
         let view = try page()
         let mark = navigationCount
         dialogs.removeAll()
         prepareNavigation(acceptDocumentReady: acceptDocumentReady)
         currentNavigation = view.load(request)
+        if let currentNavigation { navigationRevisions.setObject(navigationRevision as NSUUID, forKey: currentNavigation) }
         return try await waitForNavigation(after: mark, timeout: .seconds(30))
     }
 
@@ -647,7 +676,16 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        guard webView === self.webView, !navigationCompleted, currentNavigation == nil else { return }
+        guard webView === self.webView, let navigation else { return }
+        if let revision = navigationRevisions.object(forKey: navigation) {
+            guard revision == navigationRevision as NSUUID, navigation === currentNavigation else { return }
+        } else {
+            navigationRevisions.setObject(navigationRevision as NSUUID, forKey: navigation)
+        }
+        guard !navigationCompleted else { return }
+        // A new provisional navigation may replace a JS redirect without a terminal callback first.
+        documentReadyTask?.cancel()
+        documentReadyTask = nil
         currentNavigation = navigation
     }
 
@@ -655,17 +693,18 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         guard webView === self.webView, navigation === currentNavigation,
               acceptsDocumentReady, !navigationCompleted else { return }
         documentReadyTask?.cancel()
+        let revision = navigationRevision
         documentReadyTask = Task { [weak self, weak webView, weak navigation] in
             // Bounded by the navigation timeout; didFinish remains the fallback if evaluation fails.
             for _ in 0..<600 {
                 do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
                 guard let self, let webView, let navigation,
                       webView === self.webView, navigation === self.currentNavigation,
-                      !self.navigationCompleted else { return }
+                      revision == self.navigationRevision, !self.navigationCompleted else { return }
                 let ready = try? await webView.callAsyncJavaScript(
                     "return globalThis.niuActivityDocumentReady === true;", arguments: [:], in: nil, contentWorld: .defaultClient)
                 guard !Task.isCancelled, navigation === self.currentNavigation,
-                      webView === self.webView, !self.navigationCompleted else { return }
+                      webView === self.webView, revision == self.navigationRevision, !self.navigationCompleted else { return }
                 if ready as? Bool == true, let url = webView.url,
                    Self.samePage(url, self.origin, pathOnly: false) {
                     self.record(.success(url), documentReady: true)
@@ -694,8 +733,13 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         guard view === webView else { return }
         let error = error as NSError
         // A superseded or redirected load is followed by the navigation that replaced it.
-        if error.domain == NSURLErrorDomain, error.code == NSURLErrorCancelled { return }
-        if error.domain == "WebKitErrorDomain", error.code == 102 { return }
+        if (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)
+            || (error.domain == "WebKitErrorDomain" && error.code == 102) {
+            documentReadyTask?.cancel()
+            documentReadyTask = nil
+            currentNavigation = nil
+            return
+        }
         record(.failure(error))
     }
 
@@ -721,12 +765,14 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
+        guard webView === self.webView else { completionHandler(); return }
         dialogs.append(message)
         completionHandler()
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
+        guard webView === self.webView else { completionHandler(false); return }
         dialogs.append(message)
         // Only a cancellation the user already confirmed in the app may answer the school's prompt.
         completionHandler(acceptsConfirmation)

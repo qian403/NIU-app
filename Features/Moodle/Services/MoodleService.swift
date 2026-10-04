@@ -785,6 +785,7 @@ final class MoodleService {
         if function == "core_calendar_get_action_events_by_timesort",
            let error = try? JSONDecoder().decode(MoodleUpcomingAPIError.self, from: data),
            error.exception != nil || error.errorcode != nil {
+            if error.errorcode?.lowercased() == "invalidtoken" { throw MoodleError.invalidToken }
             throw error
         }
         // Check for Moodle error response

@@ -56,7 +56,7 @@ struct MoodleUpcomingRepository: MoodleUpcomingRepositoryProtocol {
                         // assignments can be false. Confirm those with the submission API.
                         let courseIDs = Set(courses.map(\.id))
                         let nonActionable = Set(events.compactMap { event -> Int? in
-                            guard event.modulename == "assign", event.eventtype != "gradingdue",
+                            guard event.modulename == "assign", event.eventtype == "due",
                                   event.action?.actionable == false,
                                   event.course.map({ courseIDs.contains($0.id) }) == true,
                                   window.contains(Date(timeIntervalSince1970: TimeInterval(event.timesort))) else { return nil }

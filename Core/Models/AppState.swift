@@ -315,12 +315,19 @@ final class AppState: ObservableObject {
         }
         notificationObservers.append(observer)
         for name in [Notification.Name.didChangeEventRegistration,
+                     Notification.Name.didConfirmEventCancellation,
                      Notification.Name("didChangeEventRegistrationSession")] {
             let observer = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
                 // Both notifications are published by the MainActor activity client/view models.
                 MainActor.assumeIsolated {
                     if notification.name.rawValue == "didChangeEventRegistrationSession" {
                         NotificationScheduler.shared.invalidateSession()
+                    }
+                    if notification.name == .didConfirmEventCancellation,
+                       notification.userInfo?["session"] as? UUID == EventRegistrationClient.shared.sessionRevision,
+                       let id = notification.userInfo?["eventID"] as? String {
+                        NotificationScheduler.shared.removeConfirmedEvent(id)
+                        return // The following didChangeEventRegistration starts the refresh.
                     }
                     guard let self, self.isAuthenticated, !self.isLoggingOut else { return }
                     Task { await self.refreshNotificationSchedules() }
@@ -426,6 +433,8 @@ private final class NotificationScheduler {
     }
 
     func invalidateSession() { reconciler.invalidateSession() }
+
+    func removeConfirmedEvent(_ id: String) { reconciler.removeConfirmedEvent(id) }
 
     func clearAllManagedNotifications() async {
         reconciler.invalidateSession()

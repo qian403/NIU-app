@@ -4,7 +4,6 @@ struct MoodleView: View {
     @StateObject private var viewModel: MoodleViewModel
     @State private var reloadRequest = 0
     @State private var semesterRequest = 0
-    @State private var loadRequestID = UUID()
     @State private var upcomingNavigationOwner = UUID()
     @StateObject private var upcoming: MoodleUpcomingViewModel
     private let detailRepositories: MoodleDetailRepositories?
@@ -75,14 +74,9 @@ struct MoodleView: View {
         .background(Theme.Colors.groupedBackground.ignoresSafeArea())
         .navigationTitle("M 園區")
         .navigationBarTitleDisplayMode(.large)
-        .task(id: reloadRequest) { await loadWithCredentials() }
-        .refreshable { await loadWithCredentials() }
+        .task(id: "\(reloadRequest)-\(semesterRequest)") { await loadWithCredentials() }
+        .refreshable { await loadWithCredentials(force: true) }
         .modifier(MoodleUpcomingNavigation(model: upcoming, repository: detailRepositories?.submission, owner: upcomingNavigationOwner))
-        .task(id: semesterRequest) {
-            if semesterRequest > 0 {
-                await upcoming.load(courses: viewModel.currentSemesterCourses)
-            }
-        }
     }
 
     private var semesterSection: some View {
@@ -123,21 +117,11 @@ struct MoodleView: View {
             .disabled(viewModel.isRefreshing)
     }
 
-    private func loadWithCredentials() async {
-        let request = UUID()
-        loadRequestID = request
-        upcoming.invalidate()
-        if viewModel.isAuthenticated {
-            await viewModel.loadCourses(username: "", password: "")
-        } else {
-            guard let creds = LoginRepository.shared.getSavedCredentials() else {
-                viewModel.loadState = .error("找不到登入資料，請登出後重新登入")
-                return
-            }
-            await viewModel.loadCourses(username: creds.username, password: creds.password)
+    private func loadWithCredentials(force: Bool = false) async {
+        await viewModel.loadHome(upcoming: upcoming, request: reloadRequest, force: force) {
+            guard let saved = LoginRepository.shared.getSavedCredentials() else { return nil }
+            return (saved.username, saved.password)
         }
-        guard request == loadRequestID, !Task.isCancelled, viewModel.isAuthenticated else { return }
-        await upcoming.load(courses: viewModel.currentSemesterCourses)
     }
 }
 

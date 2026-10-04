@@ -71,7 +71,7 @@ final class EventFavoritesStore: ObservableObject {
     private func synchronize() -> Record? {
         guard let identity = identity() else {
             let hadRecord = cached != nil || defaults.object(forKey: key) != nil
-            defaults.removeObject(forKey: key)
+            if defaults.object(forKey: key) != nil { defaults.removeObject(forKey: key) }
             cached = nil
             if hadRecord { revision += 1 }
             return nil

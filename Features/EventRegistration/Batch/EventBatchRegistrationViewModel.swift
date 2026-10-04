@@ -79,6 +79,7 @@ final class EventBatchRegistrationViewModel: ObservableObject {
                 let applied = try await service.appliedEvents()
                 try Task.checkCancellation()
                 guard readID == token, validateSession() else { return }
+                EventRegistrationSubmission.shared.reconcileApplied(applied, session: initialRevision)
                 let appliedIDs = Set(applied.map(\.eventSerialID))
                 // Duplicate server IDs are ambiguous: never choose an arbitrary version.
                 let grouped = Dictionary(grouping: available, by: \.eventSerialID)

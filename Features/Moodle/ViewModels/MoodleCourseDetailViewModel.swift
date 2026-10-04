@@ -40,8 +40,8 @@ final class MoodleCourseDetailViewModel: ObservableObject {
     let announcements: MoodleAnnouncementsViewModel
     let attendance: MoodleAttendanceViewModel
     let grades: MoodleGradesViewModel
-    private(set) var resources: MoodleResourcesViewModel?
-    private(set) var questions: MoodleQuestionsViewModel?
+    @Published private(set) var resources: MoodleResourcesViewModel?
+    @Published private(set) var questions: MoodleQuestionsViewModel?
     private var observations = Set<AnyCancellable>()
     @Published var searchText: String { didSet { updateSearch() } }
 
@@ -77,6 +77,17 @@ final class MoodleCourseDetailViewModel: ObservableObject {
         model.searchText = searchText
         observe(model)
         return model
+    }
+
+    func preparePage(_ destination: Destination, query: String) {
+        switch destination {
+        case .assignments: assignments.searchText = query
+        case .announcements: announcements.searchText = query
+        case .resources: resourcesModel().searchText = query
+        case .questions: questionsModel().searchText = query
+        case .attendance: attendance.searchText = query
+        case .grades: grades.searchText = query
+        }
     }
 
     /// A child edits only its own query. Restore the overview query on return.
@@ -133,7 +144,20 @@ final class MoodleCourseDetailViewModel: ObservableObject {
             assignments.assignments.filter { assignments.submittedStatus[$0.id] == false })
     }
     var pendingPreview: [MoodleAssignment] { Array(pendingAssignments.prefix(3)) }
-    var nextAssignment: MoodleAssignment? { pendingAssignments.first }
+    var unknownSubmissionCount: Int {
+        assignments.assignments.filter { assignments.submittedStatus[$0.id] == nil }.count
+    }
+    var pendingEmptyMessage: String {
+        unknownSubmissionCount > 0
+            ? "\(unknownSubmissionCount) 份作業狀態未知，請到作業頁確認" : "沒有待繳作業"
+    }
+    var nextAssignment: MoodleAssignment? { nextAssignment(now: Date()) }
+    func nextAssignment(now: Date) -> MoodleAssignment? {
+        pendingAssignments.first { assignment in
+            guard let due = assignment.dueDateValue else { return true }
+            return due >= MoodleUpcomingRules.window(now: now).lowerBound
+        }
+    }
     var latestAnnouncements: [MoodleDiscussion] {
         Array(announcements.discussions.sorted {
             $0.timemodified == $1.timemodified ? $0.id < $1.id : $0.timemodified > $1.timemodified
@@ -150,7 +174,9 @@ final class MoodleCourseDetailViewModel: ObservableObject {
     }
     func nextDeadline(now: Date) -> String {
         guard assignments.hasLoaded else { return "載入中…" }
-        guard let nextAssignment else { return "無待繳" }
+        guard let nextAssignment = nextAssignment(now: now) else {
+            return unknownSubmissionCount > 0 ? "狀態未知" : "無待繳"
+        }
         guard let due = nextAssignment.dueDateValue else { return "未設定截止日" }
         let text = MoodlePresentation.upcomingDeadline(due, now: now)
         return due < now ? text : "\(text) 截止"
@@ -190,7 +216,13 @@ final class MoodleCourseDetailViewModel: ObservableObject {
     func detail(_ destination: Destination) -> String? {
         guard hasLoaded(destination) else { return nil }
         switch destination {
-        case .assignments: return "\(pendingAssignments.count) 份待繳"
+        case .assignments:
+            if unknownSubmissionCount > 0 {
+                return pendingAssignments.isEmpty
+                    ? "\(unknownSubmissionCount) 份狀態未知"
+                    : "\(pendingAssignments.count) 份待繳、\(unknownSubmissionCount) 份狀態未知"
+            }
+            return "\(pendingAssignments.count) 份待繳"
         case .announcements: return announcements.hasLoadedAll ? "\(announcements.discussions.count) 則公告" : nil
         case .resources: return "\(resources?.sections.flatMap(\.modules).count ?? 0) 個項目"
         case .questions: return "\(questions?.sections.flatMap(\.modules).count ?? 0) 個活動"

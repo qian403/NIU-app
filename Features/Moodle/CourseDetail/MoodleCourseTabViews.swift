@@ -286,7 +286,7 @@ struct MoodleCourseAssignmentsView: View {
                         MoodleAssignmentRow(
                             assignment: assignment,
                             introPreview: viewModel.introPreviews[assignment.id] ?? "",
-                            isSubmitted: viewModel.submittedStatus[assignment.id] ?? false
+                            isSubmitted: viewModel.submittedStatus[assignment.id]
                         )
                     }
                     .buttonStyle(.plain)
@@ -447,7 +447,7 @@ struct MoodleDiscussionRow: View {
 private struct MoodleAssignmentRow: View {
     let assignment: MoodleAssignment
     let introPreview: String
-    let isSubmitted: Bool
+    let isSubmitted: Bool?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -482,7 +482,11 @@ private struct MoodleAssignmentRow: View {
 
     @ViewBuilder
     private var statusBadge: some View {
-        if isSubmitted {
+        if isSubmitted == nil {
+            Text("狀態未知")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        } else if isSubmitted == true {
             Text("已繳交")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.green)

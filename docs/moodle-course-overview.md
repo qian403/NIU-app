@@ -11,6 +11,8 @@
 
 總覽與子頁共用 ViewModel 和請求；資源與問答延後至開啟或搜尋時載入。每個區塊獨立呈現錯誤與重試，更新失敗保留有效資料。強制刷新、取消及帳號切換以請求／session 版本隔離，繳交後更新共用作業狀態。
 
+單筆作業無法取得繳交狀態時保留作業並標示未知；總覽摘要、待繳區塊及作業入口都區分未知數量，不將未知視為已繳。「下一份待繳」排除逾期超過 7 天的作業，完整作業列表仍保留。從課程或即將截止入口確認繳交狀態後，以同 session 的通知更新首頁；較舊的載入結果不能覆蓋更新。回到首頁保留既有資料，換學期只更新待繳範圍，下拉更新才強制重讀課程。
+
 跨課程作業優先使用 Moodle 行事曆 action events。介面未開放時退回作業清單及繳交狀態查詢，最多同時 4 筆；查詢失敗不能當成沒有待繳作業。點擊時重新解析作業 ID／課程模組 ID。
 
 Moodle 公告 API 在分頁後才過濾無權限的討論，因此回傳少於 20 則不一定是末頁。分頁計算包含已辨識的 `post` 權限警告；未知警告、重複頁面或超過頁數上限保留為錯誤，不宣告搜尋完整。[上游實作](https://github.com/moodle/moodle/blob/MOODLE_405_STABLE/mod/forum/externallib.php#L395-L410)
@@ -25,6 +27,8 @@ Debug App 支援純合成資料，不需帳密、Keychain 或網路：
 xcrun simctl launch --terminate-running-process booted dev.chienniuapp -NIUMoodleUIFixtureScreen course
 ```
 
-`-NIUMoodleUIFixtureScreen` 可替換為 `course-search`、`course-assignments`、`course-resources`、`course-attendance`、`course-partial-error`、`home`、`upcoming`、`home-upcoming-empty` 或 `home-upcoming-error`。`-NIUMoodleUIFixtureCalendarUnavailable` 可驗證行事曆介面不可用時的備案。入口與合成資料皆由 `#if DEBUG` 限制。
+`-NIUMoodleUIFixtureScreen` 可替換為 `course-search`、`course-assignments`、`course-resources`、`course-attendance`、`course-partial-error`、`course-unknown-status`、`home`、`upcoming`、`home-upcoming-empty` 或 `home-upcoming-error`。`-NIUMoodleUIFixtureCalendarUnavailable` 可驗證行事曆介面不可用時的備案。入口與合成資料皆由 `#if DEBUG` 限制。
 
 2026-10-04 已重新通過 12 個 Moodle 檢查（含實際 WebKit fixture）、生命週期檢查，以及公告權限分頁新增回歸；Debug／Release 模擬器編譯與上述六種課程畫面檢視完成，另檢視深色模式及最大輔助字級的總覽／搜尋／部分錯誤畫面。這些結果不代表已使用真實帳號確認校方 API 或在真機完成作業操作。
+
+2026-10-05 審查修正完成後，再次通過全部 12 個 Moodle 檢查（含 WebKit）、生命週期與 App／Widget Debug、Release 模擬器編譯。回歸涵蓋未知狀態摘要、跨入口繳交更新、換帳號與過期回應。iPhone 17 Pro／iOS 26.5 合成畫面已檢視首頁、資源頁及未知狀態總覽，另檢視深色模式最大輔助字級的總覽首屏；模擬器外觀與字級已恢復。本輪未完成互動點擊／捲動或真機驗證。

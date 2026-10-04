@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct MoodleAssignmentView: View {
     let assignment: MoodleAssignment
     private let repository: any MoodleSubmissionRepositoryProtocol
+    private let sessionRevision: Int
     private let onSubmissionChange: ((Bool) -> Void)?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -11,7 +12,9 @@ struct MoodleAssignmentView: View {
          onSubmissionChange: ((Bool) -> Void)? = nil) {
         self.onSubmissionChange = onSubmissionChange
         self.assignment = assignment
-        self.repository = repository ?? MoodleSubmissionRepository()
+        let repository = repository ?? MoodleSubmissionRepository()
+        self.repository = repository
+        self.sessionRevision = repository.sessionRevision
     }
     
     @State private var submissionRequestID = UUID()
@@ -327,6 +330,7 @@ struct MoodleAssignmentView: View {
     }
     
     private func loadSubmission() async {
+        guard repository.sessionRevision == sessionRevision else { return }
         let request = UUID()
         submissionRequestID = request
         defer { if submissionRequestID == request { isLoading = false } }
@@ -335,11 +339,14 @@ struct MoodleAssignmentView: View {
             async let gradeTask = repository.fetchGrades(courseId: assignment.course)
             let status = try await submissionTask
             try Task.checkCancellation()
-            guard submissionRequestID == request else { return }
+            guard submissionRequestID == request, repository.sessionRevision == sessionRevision else { return }
             // Submission remains useful even when the optional grade endpoint fails.
             submissionStatus = status
             if let submitted = try? MoodleUpcomingRules.isSubmitted(status) {
                 onSubmissionChange?(submitted)
+                NotificationCenter.default.post(name: .moodleSubmissionDidChange, object: MoodleSubmissionChange(
+                    assignmentID: assignment.id, courseID: assignment.course,
+                    submitted: submitted, sessionRevision: sessionRevision))
             }
             do {
                 let gradeItems = try await gradeTask
