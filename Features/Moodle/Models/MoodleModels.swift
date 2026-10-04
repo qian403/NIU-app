@@ -323,6 +323,34 @@ struct MoodlePostsResponse: Codable {
 }
 
 // MARK: - Assignments
+enum MoodleAssignmentSortOrder: String, CaseIterable {
+    case dueSoonestFirst
+    case dueLatestFirst
+
+    static let storageKey = "moodle.assignments.sortOrder"
+    static let defaultOrder: Self = .dueSoonestFirst
+
+    var title: String {
+        switch self {
+        case .dueSoonestFirst: "截止日：近的在上"
+        case .dueLatestFirst: "截止日：遠的在上"
+        }
+    }
+
+    /// 依截止日期早晚排序（包含已截止作業），無截止日一律置底。
+    func sorted(_ assignments: [MoodleAssignment]) -> [MoodleAssignment] {
+        assignments.sorted { lhs, rhs in
+            if lhs.duedate == rhs.duedate { return lhs.id < rhs.id }
+            if lhs.duedate == 0 { return false }
+            if rhs.duedate == 0 { return true }
+            switch self {
+            case .dueSoonestFirst: return lhs.duedate < rhs.duedate
+            case .dueLatestFirst: return lhs.duedate > rhs.duedate
+            }
+        }
+    }
+}
+
 struct MoodleAssignmentsResponse: Codable {
     let courses: [MoodleAssignmentCourse]
 }

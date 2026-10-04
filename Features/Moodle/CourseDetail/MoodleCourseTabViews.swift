@@ -73,9 +73,16 @@ final class MoodleAssignmentsListViewModel: ObservableObject {
 
     private let repository: any MoodleAssignmentsRepositoryProtocol
     private var hasLoaded = false
+    private(set) var sortOrder = MoodleAssignmentSortOrder.defaultOrder
 
     init(repository: (any MoodleAssignmentsRepositoryProtocol)? = nil) {
         self.repository = repository ?? MoodleAssignmentsRepository()
+    }
+
+    func setSortOrder(_ order: MoodleAssignmentSortOrder) {
+        guard sortOrder != order else { return }
+        sortOrder = order
+        assignments = order.sorted(assignments)
     }
 
     func load(courseId: Int, force: Bool = false) async {
@@ -84,7 +91,7 @@ final class MoodleAssignmentsListViewModel: ObservableObject {
         errorMessage = nil
         do {
             let snapshot = try await repository.fetchAssignments(courseId: courseId)
-            assignments = snapshot.assignments
+            assignments = sortOrder.sorted(snapshot.assignments)
             submittedStatus = snapshot.submittedStatus
             hasLoaded = true
         } catch is CancellationError {
@@ -100,6 +107,9 @@ final class MoodleAssignmentsListViewModel: ObservableObject {
 struct MoodleCourseAssignmentsView: View {
     let courseId: Int
     @ObservedObject var viewModel: MoodleAssignmentsListViewModel
+    @AppStorage(MoodleAssignmentSortOrder.storageKey)
+    private var sortOrder = MoodleAssignmentSortOrder.defaultOrder
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(courseId: Int, viewModel: MoodleAssignmentsListViewModel) {
         self.courseId = courseId
@@ -107,6 +117,40 @@ struct MoodleCourseAssignmentsView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Menu {
+                    Picker("排序", selection: $sortOrder) {
+                        ForEach(MoodleAssignmentSortOrder.allCases, id: \.self) { order in
+                            Text(order.title).tag(order)
+                        }
+                    }
+                } label: {
+                    Label("排序", systemImage: "arrow.up.arrow.down")
+                        .font(.body)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("排序，\(sortOrder.title)")
+            }
+            .padding(.horizontal, Theme.Spacing.medium)
+
+            assignmentsContent
+        }
+        .background(Color(.systemGroupedBackground))
+        .onChange(of: sortOrder) { _, order in
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                viewModel.setSortOrder(order)
+            }
+        }
+        .task {
+            viewModel.setSortOrder(sortOrder)
+            await viewModel.load(courseId: courseId)
+        }
+    }
+
+    private var assignmentsContent: some View {
         MoodleCourseTabContainer(
             isLoading: viewModel.isLoading,
             isEmpty: viewModel.assignments.isEmpty,
@@ -129,7 +173,6 @@ struct MoodleCourseAssignmentsView: View {
         } retry: {
             await viewModel.load(courseId: courseId, force: true)
         }
-        .task { await viewModel.load(courseId: courseId) }
     }
 }
 
