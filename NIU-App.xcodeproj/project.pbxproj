@@ -11,6 +11,9 @@
 		EBBA01000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */; };
 		EBBA01000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */; };
 		EBBA01000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */; };
+		FC680BB00000000000000002 /* EventReminderSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000002 /* EventReminderSettingsSection.swift */; };
+		FC680BB00000000000000001 /* SystemReminderNotificationCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000001 /* SystemReminderNotificationCenter.swift */; };
+		FC680BB00000000000000000 /* EventReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000000 /* EventReminderScheduler.swift */; };
 		0582D0EB51C8CB4ADCE9A96C /* Features/EventRegistration/Views/AppliedEventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */; };
 		07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */; };
 		0E182345FA814B44AC09A920 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */; };
@@ -198,6 +201,9 @@
 		EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationView.swift; sourceTree = "<group>"; };
 		EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift; sourceTree = "<group>"; };
 		EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchEligibility.swift; sourceTree = "<group>"; };
+		FC680CC00000000000000002 /* EventReminderSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/EventReminderSettingsSection.swift; sourceTree = "<group>"; };
+		FC680CC00000000000000001 /* SystemReminderNotificationCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift; sourceTree = "<group>"; };
+		FC680CC00000000000000000 /* EventReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/EventReminderScheduler.swift; sourceTree = "<group>"; };
 		0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
 		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		10A32D662F431B8B0009BB45 /* NIU-APP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NIU-APP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -761,6 +767,9 @@
 				EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */,
 				EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */,
 				EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */,
+				FC680CC00000000000000000 /* EventReminderScheduler.swift */,
+				FC680CC00000000000000001 /* SystemReminderNotificationCenter.swift */,
+				FC680CC00000000000000002 /* EventReminderSettingsSection.swift */,
 				164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */,
 				AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */,
 				AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */,
@@ -1103,6 +1112,9 @@
 				EBBA01000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift in Sources */,
 				EBBA01000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift in Sources */,
 				EBBA01000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift in Sources */,
+				FC680BB00000000000000000 /* EventReminderScheduler.swift in Sources */,
+				FC680BB00000000000000001 /* SystemReminderNotificationCenter.swift in Sources */,
+				FC680BB00000000000000002 /* EventReminderSettingsSection.swift in Sources */,
 				19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */,
 				E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */,
 				10A32DB22F431F630009BB45 /* View+Extensions.swift in Sources */,

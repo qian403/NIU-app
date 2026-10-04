@@ -15,17 +15,20 @@ final class AppState: ObservableObject {
     @Published private(set) var isLoggingOut = false
     @Published var currentUser: User?
     @Published var notificationSettings = NotificationSettings.load()
+    @Published private(set) var eventReminderStatus = "活動提醒尚未同步"
 
     /// `true` after the user explicitly presses the logout button.
     /// Used by LoginView to suppress automatic re-login.
     @Published private(set) var didExplicitlyLogout: Bool = false
     private var isRefreshingProfile = false
+    private var lastNotificationForegroundRefresh: Date?
     private var notificationObservers: [NSObjectProtocol] = []
 
     init() {
         guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else {
             return
         }
+        NotificationScheduler.shared.statusChanged = { [weak self] in self?.eventReminderStatus = $0 }
         observeClassScheduleUpdates()
         if UserDefaults.standard.bool(forKey: "app.logoutCleanupPending") {
             logout()
@@ -40,6 +43,8 @@ final class AppState: ObservableObject {
 
     func login(user: User) {
         guard !isLoggingOut else { return }
+        NotificationScheduler.shared.invalidateSession()
+        EventRegistrationClient.shared.reset()
         // A new login replaces the session, including any pending refresh/EUNI work.
         SSOSessionService.shared.disableAutoRefresh()
         MoodleSessionManager.shared.reset()
@@ -69,6 +74,7 @@ final class AppState: ObservableObject {
         MailViewModel.shared.reset()
         NativeMailViewModel.shared.reset()
         LiveActivityRemoteClient.shared.disable()
+        NotificationScheduler.shared.invalidateSession()
         isLoggingOut = true
         UserDefaults.standard.set(true, forKey: "app.logoutCleanupPending")
         currentUser = nil
@@ -227,6 +233,19 @@ final class AppState: ObservableObject {
         await refreshNotificationSchedules()
     }
 
+    func setEventRemindersEnabled(_ enabled: Bool) async {
+        notificationSettings.eventReminderEnabled = enabled
+        notificationSettings.save()
+        if enabled { _ = await NotificationScheduler.shared.requestAuthorizationIfNeeded() }
+        await refreshNotificationSchedules()
+    }
+
+    func setEventReminderLeadTime(_ lead: EventReminderLeadTime) async {
+        notificationSettings.eventReminderLeadTime = lead
+        notificationSettings.save()
+        await refreshNotificationSchedules()
+    }
+
     func setClassLiveActivityEnabled(_ enabled: Bool) async {
         notificationSettings.classLiveActivityEnabled = enabled
         notificationSettings.save()
@@ -240,14 +259,15 @@ final class AppState: ObservableObject {
     }
 
     func refreshNotificationSchedules() async {
-        guard isAuthenticated else { return }
+        guard isAuthenticated, let session = UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else { return }
         await refreshClassLiveActivitiesIfNeeded()
+        guard isAuthenticated, UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == session else { return }
         ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
-        guard let credentials = LoginRepository.shared.getSavedCredentials() else { return }
+        let credentials = LoginRepository.shared.getSavedCredentials()
         await NotificationScheduler.shared.scheduleAll(
             settings: notificationSettings,
-            username: credentials.username,
-            password: credentials.password
+            username: credentials?.username ?? "",
+            password: credentials?.password ?? ""
         )
     }
 
@@ -268,6 +288,10 @@ final class AppState: ObservableObject {
         ClassLiveActivityCoordinator.shared.setForeground(true)
         await refreshClassLiveActivitiesIfNeeded()
         ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
+        if lastNotificationForegroundRefresh.map({ Date().timeIntervalSince($0) >= 300 }) ?? true {
+            lastNotificationForegroundRefresh = Date()
+            await refreshNotificationSchedules()
+        }
     }
 
     func applicationDidEnterBackground() {
@@ -288,7 +312,20 @@ final class AppState: ObservableObject {
             }
         }
         notificationObservers.append(observer)
-
+        for name in [Notification.Name.didChangeEventRegistration,
+                     Notification.Name("didChangeEventRegistrationSession")] {
+            let observer = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                // Both notifications are published by the MainActor activity client/view models.
+                MainActor.assumeIsolated {
+                    if notification.name.rawValue == "didChangeEventRegistrationSession" {
+                        NotificationScheduler.shared.invalidateSession()
+                    }
+                    guard let self, self.isAuthenticated, !self.isLoggingOut else { return }
+                    Task { await self.refreshNotificationSchedules() }
+                }
+            }
+            notificationObservers.append(observer)
+        }
     }
 
     private func refreshClassLiveActivitiesIfNeeded(forceRebuild: Bool = false) async {
@@ -314,27 +351,33 @@ struct NotificationSettings {
     var academicCalendarEnabled: Bool
     var classReminderEnabled: Bool
     var classLiveActivityEnabled: Bool
+    var eventReminderEnabled: Bool = false
+    var eventReminderLeadTime: EventReminderLeadTime = .oneDay
 
-    static func load() -> NotificationSettings {
-        let defaults = UserDefaults.standard
+    static func load(defaults: UserDefaults = .standard) -> NotificationSettings {
         return NotificationSettings(
             assignmentDeadlineEnabled: defaults.object(forKey: NotificationKeys.assignmentDeadlineEnabled) as? Bool ?? false,
             academicCalendarEnabled: defaults.object(forKey: NotificationKeys.academicCalendarEnabled) as? Bool ?? false,
             classReminderEnabled: defaults.object(forKey: NotificationKeys.classReminderEnabled) as? Bool ?? false,
-            classLiveActivityEnabled: defaults.object(forKey: NotificationKeys.classLiveActivityEnabled) as? Bool ?? false
+            classLiveActivityEnabled: defaults.object(forKey: NotificationKeys.classLiveActivityEnabled) as? Bool ?? false,
+            eventReminderEnabled: defaults.object(forKey: NotificationKeys.eventReminderEnabled) as? Bool ?? false,
+            eventReminderLeadTime: EventReminderLeadTime(rawValue: defaults.integer(forKey: NotificationKeys.eventReminderLeadTime)) ?? .oneDay
         )
     }
 
-    func save() {
-        let defaults = UserDefaults.standard
+    func save(defaults: UserDefaults = .standard) {
         defaults.set(assignmentDeadlineEnabled, forKey: NotificationKeys.assignmentDeadlineEnabled)
         defaults.set(academicCalendarEnabled, forKey: NotificationKeys.academicCalendarEnabled)
         defaults.set(classReminderEnabled, forKey: NotificationKeys.classReminderEnabled)
         defaults.set(classLiveActivityEnabled, forKey: NotificationKeys.classLiveActivityEnabled)
+        defaults.set(eventReminderEnabled, forKey: NotificationKeys.eventReminderEnabled)
+        defaults.set(eventReminderLeadTime.rawValue, forKey: NotificationKeys.eventReminderLeadTime)
     }
 }
 
 private enum NotificationKeys {
+    static let eventReminderEnabled = "app.notification.eventReminderEnabled"
+    static let eventReminderLeadTime = "app.notification.eventReminderLeadTime"
     static let assignmentDeadlineEnabled = "app.notification.assignmentDeadlineEnabled"
     static let academicCalendarEnabled = "app.notification.academicCalendarEnabled"
     static let classReminderEnabled = "app.notification.classReminderEnabled"
@@ -350,127 +393,115 @@ private final class NotificationScheduler {
     private let calendarPrefix = "notify.calendar."
     private let classReminderPrefix = "notify.class."
     private let classScheduleCacheKey = "classSchedule.v2.cachedData"
-    private var schedulingTask: Task<Void, Never>?
+    var statusChanged: (String) -> Void = { _ in }
+    private lazy var reconciler: EventReminderScheduler = {
+        let scheduler = EventReminderScheduler(center: SystemReminderNotificationCenter(), session: {
+            UserDefaults.standard.string(forKey: StorageKeys.authSessionID)
+        }, loadCache: {
+            UserDefaults.standard.data(forKey: "app.notification.eventCache")
+        }, saveCache: { data in
+            UserDefaults.standard.set(data, forKey: "app.notification.eventCache")
+        }, events: {
+            try await EventRegistrationClient.shared.appliedEvents().map {
+                EventReminderRecord(id: $0.eventSerialID, title: $0.name, eventTime: $0.eventTime,
+                                    registrationState: $0.state, eventState: $0.event_state)
+            }
+        })
+        scheduler.statusChanged = { [weak self] in self?.statusChanged($0) }
+        return scheduler
+    }()
 
     private init() {}
 
+    // Authorization prompts are only reached by an explicit user toggle, never automatic synchronization.
     func requestAuthorizationIfNeeded() async -> Bool {
-        let settings = await currentNotificationSettings()
+        let settings = await center.notificationSettings()
         switch settings.authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            return true
-        case .denied:
-            return false
-        case .notDetermined:
-            return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-        @unknown default:
-            return false
+        case .authorized, .provisional, .ephemeral: return true
+        case .notDetermined: return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        default: return false
         }
     }
 
+    func invalidateSession() { reconciler.invalidateSession() }
+
     func clearAllManagedNotifications() async {
-        schedulingTask?.cancel()
-        await schedulingTask?.value
-        schedulingTask = nil
-        center.removeAllPendingNotificationRequests()
+        reconciler.invalidateSession()
+        await reconciler.waitForIdle()
         center.removeAllDeliveredNotifications()
     }
 
     func scheduleAll(settings: NotificationSettings, username: String, password: String) async {
-        schedulingTask?.cancel()
-        let task = Task { await performScheduleAll(settings: settings, username: username, password: password) }
-        schedulingTask = task
-        await task.value
+        var enabled = Set<ManagedNotificationCategory>()
+        if settings.eventReminderEnabled { enabled.insert(.event) }
+        if settings.assignmentDeadlineEnabled { enabled.insert(.assignment) }
+        if settings.academicCalendarEnabled { enabled.insert(.calendar) }
+        if settings.classReminderEnabled { enabled.insert(.class) }
+        await reconciler.refresh(enabled: enabled, lead: settings.eventReminderLeadTime, sources: [
+            .assignment: { try await self.scheduleAssignmentDeadlines(username: username, password: password) },
+            .calendar: { try await self.scheduleAcademicCalendarEvents() },
+            .class: { try self.scheduleClassReminders() }
+        ])
     }
 
-    private func performScheduleAll(settings: NotificationSettings, username: String, password: String) async {
-        guard !Task.isCancelled else { return }
-        await clear(byPrefix: assignmentPrefix)
-        await clear(byPrefix: calendarPrefix)
-        await clear(byPrefix: classReminderPrefix)
-
-        guard settings.assignmentDeadlineEnabled || settings.academicCalendarEnabled || settings.classReminderEnabled else { return }
-        guard await requestAuthorizationIfNeeded() else { return }
-
-        guard !Task.isCancelled else { return }
-        if settings.assignmentDeadlineEnabled {
-            await scheduleAssignmentDeadlines(username: username, password: password)
+    private func scheduleAssignmentDeadlines(username: String, password: String) async throws -> [ManagedNotification] {
+        var result: [ManagedNotification] = []
+        guard !username.isEmpty, !password.isEmpty else { throw URLError(.userAuthenticationRequired) }
+        if !MoodleService.shared.isAuthenticated {
+            try await MoodleService.shared.authenticate(username: username, password: password)
         }
-        guard !Task.isCancelled else { return }
-        if settings.academicCalendarEnabled {
-            await scheduleAcademicCalendarEvents()
-        }
-        guard !Task.isCancelled else { return }
-        if settings.classReminderEnabled {
-            await scheduleClassReminders()
-        }
-    }
-
-    private func clear(byPrefix prefix: String) async {
-        let pending = await pendingRequests()
-        let ids = pending.map(\.identifier).filter { $0.hasPrefix(prefix) }
-        guard !ids.isEmpty else { return }
-        center.removePendingNotificationRequests(withIdentifiers: ids)
-    }
-
-    private func scheduleAssignmentDeadlines(username: String, password: String) async {
-        do {
-            if !MoodleService.shared.isAuthenticated {
-                try await MoodleService.shared.authenticate(username: username, password: password)
-            }
+        try Task.checkCancellation()
+        let courses = try await MoodleService.shared.fetchCourses()
+        var allAssignments: [(courseName: String, assignment: MoodleAssignment)] = []
+        for course in courses {
             try Task.checkCancellation()
-            let courses = try await MoodleService.shared.fetchCourses()
-            var allAssignments: [(courseName: String, assignment: MoodleAssignment)] = []
-            for course in courses {
-                try Task.checkCancellation()
-                let assignments = try await MoodleService.shared.fetchAssignments(courseId: course.id)
-                for assignment in assignments {
-                    allAssignments.append((course.cleanName, assignment))
-                }
+            let assignments = try await MoodleService.shared.fetchAssignments(courseId: course.id)
+            for assignment in assignments {
+                allAssignments.append((course.cleanName, assignment))
             }
-
-            let now = Date()
-            let upperBound = Calendar.current.date(byAdding: .day, value: 14, to: now) ?? now
-            let candidates = allAssignments
-                .filter {
-                    guard let due = $0.assignment.dueDateValue else { return false }
-                    return due > now && due <= upperBound
-                }
-                .sorted {
-                    ($0.assignment.dueDateValue ?? .distantFuture) < ($1.assignment.dueDateValue ?? .distantFuture)
-                }
-                .prefix(20)
-
-            for item in candidates {
-                guard let due = item.assignment.dueDateValue else { continue }
-                let fireDate = due.addingTimeInterval(-24 * 60 * 60)
-                guard fireDate > now else { continue }
-                await addNotification(
-                    identifier: "\(assignmentPrefix)\(item.assignment.id)",
-                    title: "作業即將截止",
-                    body: "\(item.assignment.name)（\(item.courseName)）將於 \(due.formatted(date: .abbreviated, time: .shortened)) 截止",
-                    date: fireDate
-                )
-            }
-        } catch {
-            print("[Notification] 排程作業通知失敗: \(error.localizedDescription)")
         }
+
+        let now = Date()
+        let upperBound = Calendar.current.date(byAdding: .day, value: 14, to: now) ?? now
+        let candidates = allAssignments
+            .filter {
+                guard let due = $0.assignment.dueDateValue else { return false }
+                return due > now && due <= upperBound
+            }
+            .sorted {
+                ($0.assignment.dueDateValue ?? .distantFuture) < ($1.assignment.dueDateValue ?? .distantFuture)
+            }
+            .prefix(20)
+
+        for item in candidates {
+            guard let due = item.assignment.dueDateValue else { continue }
+            let fireDate = due.addingTimeInterval(-24 * 60 * 60)
+            guard fireDate > now else { continue }
+            result.append(ManagedNotification(
+                id: "\(assignmentPrefix)\(item.assignment.id)", category: .assignment,
+                title: "作業即將截止",
+                body: "\(item.assignment.name)（\(item.courseName)）將於 \(due.formatted(date: .abbreviated, time: .shortened)) 截止",
+                fireDate: fireDate
+            ))
+        }
+        return result
     }
 
-    private func scheduleAcademicCalendarEvents() async {
+    private func scheduleAcademicCalendarEvents() async throws -> [ManagedNotification] {
+        var resultRequests: [ManagedNotification] = []
         let now = Date()
         let year = CampusCalendarDate.academicYear(at: now)
         let result = await AcademicCalendarStore.shared.refresh(year: year, now: now)
-        guard !Task.isCancelled, let document = result.document else { return }
+        try Task.checkCancellation()
+        guard let document = result.document else { throw URLError(.cannotParseResponse) }
         var events = document.events.map { CalendarEvent($0, document: document) }
         let upperBound = CampusCalendarDate.calendar.date(byAdding: .day, value: 30, to: now) ?? now
         let upperYear = CampusCalendarDate.academicYear(at: upperBound)
         if upperYear != year {
             let next = await AcademicCalendarStore.shared.refresh(year: upperYear, now: now)
-            guard !Task.isCancelled else { return }
-            if let nextDocument = next.document {
-                events += nextDocument.events.map { CalendarEvent($0, document: nextDocument) }
-            }
+            try Task.checkCancellation()
+            guard let nextDocument = next.document else { throw URLError(.cannotParseResponse) }
+            events += nextDocument.events.map { CalendarEvent($0, document: nextDocument) }
         }
 
         let candidates = events
@@ -484,24 +515,27 @@ private final class NotificationScheduler {
             .prefix(20)
 
         for event in candidates {
-            guard !Task.isCancelled else { return }
+            try Task.checkCancellation()
             guard let start = event.start else { continue }
             let previousDay = CampusCalendarDate.calendar.date(byAdding: .day, value: -1, to: start) ?? start
             let fireDate = CampusCalendarDate.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: previousDay) ?? previousDay
             guard fireDate > now else { continue }
-            await addNotification(
-                identifier: "\(calendarPrefix)\(event.id)",
+            resultRequests.append(ManagedNotification(
+                id: "\(calendarPrefix)\(event.id)", category: .calendar,
                 title: "重要日期提醒",
                 body: "\(event.title)（\(event.dateString)）即將到來",
-                date: fireDate
-            )
+                fireDate: fireDate
+            ))
         }
+        return resultRequests
     }
 
-    private func scheduleClassReminders() async {
+    private func scheduleClassReminders() throws -> [ManagedNotification] {
+        var result: [ManagedNotification] = []
         guard let data = UserDefaults.standard.data(forKey: classScheduleCacheKey),
-              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
-            return
+              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              schedule.ownerSessionID == UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else {
+            throw URLError(.cannotDecodeContentData)
         }
 
         let reminderMinutes = 10
@@ -519,59 +553,17 @@ private final class NotificationScheduler {
                 let room = course.classroom?.nilIfEmpty ?? "教室資訊未提供"
                 let body = "\(course.name)（\(room)）將於 \(period.startTimeLabel) 上課"
                 let courseToken = stableToken("\(course.name)-\(period.id)-\(dayOffset)")
-                await addRepeatingNotification(
-                    identifier: "\(classReminderPrefix)\(weekday).\(period.id).\(courseToken)",
+                let parts = DateComponents(hour: hour, minute: minute, weekday: weekday)
+                guard let fireDate = EventReminderDate.calendar.nextDate(after: Date(), matching: parts, matchingPolicy: .strict) else { continue }
+                result.append(ManagedNotification(
+                    id: "\(classReminderPrefix)\(weekday).\(period.id).\(courseToken)", category: .class,
                     title: "即將上課",
                     body: body,
-                    weekday: weekday,
-                    hour: hour,
-                    minute: minute
-                )
+                    fireDate: fireDate, weekday: weekday
+                ))
             }
         }
-    }
-
-    private func addNotification(identifier: String, title: String, body: String, date: Date) async {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-
-        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        do {
-            try await add(request: request)
-        } catch {
-            print("[Notification] 新增通知失敗 (\(identifier)): \(error.localizedDescription)")
-        }
-    }
-
-    private func addRepeatingNotification(
-        identifier: String,
-        title: String,
-        body: String,
-        weekday: Int,
-        hour: Int,
-        minute: Int
-    ) async {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-
-        var components = DateComponents()
-        components.weekday = weekday
-        components.hour = hour
-        components.minute = minute
-
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        do {
-            try await add(request: request)
-        } catch {
-            print("[Notification] 新增重複課程通知失敗 (\(identifier)): \(error.localizedDescription)")
-        }
+        return result
     }
 
     private func weekdayIndex(from dayHeader: String) -> Int? {
@@ -593,44 +585,7 @@ private final class NotificationScheduler {
         return String(scalars)
     }
 
-    private func currentAcademicSemester() -> String {
-        let now = Date()
-        let calendar = Calendar.current
-        let year = calendar.component(.year, from: now) - 1911
-        let month = calendar.component(.month, from: now)
-        if month >= 8 { return "\(year)-1" }
-        if month >= 2 { return "\(year - 1)-2" }
-        return "\(year - 1)-1"
-    }
 
-    private func currentNotificationSettings() async -> UNNotificationSettings {
-        await withCheckedContinuation { continuation in
-            center.getNotificationSettings { settings in
-                continuation.resume(returning: settings)
-            }
-        }
-    }
-
-    private func pendingRequests() async -> [UNNotificationRequest] {
-        await withCheckedContinuation { continuation in
-            center.getPendingNotificationRequests { requests in
-                continuation.resume(returning: requests)
-            }
-        }
-    }
-
-    private func add(request: UNNotificationRequest) async throws {
-        try Task.checkCancellation()
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            center.add(request) { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
-    }
 }
 
 public extension String {
