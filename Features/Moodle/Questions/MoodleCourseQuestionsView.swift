@@ -26,7 +26,10 @@ struct MoodleCourseQuestionsView: View {
                             .foregroundStyle(.secondary)
                         }
 
-                        if viewModel.sections.isEmpty && viewModel.errorMessage == nil {
+                        if !MoodleSearch.trimmed(viewModel.searchText).isEmpty && viewModel.filteredSections.isEmpty
+                            && (viewModel.errorMessage == nil || !viewModel.sections.isEmpty) {
+                            MoodleSearchEmptyView(searchText: viewModel.searchText)
+                        } else if viewModel.sections.isEmpty && viewModel.errorMessage == nil {
                             ContentUnavailableView {
                                 Label("目前沒有問答活動", systemImage: "questionmark.bubble")
                             } description: {
@@ -38,7 +41,7 @@ struct MoodleCourseQuestionsView: View {
                             Text("選擇活動後，即可在 App 內查看題目與作答。開放時間、提交與結果以 M 園區顯示為準。")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            ForEach(viewModel.sections) { section in
+                            ForEach(viewModel.filteredSections) { section in
                                 Text(section.name)
                                     .font(.headline)
                                     .accessibilityAddTraits(.isHeader)
@@ -62,6 +65,7 @@ struct MoodleCourseQuestionsView: View {
                 .refreshable { await viewModel.load(courseId: courseId, force: true) }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemGroupedBackground))
         .task(id: reloadID) { await viewModel.load(courseId: courseId, force: reloadID > 0) }
         .onDisappear { viewModel.cancel() }

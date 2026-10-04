@@ -27,4 +27,7 @@ final class MoodleCourseDetailViewModel: ObservableObject {
     }
 
     @Published var selectedTab: Tab = .announcements
+    @Published var searchText = ""
+
+    var searchPrompt: String { "搜尋\(selectedTab.rawValue)" }
 }

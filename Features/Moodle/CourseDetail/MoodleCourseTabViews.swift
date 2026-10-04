@@ -3,7 +3,25 @@ import SwiftUI
 
 @MainActor
 final class MoodleAnnouncementsViewModel: ObservableObject {
-    @Published private(set) var discussions: [MoodleDiscussion] = []
+    @Published private(set) var discussions: [MoodleDiscussion] = [] {
+        didSet {
+            messagePreviews = [:]
+            searchIndex = MoodleSearchIndex(discussions) { discussion in
+                let message = MoodleSearch.plainText(discussion.message)
+                messagePreviews[discussion.id] = message
+                return [MoodleSearch.plainText(discussion.subject), discussion.userfullname, message]
+            }
+            updateSearch()
+        }
+    }
+    @Published var searchText = "" { didSet { updateSearch() } }
+    @Published private(set) var filteredDiscussions: [MoodleDiscussion] = []
+    private var searchIndex = MoodleSearchIndex()
+    private(set) var messagePreviews: [Int: String] = [:]
+
+    private func updateSearch() {
+        filteredDiscussions = searchIndex.filter(discussions, query: searchText)
+    }
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 
@@ -46,12 +64,14 @@ struct MoodleCourseAnnouncementsView: View {
             isEmpty: viewModel.discussions.isEmpty,
             errorMessage: viewModel.errorMessage,
             emptyTitle: "目前沒有公告",
+            searchText: viewModel.searchText,
+            hasSearchResults: !viewModel.filteredDiscussions.isEmpty,
             emptyIcon: "megaphone"
         ) {
             LazyVStack(spacing: 10) {
-                ForEach(viewModel.discussions) { discussion in
+                ForEach(viewModel.filteredDiscussions) { discussion in
                     NavigationLink(destination: MoodleForumView(discussion: discussion)) {
-                        MoodleDiscussionRow(discussion: discussion)
+                        MoodleDiscussionRow(discussion: discussion, messagePreview: viewModel.messagePreviews[discussion.id])
                     }
                     .buttonStyle(.plain)
                 }
@@ -66,7 +86,25 @@ struct MoodleCourseAnnouncementsView: View {
 
 @MainActor
 final class MoodleAssignmentsListViewModel: ObservableObject {
-    @Published private(set) var assignments: [MoodleAssignment] = []
+    @Published private(set) var assignments: [MoodleAssignment] = [] {
+        didSet {
+            introPreviews = [:]
+            searchIndex = MoodleSearchIndex(assignments) { assignment in
+                let intro = MoodleSearch.plainText(assignment.intro)
+                introPreviews[assignment.id] = intro
+                return [MoodleSearch.plainText(assignment.name), intro]
+            }
+            updateSearch()
+        }
+    }
+    @Published var searchText = "" { didSet { updateSearch() } }
+    @Published private(set) var filteredAssignments: [MoodleAssignment] = []
+    private var searchIndex = MoodleSearchIndex()
+    private(set) var introPreviews: [Int: String] = [:]
+
+    private func updateSearch() {
+        filteredAssignments = searchIndex.filter(assignments, query: searchText)
+    }
     @Published private(set) var submittedStatus: [Int: Bool] = [:]
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
@@ -156,13 +194,16 @@ struct MoodleCourseAssignmentsView: View {
             isEmpty: viewModel.assignments.isEmpty,
             errorMessage: viewModel.errorMessage,
             emptyTitle: "目前沒有作業",
+            searchText: viewModel.searchText,
+            hasSearchResults: !viewModel.filteredAssignments.isEmpty,
             emptyIcon: "checklist"
         ) {
             LazyVStack(spacing: 10) {
-                ForEach(viewModel.assignments) { assignment in
+                ForEach(viewModel.filteredAssignments) { assignment in
                     NavigationLink(destination: MoodleAssignmentView(assignment: assignment)) {
                         MoodleAssignmentRow(
                             assignment: assignment,
+                            introPreview: viewModel.introPreviews[assignment.id] ?? "",
                             isSubmitted: viewModel.submittedStatus[assignment.id] ?? false
                         )
                     }
@@ -178,7 +219,21 @@ struct MoodleCourseAssignmentsView: View {
 
 @MainActor
 final class MoodleGradesViewModel: ObservableObject {
-    @Published private(set) var items: [MoodleGradeItem] = []
+    @Published private(set) var items: [MoodleGradeItem] = [] {
+        didSet {
+            searchIndex = MoodleSearchIndex(items) { item in
+                [MoodleSearch.plainText(item.itemname ?? (item.itemtype == "course" ? "課程總分" : "分類"))]
+            }
+            updateSearch()
+        }
+    }
+    @Published var searchText = "" { didSet { updateSearch() } }
+    @Published private(set) var filteredItems: [MoodleGradeItem] = []
+    private var searchIndex = MoodleSearchIndex()
+
+    private func updateSearch() {
+        filteredItems = searchIndex.filter(items, query: searchText)
+    }
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 
@@ -225,14 +280,18 @@ struct MoodleCourseGradesView: View {
                 }
             } else if viewModel.items.isEmpty {
                 ScrollView {
-                    ContentUnavailableView {
-                        Label("目前沒有成績資料", systemImage: "chart.bar")
-                    } actions: {
-                        Button("重新整理") {
-                            Task { await viewModel.load(courseId: courseId, force: true) }
+                    if !MoodleSearch.trimmed(viewModel.searchText).isEmpty {
+                        MoodleSearchEmptyView(searchText: viewModel.searchText)
+                    } else {
+                        ContentUnavailableView {
+                            Label("目前沒有成績資料", systemImage: "chart.bar")
+                        } actions: {
+                            Button("重新整理") {
+                                Task { await viewModel.load(courseId: courseId, force: true) }
+                            }
                         }
+                        .frame(minHeight: 420)
                     }
-                    .frame(minHeight: 420)
                 }
                 .refreshable { await viewModel.load(courseId: courseId, force: true) }
             } else {
@@ -243,7 +302,11 @@ struct MoodleCourseGradesView: View {
                             .foregroundStyle(.secondary)
                             .padding(10)
                     }
-                    MoodleGradeView(items: viewModel.items)
+                    if !MoodleSearch.trimmed(viewModel.searchText).isEmpty && viewModel.filteredItems.isEmpty {
+                        ScrollView { MoodleSearchEmptyView(searchText: viewModel.searchText) }
+                    } else {
+                        MoodleGradeView(items: viewModel.filteredItems)
+                    }
                 }
                 .refreshable { await viewModel.load(courseId: courseId, force: true) }
             }
@@ -254,6 +317,7 @@ struct MoodleCourseGradesView: View {
 
 struct MoodleDiscussionRow: View {
     let discussion: MoodleDiscussion
+    var messagePreview: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -261,7 +325,7 @@ struct MoodleDiscussionRow: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
-            Text(discussion.plainMessage)
+            Text(messagePreview ?? discussion.plainMessage)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -281,6 +345,7 @@ struct MoodleDiscussionRow: View {
 
 private struct MoodleAssignmentRow: View {
     let assignment: MoodleAssignment
+    let introPreview: String
     let isSubmitted: Bool
 
     var body: some View {
@@ -293,8 +358,8 @@ private struct MoodleAssignmentRow: View {
                 Spacer()
                 statusBadge
             }
-            if !assignment.plainIntro.isEmpty {
-                Text(assignment.plainIntro)
+            if !introPreview.isEmpty {
+                Text(introPreview)
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -336,6 +401,8 @@ private struct MoodleCourseTabContainer<Content: View>: View {
     let errorMessage: String?
     let emptyTitle: String
     let emptyIcon: String
+    let searchText: String
+    let hasSearchResults: Bool
     let content: Content
     let retry: () async -> Void
 
@@ -344,6 +411,8 @@ private struct MoodleCourseTabContainer<Content: View>: View {
         isEmpty: Bool,
         errorMessage: String?,
         emptyTitle: String,
+        searchText: String = "",
+        hasSearchResults: Bool = true,
         emptyIcon: String,
         @ViewBuilder content: () -> Content,
         retry: @escaping () async -> Void
@@ -351,6 +420,8 @@ private struct MoodleCourseTabContainer<Content: View>: View {
         self.isLoading = isLoading
         self.isEmpty = isEmpty
         self.errorMessage = errorMessage
+        self.searchText = searchText
+        self.hasSearchResults = hasSearchResults
         self.emptyTitle = emptyTitle
         self.emptyIcon = emptyIcon
         self.content = content()
@@ -365,8 +436,14 @@ private struct MoodleCourseTabContainer<Content: View>: View {
                 MoodleCourseTabErrorView(message: errorMessage, retry: retry)
             } else if isEmpty {
                 ScrollView {
-                    ContentUnavailableView(emptyTitle, systemImage: emptyIcon)
-                        .frame(minHeight: 420)
+                    Group {
+                        if MoodleSearch.trimmed(searchText).isEmpty {
+                            ContentUnavailableView(emptyTitle, systemImage: emptyIcon)
+                        } else {
+                            MoodleSearchEmptyView(searchText: searchText)
+                        }
+                    }
+                    .frame(minHeight: 420)
                 }
                 .refreshable { await retry() }
             } else {
@@ -384,13 +461,18 @@ private struct MoodleCourseTabContainer<Content: View>: View {
                             }
                             .padding(10)
                         }
-                        content
+                        if !MoodleSearch.trimmed(searchText).isEmpty && !hasSearchResults {
+                            MoodleSearchEmptyView(searchText: searchText)
+                        } else {
+                            content
+                        }
                     }
                 }
                     .refreshable { await retry() }
             }
         }
         .background(Color(.systemGroupedBackground))
+        .scrollDismissesKeyboard(.interactively)
     }
 }
 
@@ -406,5 +488,19 @@ private struct MoodleCourseTabErrorView: View {
         } actions: {
             Button("重試") { Task { await retry() } }
         }
+    }
+}
+
+/// Explicit Traditional Chinese copy, independent of the device's system language.
+struct MoodleSearchEmptyView: View {
+    let searchText: String
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("找不到符合的結果", systemImage: "magnifyingglass")
+        } description: {
+            Text("找不到符合「\(MoodleSearch.trimmed(searchText))」的項目，請試試其他關鍵字。")
+        }
+        .frame(maxWidth: .infinity, minHeight: 300)
     }
 }

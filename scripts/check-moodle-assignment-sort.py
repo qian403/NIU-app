@@ -103,6 +103,7 @@ with tempfile.TemporaryDirectory(prefix="niu-moodle-assignment-sort-") as direct
         "xcrun", "swiftc", "-parse-as-library", "-swift-version", "5",
         "-default-isolation", "MainActor", "-enable-upcoming-feature", "NonisolatedNonsendingByDefault",
         "-module-cache-path", str(folder / "ModuleCache"),
-        str(ROOT / "Features/Moodle/Models/MoodleModels.swift"), str(checks), "-o", str(binary),
+        str(ROOT / "Features/Moodle/Models/MoodleModels.swift"),
+        str(ROOT / "Features/Moodle/Models/MoodleSearch.swift"), str(checks), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)], check=True, timeout=20)

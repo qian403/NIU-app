@@ -5,6 +5,8 @@ struct MoodleAttendanceContent: View {
     let sections: [MoodleAttendanceSection]
     let refreshError: String?
     let retry: () async -> Void
+    var searchText = ""
+    var searchSections: [MoodleAttendanceSection] = []
 
     @State private var selectedSectionID: Int?
 
@@ -22,6 +24,7 @@ struct MoodleAttendanceContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
+        .scrollDismissesKeyboard(.interactively)
         .onAppear(perform: selectFirstSectionIfNeeded)
         .onChange(of: sections.map(\.id)) { _, _ in
             selectFirstSectionIfNeeded()
@@ -30,7 +33,26 @@ struct MoodleAttendanceContent: View {
 
     @ViewBuilder
     private var loadedContent: some View {
-        if sections.isEmpty {
+        if !MoodleSearch.trimmed(searchText).isEmpty {
+            ScrollView {
+                LazyVStack(spacing: 18) {
+                    if let refreshError {
+                        AttendanceRefreshErrorBanner(message: refreshError, retry: retry)
+                    }
+                    if searchSections.isEmpty {
+                        MoodleSearchEmptyView(searchText: searchText)
+                    } else {
+                        ForEach(searchSections) { section in
+                            Text(section.moduleName)
+                                .font(.headline)
+                                .accessibilityAddTraits(.isHeader)
+                            AttendanceRecordBook(section: section, isSearching: true)
+                        }
+                    }
+                }
+                .padding(Theme.Spacing.medium)
+            }
+        } else if sections.isEmpty {
             AttendanceEmptyView(retry: retry)
         } else {
             ScrollView {
@@ -393,6 +415,7 @@ private struct AttendanceOverviewMetric: View {
 
 private struct AttendanceRecordBook: View {
     let section: MoodleAttendanceSection
+    var isSearching = false
 
     @State private var filter: AttendanceRecordFilter = .all
 
@@ -401,7 +424,7 @@ private struct AttendanceRecordBook: View {
             recordBookHeader
             Divider()
                 .padding(.horizontal, 16)
-            filters
+            if !isSearching { filters }
 
             if filteredRecords.isEmpty {
                 emptyFilterState
@@ -502,7 +525,7 @@ private struct AttendanceRecordBook: View {
 
     private var filteredRecords: [MoodleAttendanceRecord] {
         section.records
-            .filter(filter.matches)
+            .filter { isSearching || filter.matches($0) }
             .sorted { $0.date > $1.date }
     }
 
