@@ -1,7 +1,7 @@
 #if DEBUG
 import SwiftUI
 
-/// Launch with `-NIUEventFavoritesFixture list|favorites-empty|selection`.
+/// Launch with `-NIUEventFavoritesFixture list|favorites-empty|selection|selection-animation`.
 /// This root bypasses AppState, Keychain, school services and ordinary app defaults.
 enum EventFavoritesUIFixture {
     static var requested: Bool { ProcessInfo.processInfo.arguments.contains("-NIUEventFavoritesFixture") }
@@ -70,6 +70,18 @@ struct EventFavoritesUIFixtureRoot: View {
                     else if let first = model.events.first {
                         model.toggleFavorite(first)
                         if EventFavoritesUIFixture.scenario == "selection" { model.selectAllVisible() }
+                        if EventFavoritesUIFixture.scenario == "selection-animation" {
+                            do {
+                                try await Task.sleep(for: .seconds(2))
+                                model.beginSelection(first)
+                                try await Task.sleep(for: .seconds(1))
+                                if let second = model.events.dropFirst().first { model.toggleSelection(second) }
+                                try await Task.sleep(for: .seconds(1))
+                                model.toggleSelection(first)
+                                try await Task.sleep(for: .seconds(1))
+                                model.cancelSelection()
+                            } catch { return }
+                        }
                     }
                 }
                 .onDisappear { model.cancelLoading() }
