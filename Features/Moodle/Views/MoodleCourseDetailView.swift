@@ -49,6 +49,70 @@ struct MoodleCourseDetailView: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(course.cleanName)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $viewModel.searchText,
+                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    prompt: viewModel.searchPrompt)
+        .scrollDismissesKeyboard(.interactively)
+        .onChange(of: viewModel.searchText, initial: true) { _, query in
+            updateSearch(query)
+        }
+        .task(id: searchAnnouncement) {
+            let announcement = searchAnnouncement
+            guard let count = announcement.count, !announcement.query.isEmpty else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+                try Task.checkCancellation()
+                AccessibilityNotification.Announcement("找到 \(count) 項\(announcement.tab.rawValue)").post()
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+        }
+    }
+
+    private struct SearchAnnouncement: Equatable {
+        let query: String
+        let tab: MoodleCourseDetailViewModel.Tab
+        let count: Int?
+    }
+
+    private var searchAnnouncement: SearchAnnouncement {
+        let count: Int?
+        switch viewModel.selectedTab {
+        case .announcements:
+            count = announcementsViewModel.isLoading || announcementsViewModel.errorMessage != nil
+                ? nil : announcementsViewModel.filteredDiscussions.count
+        case .assignments:
+            count = assignmentsViewModel.isLoading || assignmentsViewModel.errorMessage != nil
+                ? nil : assignmentsViewModel.filteredAssignments.count
+        case .questions:
+            count = questionsViewModel.isLoading || questionsViewModel.errorMessage != nil
+                ? nil : questionsViewModel.filteredSections.reduce(0) { $0 + $1.modules.count }
+        case .resources:
+            count = resourcesViewModel.isLoading || resourcesViewModel.errorMessage != nil
+                ? nil : resourcesViewModel.filteredSections.reduce(0) { $0 + $1.modules.count }
+        case .attendance:
+            if case .loaded = attendanceViewModel.state, attendanceViewModel.lastErrorMessage == nil {
+                count = attendanceViewModel.filteredSections.reduce(0) { $0 + $1.records.count }
+            } else {
+                count = nil
+            }
+        case .grades:
+            count = gradesViewModel.isLoading || gradesViewModel.errorMessage != nil
+                ? nil : gradesViewModel.filteredItems.count
+        }
+        return SearchAnnouncement(query: MoodleSearch.trimmed(viewModel.searchText),
+                                  tab: viewModel.selectedTab, count: count)
+    }
+
+    private func updateSearch(_ query: String) {
+        announcementsViewModel.searchText = query
+        assignmentsViewModel.searchText = query
+        questionsViewModel.searchText = query
+        resourcesViewModel.searchText = query
+        attendanceViewModel.searchText = query
+        gradesViewModel.searchText = query
     }
 
     // MARK: - Tab Bar

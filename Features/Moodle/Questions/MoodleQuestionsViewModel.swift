@@ -3,7 +3,28 @@ import Foundation
 
 @MainActor
 final class MoodleQuestionsViewModel: ObservableObject {
-    @Published private(set) var sections: [MoodleQuestionSection] = []
+    @Published private(set) var sections: [MoodleQuestionSection] = [] {
+        didSet {
+            searchIndex = MoodleSearchIndex(sections.flatMap(\.modules)) {
+                [$0.name, $0.description ?? ""].map(MoodleSearch.plainText)
+            }
+            updateSearch()
+        }
+    }
+    @Published var searchText = "" { didSet { updateSearch() } }
+    @Published private(set) var filteredSections: [MoodleQuestionSection] = []
+    private var searchIndex = MoodleSearchIndex()
+
+    private func updateSearch() {
+        guard !MoodleSearch.trimmed(searchText).isEmpty else {
+            filteredSections = sections
+            return
+        }
+        filteredSections = sections.compactMap { section in
+            let modules = searchIndex.filter(section.modules, query: searchText)
+            return modules.isEmpty ? nil : MoodleQuestionSection(id: section.id, name: section.name, modules: modules)
+        }
+    }
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 

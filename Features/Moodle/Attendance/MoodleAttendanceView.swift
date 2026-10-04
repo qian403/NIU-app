@@ -10,7 +10,9 @@ struct MoodleCourseAttendanceView: View {
             state: viewModel.state,
             sections: viewModel.sections,
             refreshError: viewModel.lastErrorMessage,
-            retry: { await viewModel.loadCourse(courseId, force: true) }
+            retry: { await viewModel.loadCourse(courseId, force: true) },
+            searchText: viewModel.searchText,
+            searchSections: viewModel.filteredSections
         )
         .task { await viewModel.loadCourse(courseId) }
         .refreshable { await viewModel.loadCourse(courseId, force: true) }

@@ -155,6 +155,7 @@
 		CA4A2201000000000000000A /* NativeMailUIFixtureService in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000A; };
 		CA4A2201000000000000000B /* MailHTMLPolicy in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000B; };
 		CA4A2201000000000000000C /* MailHTMLView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000C; };
+		C0DEA071C0DEA071C0DEA071 /* MoodleSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA072C0DEA072C0DEA072; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -347,6 +348,7 @@
 		CA4A2202000000000000000A /* NativeMailUIFixtureService */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailUIFixtureService.swift; sourceTree = SOURCE_ROOT; };
 		CA4A2202000000000000000B /* MailHTMLPolicy */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLPolicy.swift; sourceTree = SOURCE_ROOT; };
 		CA4A2202000000000000000C /* MailHTMLView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLView.swift; sourceTree = SOURCE_ROOT; };
+		C0DEA072C0DEA072C0DEA072 /* MoodleSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Models/MoodleSearch.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -757,6 +759,7 @@
 				C0DEA018C0DEA018C0DEA018 /* Features/Moodle/Attendance/MoodleAttendanceView.swift */,
 				C0DEA01AC0DEA01AC0DEA01A /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift */,
 				C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */,
+				C0DEA072C0DEA072C0DEA072 /* MoodleSearch.swift */,
 				C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */,
 				C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */,
 				C0DEC005C0DEC005C0DEC005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift */,
@@ -1112,6 +1115,7 @@
 				C0DEA017C0DEA017C0DEA017 /* Features/Moodle/Attendance/MoodleAttendanceView.swift in Sources */,
 				C0DEA019C0DEA019C0DEA019 /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift in Sources */,
 				C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */,
+				C0DEA071C0DEA071C0DEA071 /* MoodleSearch.swift in Sources */,
 				C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */,
 				C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */,
 				C0DEB005C0DEB005C0DEB005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift in Sources */,

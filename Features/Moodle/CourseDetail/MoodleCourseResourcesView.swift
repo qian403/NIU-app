@@ -3,7 +3,19 @@ import SwiftUI
 
 @MainActor
 final class MoodleResourcesViewModel: ObservableObject {
-    @Published private(set) var sections: [MoodleCourseSection] = []
+    @Published private(set) var sections: [MoodleCourseSection] = [] {
+        didSet {
+            searchIndex = MoodleResourceSearchIndex(sections)
+            updateSearch()
+        }
+    }
+    @Published var searchText = "" { didSet { updateSearch() } }
+    @Published private(set) var filteredSections: [MoodleCourseSection] = []
+    private var searchIndex = MoodleResourceSearchIndex()
+
+    private func updateSearch() {
+        filteredSections = searchIndex.filter(sections, query: searchText)
+    }
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 
@@ -19,7 +31,10 @@ final class MoodleResourcesViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            sections = try await repository.fetchSections(courseId: courseId)
+            sections = try await repository.fetchSections(courseId: courseId).map { section in
+                MoodleCourseSection(id: section.id, name: section.name, visible: section.visible,
+                                    summary: section.summary, modules: section.modules.filter { $0.modname != "label" })
+            }
             hasLoaded = true
         } catch is CancellationError {
             isLoading = false
@@ -60,14 +75,18 @@ struct MoodleCourseResourcesView: View {
                 }
             } else if viewModel.sections.isEmpty {
                 ScrollView {
-                    ContentUnavailableView {
-                        Label("目前沒有資源", systemImage: "folder")
-                    } actions: {
-                        Button("重新整理") {
-                            Task { await viewModel.load(courseId: courseId, force: true) }
+                    if !MoodleSearch.trimmed(viewModel.searchText).isEmpty {
+                        MoodleSearchEmptyView(searchText: viewModel.searchText)
+                    } else {
+                        ContentUnavailableView {
+                            Label("目前沒有資源", systemImage: "folder")
+                        } actions: {
+                            Button("重新整理") {
+                                Task { await viewModel.load(courseId: courseId, force: true) }
+                            }
                         }
+                        .frame(minHeight: 420)
                     }
-                    .frame(minHeight: 420)
                 }
                 .refreshable { await viewModel.load(courseId: courseId, force: true) }
             } else {
@@ -79,7 +98,10 @@ struct MoodleCourseResourcesView: View {
                                 .foregroundStyle(.secondary)
                                 .padding(10)
                         }
-                        ForEach(viewModel.sections) { section in
+                        if !MoodleSearch.trimmed(viewModel.searchText).isEmpty && viewModel.filteredSections.isEmpty {
+                            MoodleSearchEmptyView(searchText: viewModel.searchText)
+                        }
+                        ForEach(viewModel.filteredSections) { section in
                             SectionView(section: section, courseId: courseId, repository: repository)
                         }
                     }
@@ -89,6 +111,7 @@ struct MoodleCourseResourcesView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
+        .scrollDismissesKeyboard(.interactively)
         .task { await viewModel.load(courseId: courseId) }
     }
 }
@@ -112,7 +135,7 @@ private struct SectionView: View {
                 .background(Color.primary.opacity(0.03))
 
             // Modules
-            ForEach(section.modules.filter { $0.modname != "label" }) { module in
+            ForEach(section.modules) { module in
                 ModuleRow(courseId: courseId, module: module, repository: repository)
             }
         }
