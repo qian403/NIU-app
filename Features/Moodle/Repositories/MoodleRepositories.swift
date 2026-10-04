@@ -201,7 +201,7 @@ struct MoodleAssignmentsRepository: MoodleAssignmentsRepositoryProtocol {
         for offset in stride(from: 0, to: assignments.count, by: 4) {
             try Task.checkCancellation()
             let batch = assignments[offset..<min(offset + 4, assignments.count)]
-            let result = try await withThrowingTaskGroup(of: (Int, Bool).self) { group in
+            let result = try await withThrowingTaskGroup(of: (Int, Bool?).self) { group in
                 for assignment in batch {
                     let id = assignment.id
                     group.addTask { [self, id] in try await submissionStatus(for: id) }
@@ -216,10 +216,18 @@ struct MoodleAssignmentsRepository: MoodleAssignmentsRepositoryProtocol {
         return MoodleAssignmentsSnapshot(assignments: assignments, submittedStatus: statuses)
     }
 
-    private func submissionStatus(for id: Int) async throws -> (Int, Bool) {
+    private func submissionStatus(for id: Int) async throws -> (Int, Bool?) {
         try Task.checkCancellation()
-        let status = try await client.fetchSubmissionStatus(assignId: id)
-        return (id, try MoodleUpcomingRules.isSubmitted(status))
+        do {
+            let status = try await client.fetchSubmissionStatus(assignId: id)
+            try Task.checkCancellation()
+            return (id, try MoodleUpcomingRules.isSubmitted(status))
+        } catch {
+            try Task.checkCancellation()
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { throw error }
+            // Missing role-specific status or a failed item must not hide the course list.
+            return (id, nil)
+        }
     }
 
     func findAssignment(courseId: Int, module: MoodleModule) async throws -> MoodleAssignment? {
@@ -319,6 +327,7 @@ struct MoodleDiscussionPostsRepository: MoodleDiscussionPostsRepositoryProtocol 
 
 @MainActor
 protocol MoodleSubmissionRepositoryProtocol {
+    var sessionRevision: Int { get }
     func webSubmissionURL(for assignment: MoodleAssignment) -> String?
     func fetchStatus(assignment: MoodleAssignment) async throws -> MoodleSubmissionStatus
     func fetchGrades(courseId: Int) async throws -> [MoodleGradeItem]
@@ -330,6 +339,7 @@ protocol MoodleSubmissionRepositoryProtocol {
 
 @MainActor
 struct MoodleSubmissionRepository: MoodleSubmissionRepositoryProtocol {
+    var sessionRevision: Int { MoodleService.shared.sessionRevision }
     func webSubmissionURL(for assignment: MoodleAssignment) -> String? {
         "https://euni.niu.edu.tw/mod/assign/view.php?id=\(assignment.cmid)&action=editsubmission"
     }

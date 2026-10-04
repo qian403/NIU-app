@@ -105,14 +105,17 @@ protocol ReminderNotificationCenter: AnyObject {
 /// within a category use the earliest trigger, then a stable ID for deterministic ties.
 enum NotificationBudget {
     static let limit = 60
-    static func select(_ values: [ManagedNotification], unmanagedCount: Int, now: Date) -> [ManagedNotification] {
+    static func eligible(_ values: [ManagedNotification], now: Date) -> [ManagedNotification] {
         var seen = Set<String>()
-        return Array(values.filter { ($0.weekday != nil || $0.fireDate > now) && seen.insert($0.id).inserted }
+        return values.filter { ($0.weekday != nil || $0.fireDate > now) && seen.insert($0.id).inserted }
             .sorted {
                 if $0.category.priority != $1.category.priority { return $0.category.priority < $1.category.priority }
                 if $0.fireDate != $1.fireDate { return $0.fireDate < $1.fireDate }
                 return $0.id < $1.id
-            }.prefix(max(0, limit - unmanagedCount)))
+            }
+    }
+    static func select(_ values: [ManagedNotification], unmanagedCount: Int, now: Date) -> [ManagedNotification] {
+        Array(eligible(values, now: now).prefix(max(0, limit - unmanagedCount)))
     }
 }
 
@@ -166,6 +169,18 @@ final class EventReminderScheduler {
 
     func waitForIdle() async { await task?.value }
 
+    /// Invalidate a pending read/add before removing the confirmed cancellation's local state.
+    func removeConfirmedEvent(_ id: String) {
+        generation = UUID()
+        task?.cancel()
+        if let owner = session(), let data = loadCache(),
+           let cache = try? JSONDecoder().decode(Cache.self, from: data), cache.session == owner {
+            saveCache(try? JSONEncoder().encode(Cache(session: owner, records: cache.records.filter { $0.id != id })))
+        }
+        center.remove(["notify.event.\(id)"])
+        center.removeDelivered(["notify.event.\(id)"])
+    }
+
     func refresh(enabled: Set<ManagedNotificationCategory>, lead: EventReminderLeadTime,
                  sources: [ManagedNotificationCategory: Source] = [:]) async {
         generation = UUID()
@@ -193,7 +208,7 @@ final class EventReminderScheduler {
         // Remove disabled and previous-session requests before any potentially slow network read.
         let obsolete = pending.filter {
             guard let category = ManagedNotificationCategory.category(of: $0.id) else { return false }
-            return needsSessionCleanup || owner == nil || $0.session != owner || !enabled.contains(category)
+            return needsSessionCleanup || owner == nil || ($0.session != nil && $0.session != owner) || !enabled.contains(category)
         }.map(\.id)
         center.remove(obsolete)
         center.removeDelivered(obsolete)
@@ -208,6 +223,12 @@ final class EventReminderScheduler {
             return
         }
         var candidates: [ManagedNotification] = []
+        var retainedOpaqueIDs = Set<String>()
+        func retainOpaque(_ category: ManagedNotificationCategory) {
+            retainedOpaqueIDs.formUnion(pending.filter {
+                ManagedNotificationCategory.category(of: $0.id) == category && $0.value == nil
+            }.map(\.id))
+        }
         var invalid = 0, elapsed = 0
         var eventFetchFailed = false
         if enabled.contains(.event) {
@@ -220,8 +241,10 @@ final class EventReminderScheduler {
             } catch {
                 guard valid(token, owner) else { return }
                 eventFetchFailed = true
+                retainOpaque(.event)
                 if let data = loadCache(), let cache = try? JSONDecoder().decode(Cache.self, from: data), cache.session == owner {
-                    records = cache.records
+                    let pendingIDs = Set(pending.map(\.id))
+                    records = cache.records.filter { pendingIDs.contains("notify.event.\($0.id)") }
                 }
             }
             if let records {
@@ -240,15 +263,23 @@ final class EventReminderScheduler {
         for category in ManagedNotificationCategory.allCases where category != .event && enabled.contains(category) {
             do {
                 if let source = sources[category] { candidates += try await source() }
-                else { candidates += pending.compactMap(\.value).filter { $0.category == category } }
+                else {
+                    candidates += pending.compactMap(\.value).filter { $0.category == category }
+                    retainOpaque(category)
+                }
             } catch {
                 candidates += pending.compactMap(\.value).filter { $0.category == category }
+                retainOpaque(category)
             }
             guard valid(token, owner) else { return }
         }
-        let unmanagedCount = pending.filter { ManagedNotificationCategory.category(of: $0.id) == nil }.count
-        let chosen = NotificationBudget.select(candidates, unmanagedCount: unmanagedCount, now: now())
-        let selectedIDs = Set(chosen.map(\.id))
+        // Legacy requests have no reconstructible value. Keep them until their category loads,
+        // and reserve their slots so an offline upgrade cannot crowd them out.
+        let eligible = NotificationBudget.eligible(candidates, now: now())
+        retainedOpaqueIDs.subtract(eligible.map(\.id))
+        let unmanagedCount = pending.filter { ManagedNotificationCategory.category(of: $0.id) == nil }.count + retainedOpaqueIDs.count
+        let chosen = NotificationBudget.select(eligible, unmanagedCount: unmanagedCount, now: now())
+        let selectedIDs = Set(chosen.map(\.id)).union(retainedOpaqueIDs)
         let removals = pending.filter { ManagedNotificationCategory.category(of: $0.id) != nil && !selectedIDs.contains($0.id) }.map(\.id)
         center.remove(removals)
         center.removeDelivered(removals)
@@ -268,13 +299,15 @@ final class EventReminderScheduler {
                 if value.category == .event { failures += 1 }
             }
         }
-        guard enabled.contains(.event) else { statusChanged("活動提醒已關閉"); return }
-        let deferred = max(0, candidates.filter { $0.category == .event }.count - chosen.filter { $0.category == .event }.count)
-        var lines = ["已安排 \(scheduled) 個活動提醒"]
+        let deferred = eligible.filter { !selectedIDs.contains($0.id) }
+        var lines = [enabled.contains(.event) ? "已安排 \(scheduled) 個活動提醒" : "活動提醒已關閉"]
         if eventFetchFailed { lines.append("更新失敗，保留有效快取；請稍後重試") }
         if invalid > 0 { lines.append("\(invalid) 個活動缺少可辨識的開始日期與時間，未安排") }
         if elapsed > 0 { lines.append("\(elapsed) 個活動的提醒時間已過，未安排") }
-        if deferred > 0 { lines.append("\(deferred) 個活動因通知容量限制未安排，開啟 App 時重新核對") }
+        for (category, label) in [(ManagedNotificationCategory.event, "活動"), (.assignment, "作業"), (.calendar, "行事曆"), (.class, "課程")] {
+            let count = deferred.filter { $0.category == category }.count
+            if count > 0 { lines.append("\(count) 個\(label)提醒因通知容量限制未安排，開啟 App 時重新核對") }
+        }
         if failures > 0 { lines.append("\(failures) 個提醒無法更新，請重試") }
         statusChanged(lines.joined(separator: "\n"))
     }

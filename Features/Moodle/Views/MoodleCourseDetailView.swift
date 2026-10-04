@@ -68,7 +68,7 @@ struct MoodleCourseDetailView: View {
             MoodleCourseSectionStatus(model: viewModel, destination: .assignments)
             if viewModel.assignments.hasLoaded {
                 if viewModel.pendingAssignments.isEmpty {
-                    Text("沒有待繳作業").foregroundStyle(.secondary).frame(minHeight: 44)
+                    Text(viewModel.pendingEmptyMessage).foregroundStyle(.secondary).frame(minHeight: 44)
                 } else {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         // A VStack keeps the shared upcoming row's layout stable in List.
@@ -270,14 +270,7 @@ struct MoodleCoursePage: View {
         content.onAppear {
             guard !didSetQuery else { return }
             didSetQuery = true
-            switch destination {
-            case .assignments: model.assignments.searchText = initialQuery
-            case .announcements: model.announcements.searchText = initialQuery
-            case .resources: model.resourcesModel().searchText = initialQuery
-            case .questions: model.questionsModel().searchText = initialQuery
-            case .attendance: model.attendance.searchText = initialQuery
-            case .grades: model.grades.searchText = initialQuery
-            }
+            model.preparePage(destination, query: initialQuery)
         }
     }
 
@@ -290,10 +283,14 @@ struct MoodleCoursePage: View {
             MoodleCourseAnnouncementsView(courseId: model.course.id, viewModel: model.announcements,
                                           postsRepository: model.repositories.posts)
         case .resources:
-            MoodleCourseResourcesView(courseId: model.course.id, viewModel: model.resourcesModel(),
-                                      repository: model.repositories.resources)
+            if let resources = model.resources {
+                MoodleCourseResourcesView(courseId: model.course.id, viewModel: resources,
+                                          repository: model.repositories.resources)
+            } else { ProgressView("正在載入資源…") }
         case .questions:
-            MoodleCourseQuestionsView(courseId: model.course.id, viewModel: model.questionsModel())
+            if let questions = model.questions {
+                MoodleCourseQuestionsView(courseId: model.course.id, viewModel: questions)
+            } else { ProgressView("正在載入問答…") }
         case .attendance:
             MoodleCourseAttendanceView(courseId: model.course.id, viewModel: model.attendance)
         case .grades:

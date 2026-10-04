@@ -24,6 +24,13 @@ import Foundation
 }
 '''
 checks = r'''
+final class CountingDefaults: UserDefaults {
+    var recordRemovals = 0
+    override func removeObject(forKey key: String) {
+        if key == "eventFavorites.v1.record" { recordRemovals += 1 }
+        super.removeObject(forKey: key)
+    }
+}
 @MainActor final class Identity {
     var account: String? = "synthetic-a"
     var session: String? = "session-a"
@@ -71,7 +78,7 @@ checks = r'''
     }
     static func run() async {
         let suite = "dev.niu.event-favorites-check.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else { fatalError("Test suite unavailable") }
+        guard let defaults = CountingDefaults(suiteName: suite) else { fatalError("Test suite unavailable") }
         defer { defaults.removePersistentDomain(forName: suite) }
         let identity = Identity()
         func store() -> EventFavoritesStore {
@@ -103,6 +110,10 @@ checks = r'''
         identity.account = nil; identity.session = nil
         favorites.setFavorite(true, ids: ["old"], session: beforeLogout)
         expect(favorites.currentSession == nil, "logged-out store has no writable session")
+        let removals = defaults.recordRemovals
+        for _ in 0..<100 { _ = favorites.currentSession; _ = favorites.favorites(for: nil) }
+        expect(defaults.recordRemovals == removals, "logged-out synchronization does not repeatedly remove defaults or trigger change loops")
+        print("PASS: repeated logged-out favorites reads perform zero defaults removals")
         identity.account = "synthetic-a"; identity.session = "session-a3"
         expect(favorites.favorites(for: favorites.currentSession).isEmpty, "logout does not resurrect")
         print("PASS: account/session isolation, same-session persistence, clear generation, cross-instance stale writes, logout")
@@ -230,6 +241,20 @@ with tempfile.TemporaryDirectory(prefix="niu-event-favorites-") as directory:
     support = folder / "Support.swift"
     support.write_text(stubs)
     source = folder / "Checks.swift"
+    # Verify the real store before loading the broader WebKit-dependent ViewModel suite.
+    store_checks = checks[:checks.index("@MainActor final class Service")]
+    store_checks += checks[checks.index("@MainActor enum Checks"):checks.index("        let service = Service()")]
+    store_checks += "    }\n}\n@main struct Main { static func main() async { await Checks.run() } }\n"
+    source.write_text("import Foundation\n" + store_checks)
+    store_binary = folder / "store-checks"
+    subprocess.run(["xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",
+                    "-module-cache-path", str(folder / "ModuleCache"),
+                    str(feature / "Models/EventRegistrationModels.swift"),
+                    str(feature / "Stores/EventFavoritesStore.swift"), str(support), str(source),
+                    "-o", str(store_binary)], check=True)
+    subprocess.run([str(store_binary)], check=True, timeout=30)
+    if "--store-only" in __import__("sys").argv:
+        raise SystemExit(0)
     source.write_text("import Foundation\n" + checks)
     binary = folder / "checks"
     production = [feature / "Models/EventRegistrationModels.swift",

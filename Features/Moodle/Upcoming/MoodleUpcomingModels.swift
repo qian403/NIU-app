@@ -58,6 +58,15 @@ final class MoodleCalendarCapability {
 
 extension Notification.Name {
     static let moodleSessionDidChange = Notification.Name("NIUMoodleSessionDidChange")
+    static let moodleSubmissionDidChange = Notification.Name("NIUMoodleSubmissionDidChange")
+}
+
+/// Posted synchronously on the main actor after a confirmed status response.
+struct MoodleSubmissionChange {
+    let assignmentID: Int
+    let courseID: Int
+    let submitted: Bool
+    let sessionRevision: Int
 }
 
 struct MoodleUpcomingItem: Identifiable, Equatable {
@@ -98,7 +107,7 @@ enum MoodleUpcomingRules {
     static func calendarItems(_ events: [MoodleCalendarActionEvent], courses: [MoodleCourse], now: Date, confirmedPending: Set<Int> = []) throws -> [MoodleUpcomingItem] {
         let courseNames = Dictionary(courses.map { ($0.id, $0.cleanName) }, uniquingKeysWith: { first, _ in first })
         var items: [Int: MoodleUpcomingItem] = [:]
-        for event in events where event.modulename == "assign" && event.eventtype != "gradingdue" {
+        for event in events where event.modulename == "assign" && event.eventtype == "due" {
             guard let course = event.course, let courseName = courseNames[course.id] else { continue }
             // Missing action information must not silently become an empty list.
             guard let action = event.action else { throw MoodleUpcomingError.incompleteResponse }
@@ -121,7 +130,7 @@ enum MoodleUpcomingRules {
     static func isSubmitted(_ status: MoodleSubmissionStatus) throws -> Bool {
         guard let attempt = status.lastattempt else { throw MoodleUpcomingError.incompleteResponse }
         let states = [attempt.submission?.status, attempt.teamsubmission?.status].compactMap { $0 }
-        guard states.allSatisfy({ ["new", "draft", "reopened", "submitted"].contains($0) }) else {
+        guard !states.isEmpty, states.allSatisfy({ ["new", "draft", "reopened", "submitted"].contains($0) }) else {
             throw MoodleUpcomingError.incompleteResponse
         }
         return states.contains("submitted")

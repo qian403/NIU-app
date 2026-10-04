@@ -51,11 +51,13 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
         let id = UUID()
         loadID = id
         phase = .loading
+        let session = EventRegistrationClient.shared.sessionRevision
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let events = try await service.appliedEvents()
-                guard loadID == id else { return }
+                guard loadID == id, session == EventRegistrationClient.shared.sessionRevision, !Task.isCancelled else { return }
+                EventRegistrationSubmission.shared.reconcileApplied(events, session: session)
                 self.events = events
                 updatedAt = Date()
                 phase = .loaded
@@ -94,8 +96,15 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
     // MARK: - 取消／修改報名
 
     func cancelRegistration(eventID: String) {
+        let session = EventRegistrationClient.shared.sessionRevision
         perform(activity: "正在取消報名…", action: "取消報名") { service in
-            try await service.cancelRegistration(eventID: eventID)
+            let outcome = try await service.cancelRegistration(eventID: eventID)
+            guard session == EventRegistrationClient.shared.sessionRevision else { throw CancellationError() }
+            if case .confirmed = outcome {
+                NotificationCenter.default.post(name: .didConfirmEventCancellation, object: nil,
+                                                userInfo: ["eventID": eventID, "session": session])
+            }
+            return outcome
         }
     }
 

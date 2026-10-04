@@ -9,8 +9,10 @@ final class MoodleUIFixtureRepository: MoodleCourseRepositoryProtocol,
     MoodleGradesRepositoryProtocol, MoodleSubmissionRepositoryProtocol,
     MoodleDiscussionPostsRepositoryProtocol {
     var isAuthenticated: Bool { true }
+    var sessionRevision: Int { 0 }
     let availableSemesters = ["115-1", "114-2", "113-2"]
     var failsAnnouncements = false
+    var unknownSubmissionStatuses = false
     private var failsNextLoad: Bool
     private let now = Int(Date().timeIntervalSince1970)
     private var submitted = Set([1])
@@ -89,7 +91,7 @@ final class MoodleUIFixtureRepository: MoodleCourseRepositoryProtocol,
         try Task.checkCancellation()
         let items = assignments(courseId: courseId)
         return MoodleAssignmentsSnapshot(assignments: items,
-            submittedStatus: Dictionary(uniqueKeysWithValues: items.map { ($0.id, submitted.contains($0.id)) }))
+            submittedStatus: unknownSubmissionStatuses ? [:] : Dictionary(uniqueKeysWithValues: items.map { ($0.id, submitted.contains($0.id)) }))
     }
     func findAssignment(courseId: Int, module: MoodleModule) async throws -> MoodleAssignment? {
         try Task.checkCancellation()
@@ -260,6 +262,7 @@ struct MoodleUIFixtureRoot: View {
         self.screen = screen
         let repository = MoodleUIFixtureRepository(failsNextLoad: screen == "error")
         repository.failsAnnouncements = screen == "course-partial-error"
+        repository.unknownSubmissionStatuses = screen == "course-unknown-status"
         _repository = State(initialValue: repository)
         let client = MoodleUIFixtureUpcomingClient(repository: repository,
             calendarUnavailable: arguments.contains("-NIUMoodleUIFixtureCalendarUnavailable"),

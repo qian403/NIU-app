@@ -121,6 +121,10 @@ class Handler(BaseHTTPRequestHandler):
                     state["empty_login_pages"] = int(query["empty"])
                 if "register" in query:
                     state["register_mode"] = query["register"]
+                if "js_redirect" in query:
+                    state["js_redirect"] = query["js_redirect"] == "1"
+                if "settle" in query:
+                    state["applied"][query["settle"]] = "已報名"
                 if "slow_images" in query:
                     state["slow_images"] = query["slow_images"] == "1"
                 if "slow_html" in query:
@@ -132,6 +136,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.session():
             return self.redirect("/MvcTeam/Account/Login?ReturnUrl=" + path)
         if path == "/MvcTeam/Act":
+            if state.get("js_redirect") and "replacement=1" not in url.query:
+                return self.send(200, page("<script>location.replace('/MvcTeam/Act?replacement=1')</script><img src='/slow-image'>"))
             with lock:
                 slow_html = state["slow_html"]
                 if slow_html:
@@ -258,6 +264,18 @@ import WebKit
         state = try await control("")
         expect(state["login_posts"] as? Int == 2, "expired session signs in again quietly")
 
+        _ = try await control("js_redirect=1")
+        let redirected = try await shared.availableEvents()
+        expect(redirected.count == 3, "superseding JavaScript main-frame navigation completes within the same read")
+        _ = try await control("js_redirect=0")
+        _ = try await control("slow_html=1")
+        try await shared.checkLateUnknownNavigation()
+        _ = try await control("slow_html=0")
+        state = try await control("")
+        expect(state["login_posts"] as? Int == 2, "replacing explicit-load views preserves the authenticated cookie store")
+        try shared.checkNavigationReplacement()
+        print("PASS: JS main-frame replacement, -999/102 replacement, old revision/session callback fencing")
+
         let registered = try await shared.register(eventID: "12345")
         guard case .confirmed(let message) = registered, message.contains("已報名") else {
             return expect(false, "registration verified from applied list: \(registered)")
@@ -276,6 +294,13 @@ import WebKit
         _ = try await control("register=silent")
         let silent = try await shared.register(eventID: "22222")
         guard case .uncertain = silent else { return expect(false, "an unverifiable response is never success: \(silent)") }
+        _ = try await shared.appliedEvents()
+        expect(EventRegistrationSubmission.shared.blockedIDs(session: shared.sessionRevision).contains("22222"), "fresh absence retains uncertainty for school lag")
+        _ = try await control("settle=22222")
+        _ = try await shared.appliedEvents()
+        expect(!EventRegistrationSubmission.shared.blockedIDs(session: shared.sessionRevision).contains("22222"), "fresh registered row resolves same-session uncertainty")
+        _ = try await shared.cancelRegistration(eventID: "22222")
+        print("PASS: fresh applied read resolves registered uncertainty; absence retains reservation")
         _ = try await control("register=server-error")
         let serverError = try await shared.register(eventID: "33333")
         guard case .confirmed = serverError else {
@@ -389,12 +414,83 @@ try:
         folder = Path(directory)
         source = folder / "Checks.swift"
         source.write_text(fixture)
+        client_source = folder / "EventRegistrationClient.swift"
+        client_source.write_text((root / "Features/EventRegistration/Services/EventRegistrationClient.swift").read_text() + r'''
+
+extension EventRegistrationClient {
+    func checkLateUnknownNavigation() async throws {
+        let oldView = try page()
+        let tokens = WKWebView(frame: .zero)
+        let unknown = tokens.loadHTMLString("<html></html>", baseURL: nil)!
+        // Do not register unknown with didStart before the new load: its first
+        // callback is precisely the missing-provenance race under test.
+        let loading = Task { try await self.load(URLRequest(url: Checks.origin.appendingPathComponent("MvcTeam/Act"))) }
+        for _ in 0..<100 {
+            if let view = self.webView, view !== oldView, currentNavigation != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard let view = self.webView, let current = currentNavigation else { fatalError("new navigation did not start") }
+        precondition(view !== oldView && view.configuration.websiteDataStore === oldView.configuration.websiteDataStore)
+        self.webView(oldView, didStartProvisionalNavigation: unknown)
+        self.webView(oldView, didCommit: unknown)
+        self.webView(oldView, didFinish: unknown)
+        self.webView(oldView, didFailProvisionalNavigation: unknown, withError: URLError(.cancelled))
+        precondition(currentNavigation === current && !navigationCompleted && documentReadyTask == nil,
+                     "unknown old-page navigation cannot adopt, complete or cancel the new load")
+        _ = try await loading.value
+        precondition(navigationCompleted)
+        tokens.stopLoading()
+        print("PASS: delayed first callback from old page is fenced while explicit load preserves session cookies")
+    }
+
+    func checkNavigationReplacement() throws {
+        let view = try page()
+        let tokens = WKWebView(frame: .zero)
+        func navigation() -> WKNavigation { tokens.loadHTMLString("<html></html>", baseURL: nil)! }
+        prepareNavigation(acceptDocumentReady: true)
+        let old = navigation()
+        self.webView(view, didStartProvisionalNavigation: old)
+        prepareNavigation(acceptDocumentReady: true)
+        let first = navigation()
+        self.webView(view, didStartProvisionalNavigation: first)
+        self.webView(view, didStartProvisionalNavigation: old)
+        self.webView(view, didFinish: old)
+        precondition(currentNavigation === first && !navigationCompleted, "pre-prepare callbacks cannot finish or replace current navigation")
+        for error in [NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled), NSError(domain: "WebKitErrorDomain", code: 102)] {
+            let previous = currentNavigation!
+            self.webView(view, didCommit: previous)
+            self.webView(view, didFailProvisionalNavigation: previous, withError: error)
+            precondition(documentReadyTask == nil && !navigationCompleted)
+            let next = navigation()
+            self.webView(view, didStartProvisionalNavigation: next)
+            self.webView(view, didFinish: previous)
+            precondition(currentNavigation === next && !navigationCompleted, "cancelled load cannot finish replacement")
+        }
+        let previous = currentNavigation!
+        self.webView(view, didCommit: previous)
+        let replacement = navigation()
+        self.webView(view, didStartProvisionalNavigation: replacement)
+        precondition(currentNavigation === replacement && documentReadyTask == nil, "replacement cancels old document-ready polling")
+        self.webView(view, didFail: previous, withError: URLError(.badServerResponse))
+        precondition(!navigationCompleted)
+        self.webView(view, didFinish: replacement)
+        precondition(navigationCompleted, "replacement completes current read")
+        tokens.stopLoading()
+        reset()
+        let freshView = try page()
+        prepareNavigation(acceptDocumentReady: true)
+        self.webView(view, didStartProvisionalNavigation: replacement)
+        precondition(currentNavigation == nil && !navigationCompleted, "old session web view cannot be adopted")
+        freshView.stopLoading()
+    }
+}
+''')
         binary = folder / "checks"
         subprocess.run([
             "xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",
             "-module-cache-path", str(folder / "ModuleCache"),
             str(root / "Features/EventRegistration/Models/EventRegistrationModels.swift"),
-            str(root / "Features/EventRegistration/Services/EventRegistrationClient.swift"),
+            str(client_source),
             str(source), "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True, timeout=180,

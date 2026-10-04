@@ -107,6 +107,11 @@ private struct MoodleUpcomingContent<Content: View>: View {
             }
             .font(.subheadline)
         case .loaded:
+            if let message = model.refreshError {
+                Label(message + " 保留上次資料。", systemImage: "exclamationmark.triangle")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Button("重試", action: retry).frame(minWidth: 44, minHeight: 44)
+            }
             content()
         }
     }
@@ -177,7 +182,9 @@ struct MoodleUpcomingNavigation: ViewModifier {
     func body(content: Content) -> some View {
         content
             .navigationDestination(isPresented: Binding(get: { model.navigationOwner == owner && model.assignment != nil }, set: { if !$0 { model.assignment = nil } })) {
-                if let assignment = model.assignment { MoodleAssignmentView(assignment: assignment, repository: repository) }
+                if let assignment = model.assignment {
+                    MoodleAssignmentView(assignment: assignment, repository: repository)
+                }
             }
             .alert("無法開啟作業", isPresented: Binding(get: { model.navigationOwner == owner && model.navigationError != nil }, set: { if !$0 { model.navigationError = nil } })) {
                 Button("好", role: .cancel) { model.navigationError = nil }
