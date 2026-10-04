@@ -142,11 +142,6 @@ struct MoodleAssignmentsRepository: MoodleAssignmentsRepositoryProtocol {
 
     func fetchAssignments(courseId: Int) async throws -> MoodleAssignmentsSnapshot {
         let assignments = try await client.fetchAssignments(courseId: courseId)
-            .sorted { lhs, rhs in
-                if lhs.duedate == 0 { return false }
-                if rhs.duedate == 0 { return true }
-                return lhs.duedate > rhs.duedate
-            }
         let statuses = await withTaskGroup(of: (Int, Bool).self) { group in
             for assignment in assignments {
                 group.addTask { @MainActor [client] in
