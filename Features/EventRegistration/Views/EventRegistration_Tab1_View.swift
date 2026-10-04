@@ -5,10 +5,11 @@ struct EventRegistration_Tab1_View: View {
     var showApplied: () -> Void = {}
     var onBatchRegister: (([EventData]) -> Void)? = nil
     @State private var selectedEvent: EventData?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 0) {
-            controls
+            if !dynamicTypeSize.isAccessibilitySize { controls }
             EventListScaffold(
                 items: viewModel.filteredEvents,
                 totalCount: viewModel.events.count,
@@ -19,6 +20,12 @@ struct EventRegistration_Tab1_View: View {
                 emptyTitle: "目前沒有可報名的活動",
                 emptySymbol: "calendar.badge.exclamationmark",
                 filteredEmptyTitle: viewModel.hasNoFavorites ? "還沒有收藏的活動" : nil,
+                scrollingControls: dynamicTypeSize.isAccessibilitySize ? AnyView(
+                    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                        controls
+                        if viewModel.isSelecting { selectionActions }
+                    }
+                ) : nil,
                 reload: viewModel.reload,
                 refresh: viewModel.refresh
             ) { event in
@@ -26,7 +33,7 @@ struct EventRegistration_Tab1_View: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if viewModel.isSelecting { selectionActions }
+            if viewModel.isSelecting && !dynamicTypeSize.isAccessibilitySize { selectionActions }
         }
         .disabled(viewModel.isBusy)
         .onAppear { viewModel.synchronizeFavorites() }
@@ -50,18 +57,23 @@ struct EventRegistration_Tab1_View: View {
     }
 
     private var controls: some View {
-        HStack {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout())
+        return layout {
             Toggle(isOn: $viewModel.favoritesOnly) {
                 Label("只看收藏", systemImage: "star.fill")
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(minHeight: 44)
             }
             .toggleStyle(.button)
-            Spacer()
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
             Button {
                 if viewModel.isSelecting { viewModel.cancelSelection() }
                 else { viewModel.beginSelection() }
             } label: {
                 Text(viewModel.isSelecting ? "取消選取" : "選取")
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(minHeight: 44)
             }
             .disabled(!viewModel.isSelecting && viewModel.filteredEvents.isEmpty)
@@ -70,12 +82,18 @@ struct EventRegistration_Tab1_View: View {
     }
 
     private func eventRow(_ event: EventData) -> some View {
-        HStack(alignment: .top, spacing: 0) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 0))
+        return layout {
             Button {
                 if viewModel.isSelecting { viewModel.toggleSelection(event) }
                 else { selectedEvent = event }
             } label: {
-                HStack(spacing: 0) {
+                let cardLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                    : AnyLayout(HStackLayout(spacing: 0))
+                cardLayout {
                     if viewModel.isSelecting {
                         Image(systemName: viewModel.selectedIDs.contains(event.id) ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(Color.accentColor)
@@ -96,7 +114,10 @@ struct EventRegistration_Tab1_View: View {
             }
 
             Button { viewModel.toggleFavorite(event) } label: {
-                Image(systemName: viewModel.favoriteIDs.contains(event.id) ? "star.fill" : "star")
+                Label(viewModel.favoriteIDs.contains(event.id) ? "取消收藏" : "收藏",
+                      systemImage: viewModel.favoriteIDs.contains(event.id) ? "star.fill" : "star")
+                    .labelStyle(EventFavoriteLabelStyle(showsTitle: dynamicTypeSize.isAccessibilitySize))
+                    .fixedSize(horizontal: false, vertical: true)
                     .font(.title3)
                     .foregroundStyle(viewModel.favoriteIDs.contains(event.id) ? Color.orange : Color.secondary)
                     .frame(minWidth: 44, minHeight: 44)
@@ -110,19 +131,29 @@ struct EventRegistration_Tab1_View: View {
 
     private var selectionActions: some View {
         VStack(spacing: 4) {
-            HStack {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                : AnyLayout(HStackLayout())
+            layout {
                 Text("已選取 \(viewModel.selectedIDs.count) 個活動")
                     .font(.subheadline.weight(.semibold))
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 Button { viewModel.selectAllVisible() } label: {
                     Text("全選目前篩選").frame(minHeight: 44)
                 }
                 .disabled(viewModel.filteredEvents.isEmpty)
             }
-            ViewThatFits(in: .horizontal) {
-                HStack { batchButtons }
-                VStack(alignment: .leading, spacing: 0) { batchButtons }
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 4) { batchButtons }
+                } else {
+                    ViewThatFits(in: .horizontal) {
+                        HStack { batchButtons }
+                        VStack(alignment: .leading, spacing: 0) { batchButtons }
+                    }
+                }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .disabled(viewModel.selectedIDs.isEmpty)
         }
         .padding(.horizontal)
@@ -148,6 +179,21 @@ struct EventRegistration_Tab1_View: View {
     }
 }
 
+private struct EventFavoriteLabelStyle: LabelStyle {
+    let showsTitle: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if showsTitle {
+            HStack(alignment: .firstTextBaseline) {
+                configuration.icon
+                configuration.title
+            }
+        } else {
+            configuration.icon
+        }
+    }
+}
+
 // MARK: - 共用列表外框
 
 /// Keeps loading, offline failure, an empty school list and no search matches visibly distinct.
@@ -161,57 +207,75 @@ struct EventListScaffold<Item: Identifiable, Row: View>: View {
     let emptyTitle: String
     let emptySymbol: String
     var filteredEmptyTitle: String? = nil
+    var scrollingControls: AnyView? = nil
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let reload: () -> Void
     let refresh: () async -> Void
     @ViewBuilder let row: (Item) -> Row
 
     var body: some View {
-        VStack(spacing: 0) {
-            EventSearchField(text: $searchText, hint: searchHint)
-            content
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // All controls scroll together so large text never consumes the list viewport.
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.small) {
+                        scrollingControls
+                        EventSearchField(text: $searchText, hint: searchHint)
+                        if totalCount == 0 { emptyContent }
+                        else { listContents }
+                    }
+                }
+                .refreshable { await refresh() }
+            } else {
+                VStack(spacing: 0) {
+                    EventSearchField(text: $searchText, hint: searchHint)
+                    if totalCount == 0 { emptyContent }
+                    else {
+                        ScrollView { listContents }
+                            .refreshable { await refresh() }
+                    }
+                }
+            }
         }
         .background(Color(.systemGroupedBackground))
     }
 
     @ViewBuilder
-    private var content: some View {
-        if totalCount == 0 {
-            switch phase {
-            case .idle, .loading:
-                ProgressView("正在載入活動…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .failed(let message):
-                EventLoadFailureView(message: message, retry: reload)
-            case .loaded:
-                ContentUnavailableView {
-                    Label(filteredEmptyTitle ?? emptyTitle, systemImage: filteredEmptyTitle == nil ? emptySymbol : "star")
-                } description: {
-                    Text(filteredEmptyTitle == nil ? "校方目前沒有列出活動。" : "點選活動旁的星號即可收藏，或關閉「只看收藏」查看所有活動。")
-                } actions: {
-                    Button("重新整理", action: reload)
-                }
+    private var emptyContent: some View {
+        switch phase {
+        case .idle, .loading:
+            ProgressView("正在載入活動…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed(let message):
+            EventLoadFailureView(message: message, retry: reload)
+        case .loaded:
+            ContentUnavailableView {
+                Label(filteredEmptyTitle ?? emptyTitle, systemImage: filteredEmptyTitle == nil ? emptySymbol : "star")
+            } description: {
+                Text(filteredEmptyTitle == nil ? "校方目前沒有列出活動。" : "點選活動旁的星號即可收藏，或關閉「只看收藏」查看所有活動。")
+            } actions: {
+                Button("重新整理", action: reload)
             }
-        } else {
-            ScrollView {
-                LazyVStack(spacing: Theme.Spacing.small) {
-                    EventListStatus(phase: phase, updatedAt: updatedAt, retry: reload)
-                    if items.isEmpty {
-                        if let filteredEmptyTitle {
-                            ContentUnavailableView(filteredEmptyTitle, systemImage: "star",
-                                description: Text("點選活動旁的星號即可收藏，或關閉「只看收藏」查看所有活動。"))
-                        } else {
-                            ContentUnavailableView.search(text: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
-                        }
-                    }
-                    ForEach(items) { item in
-                        row(item)
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.bottom)
-            }
-            .refreshable { await refresh() }
         }
+    }
+
+    private var listContents: some View {
+        LazyVStack(spacing: Theme.Spacing.small) {
+            EventListStatus(phase: phase, updatedAt: updatedAt, retry: reload)
+            if items.isEmpty {
+                if let filteredEmptyTitle {
+                    ContentUnavailableView(filteredEmptyTitle, systemImage: "star",
+                        description: Text("點選活動旁的星號即可收藏，或關閉「只看收藏」查看所有活動。"))
+                } else {
+                    ContentUnavailableView.search(text: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+            }
+            ForEach(items) { item in
+                row(item)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom)
     }
 }
 
@@ -349,10 +413,14 @@ extension EventData {
 // MARK: - 活動列表項目
 struct EventRow: View {
     let event: EventData
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
-            HStack(alignment: .firstTextBaseline) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xsmall))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+            layout {
                 Text(event.name)
                     .font(.headline)
                     .foregroundStyle(.primary)
