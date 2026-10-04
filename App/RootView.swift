@@ -5,6 +5,7 @@ struct RootView: View {
     @StateObject private var router = CampusRouter.shared
     @StateObject private var updateChecker = AppUpdateChecker.shared
     @ObservedObject private var sessionService = SSOSessionService.shared
+    @AppStorage(StorageKeys.authSessionID) private var authSessionID = ""
     @AppStorage("app.appearance.mode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
@@ -16,6 +17,7 @@ struct RootView: View {
                     ProgressView("正在清除登入資料…")
                 } else if appState.isAuthenticated {
                     HomeView()
+                        .id(authSessionID)
                 } else {
                     LoginView()
                 }

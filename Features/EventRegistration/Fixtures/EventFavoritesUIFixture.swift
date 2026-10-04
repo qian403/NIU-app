@@ -76,4 +76,19 @@ struct EventFavoritesUIFixtureRoot: View {
         }
     }
 }
+struct EventIntegratedUIFixtureRoot: View {
+    private let favorites: EventFavoritesStore
+    private let service = EventBatchPreviewFixtures.Service()
+
+    init() {
+        let suite = "dev.niu.event-integrated-fixture"
+        guard let defaults = UserDefaults(suiteName: suite) else { preconditionFailure("Fixture defaults unavailable") }
+        defaults.removePersistentDomain(forName: suite)
+        favorites = EventFavoritesStore(defaults: defaults, account: { "synthetic-fixture" }, session: { "fixture-session" })
+    }
+
+    var body: some View {
+        NavigationStack { EventRegistrationView(service: service, favorites: favorites) }
+    }
+}
 #endif

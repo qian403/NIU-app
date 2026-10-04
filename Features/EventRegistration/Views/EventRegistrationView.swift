@@ -6,10 +6,18 @@ struct EventRegistrationView: View {
     @StateObject private var tab2ViewModel: EventRegistration_Tab2_ViewModel
 
     private let onBatchRegister: (([EventData]) -> Void)?
+    private let service: (any EventRegistrationServing)?
+    @State private var batchSelection: BatchSelection?
+
+    private struct BatchSelection: Identifiable {
+        let id = UUID()
+        let events: [EventData]
+    }
 
     init(service: (any EventRegistrationServing)? = nil, favorites: EventFavoritesStore? = nil,
          onBatchRegister: (([EventData]) -> Void)? = nil) {
         self.onBatchRegister = onBatchRegister
+        self.service = service
         _tab1ViewModel = StateObject(wrappedValue: EventRegistration_Tab1_ViewModel(service: service, favorites: favorites))
         _tab2ViewModel = StateObject(wrappedValue: EventRegistration_Tab2_ViewModel(service: service))
     }
@@ -27,7 +35,10 @@ struct EventRegistrationView: View {
             TabView(selection: $viewModel.selectedTab.animation(Theme.Animation.fast)) {
                 EventRegistration_Tab1_View(viewModel: tab1ViewModel, showApplied: {
                     withAnimation(Theme.Animation.fast) { viewModel.selectedTab = 1 }
-                }, onBatchRegister: onBatchRegister)
+                }, onBatchRegister: { events in
+                    if let onBatchRegister { onBatchRegister(events) }
+                    else { batchSelection = BatchSelection(events: events) }
+                })
                 .tag(0)
 
                 EventRegistration_Tab2_View(viewModel: tab2ViewModel)
@@ -44,6 +55,9 @@ struct EventRegistrationView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $batchSelection) { selection in
+            EventBatchRegistrationView(events: selection.events, service: service)
+        }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text("活動報名")

@@ -13,6 +13,11 @@ fixture = r'''
 import Foundation
 import WebKit
 
+enum StorageKeys {
+    static let username = "fixture.username"
+    static let authSessionID = "fixture.session"
+}
+
 @MainActor final class LoginRepository {
     static let shared = LoginRepository()
     func getSavedCredentials() -> (username: String, password: String)? {
@@ -94,8 +99,12 @@ func event(_ id: String) -> EventData {
 
 @MainActor enum Checks {
     static func run() async {
+        let suite = "niu-lifetime-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { fatalError("Fixture storage unavailable") }
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let favorites = EventFavoritesStore(defaults: defaults, account: { "synthetic-user" }, session: { "synthetic-session" })
         let service = ScriptedService()
-        let model = EventRegistration_Tab1_ViewModel(service: service)
+        let model = EventRegistration_Tab1_ViewModel(service: service, favorites: favorites)
         service.result = [event("1")]
         model.loadIfNeeded()
         model.loadIfNeeded()
@@ -108,7 +117,7 @@ func event(_ id: String) -> EventData {
         await settle({ if case .failed = model.phase { return true }; return false }, "refresh failure surfaces")
         expect(model.events.map(\.id) == ["1"], "a failed refresh keeps the last valid list")
 
-        let empty = EventRegistration_Tab1_ViewModel(service: service)
+        let empty = EventRegistration_Tab1_ViewModel(service: service, favorites: favorites)
         empty.reload()
         await settle({ if case .failed = empty.phase { return true }; return false }, "offline first load fails")
         expect(empty.events.isEmpty && empty.updatedAt == nil, "offline is not reported as an empty school list")
@@ -135,7 +144,7 @@ func event(_ id: String) -> EventData {
         service.drain()
         service.honorsCancellation = true
 
-        let leaving = EventRegistration_Tab1_ViewModel(service: service)
+        let leaving = EventRegistration_Tab1_ViewModel(service: service, favorites: favorites)
         leaving.loadIfNeeded()
         await settle({ service.pending.count == 1 }, "visit starts loading")
         leaving.cancelLoading()
@@ -146,7 +155,7 @@ func event(_ id: String) -> EventData {
         await settle({ leaving.phase == .loaded }, "returning reloads")
 
         service.hold = true
-        var refreshing: EventRegistration_Tab1_ViewModel? = EventRegistration_Tab1_ViewModel(service: service)
+        var refreshing: EventRegistration_Tab1_ViewModel? = EventRegistration_Tab1_ViewModel(service: service, favorites: favorites)
         weak var released = refreshing
         let pull = Task { [model = refreshing!] in await model.refresh() }
         await settle({ service.pending.count == 1 }, "pull to refresh waits")
@@ -160,6 +169,9 @@ func event(_ id: String) -> EventData {
         expect(released == nil, "a cancelled refresh releases the ViewModel")
         service.hold = false
 
+        service.result = [event("1"), event("2")]
+        model.reload()
+        await settle({ model.phase == .loaded && model.events.count == 2 }, "registration uses current visible events")
         let applied = EventRegistration_Tab2_ViewModel(service: service)
         applied.loadIfNeeded()
         await settle({ applied.phase == .loaded }, "applied list loads")
@@ -209,6 +221,7 @@ with tempfile.TemporaryDirectory(prefix="niu-lifetime-") as directory:
         "xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",
         "-module-cache-path", str(folder / "ModuleCache"),
         str(feature / "Models/EventRegistrationModels.swift"),
+        str(feature / "Stores/EventFavoritesStore.swift"),
         str(feature / "Services/EventRegistrationClient.swift"),
         str(feature / "ViewModels/EventRegistrationViewModel.swift"),
         str(feature / "ViewModels/EventRegistration_Tab1_ViewModel.swift"),
