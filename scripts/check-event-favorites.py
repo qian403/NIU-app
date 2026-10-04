@@ -201,6 +201,7 @@ checks = r'''
         await until { service.loads.count == 1 }
         favorites.clear()
         identity.account = "synthetic-b"; identity.session = "new-session"
+        EventRegistrationClient.shared.reset() // AppState also resets the activity session when replacing login.
         await until { model.events.isEmpty } // clear publishes without a view disappearance or explicit resync
         service.loads.removeFirst().resume(returning: [event("after-logout")])
         await drain()

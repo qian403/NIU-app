@@ -53,6 +53,11 @@ fixture = r'''
 import Foundation
 import Combine
 
+@MainActor enum StorageKeys {
+    static let username = "fixture.username"
+    static let authSessionID = "fixture.session"
+}
+
 @MainActor final class LoginRepository {
     static let shared = LoginRepository()
     func getSavedCredentials() -> (username: String, password: String)? { nil }
@@ -69,6 +74,7 @@ import Combine
     var hold = false
     var outcome: EventActionOutcome = .confirmed("verified")
     var throwTimeout = false
+    var throwNotSubmitted = false
     var inFlight = 0
     var maxInFlight = 0
     func availableEvents() async throws -> [EventData] {
@@ -87,6 +93,7 @@ import Combine
         maxInFlight = max(maxInFlight, inFlight)
         defer { inFlight -= 1 }
         if hold { return try await withCheckedThrowingContinuation { gate = $0 } }
+        if throwNotSubmitted { throw EventRegistrationNotSubmittedError(EventRegistrationError.offline) }
         if throwTimeout { throw EventRegistrationError.timedOut }
         await Task.yield()
         return outcome
@@ -157,7 +164,7 @@ import Combine
         let beforePost = Task { try await client.register(eventID: "1") }
         beforePost.cancel()
         do { _ = try await beforePost.value; expect(false, "cancel-before-send must throw") }
-        catch { expect(error is CancellationError, "pre-boundary cancellation") }
+        catch { expect((error as? EventRegistrationNotSubmittedError)?.wasCancelled == true, "pre-boundary cancellation is explicitly not submitted") }
         snapshot = try await control()
         expect(snapshot["posts"] as? Int == 0, "pre-boundary cancel cannot send POST")
 
@@ -176,7 +183,22 @@ import Combine
         client.reset(); account = "synthetic-c"
         do { _ = try await swapped.value; expect(false, "old-session result must not return into new session") }
         catch { expect(error is CancellationError, "old-session result fenced after POST") }
+        _ = try await control("delay_post=0&malformed=1")
+        do { _ = try await client.register(eventID: "3"); expect(false, "malformed preflight must throw") }
+        catch { expect(error is EventRegistrationNotSubmittedError, "production pre-POST parse error carries not-submitted boundary") }
+        snapshot = try await control()
+        expect(snapshot["posts"] as? Int == 2, "preflight failure sends zero additional POSTs")
+        expect(!EventRegistrationSubmission.shared.blockedIDs(session: client.sessionRevision).contains("3"), "known pre-POST failure releases reservation")
+        _ = try await control("malformed=0")
+        let retry = try await client.register(eventID: "3")
+        if case .uncertain = retry {} else { expect(false, "repaired source allows actual retry") }
+        snapshot = try await control()
+        expect(snapshot["posts"] as? Int == 3, "same-session retry sends exactly one POST")
+        _ = try await client.register(eventID: "3")
+        snapshot = try await control()
+        expect(snapshot["posts"] as? Int == 3, "direct production client also fences uncertain resend")
         print("PASS: client cookie isolation, revision, queued/logout cancellation, pre/post mutation boundary, no automatic resubmit")
+        print("PASS: production pre-POST typed error, zero POST, same-session retry, direct-client uncertain fence")
     }
     static func run() async {
         let fake = Fake()
@@ -286,6 +308,58 @@ import Combine
         let freshSession = model(unknown); await ready(freshSession)
         expect(freshSession.eligibleCount == 3, "uncertain registry does not leak to new session")
 
+        let suite = "niu.batch-single-regression.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let favorites = EventFavoritesStore(defaults: defaults, account: { "synthetic" }, session: { "synthetic-session" })
+        for batchFirst in [true, false] {
+            let f = Fake(); f.available = [f.available[0]]; f.outcome = .uncertain("unknown")
+            let revision = UUID()
+            let single = EventRegistration_Tab1_ViewModel(service: f, favorites: favorites, sessionRevision: revision)
+            await single.refresh()
+            let batch = model(f, revision: revision); await ready(batch)
+            if batchFirst {
+                batch.confirm(); await until { batch.phase == .finished }
+                single.register(f.available[0]); await until { !single.isBusy }
+                expect(single.alert?.kind == .uncertain, "single explains existing batch uncertainty")
+            } else {
+                single.register(f.available[0]); await until { !single.isBusy }
+                batch.confirm(); await until { batch.phase == .finished }
+                if case .notSent = batch.items[0].result {} else { expect(false, "already-ready batch rechecks single reservation") }
+            }
+            expect(f.calls == ["1"], "bidirectional batch/single uncertain fence")
+            let reopened = model(f, revision: revision); await ready(reopened)
+            expect(reopened.eligibleCount == 0, "both entry points share eligibility fence")
+        }
+        let inFlight = Fake(); inFlight.available = [inFlight.available[0]]; inFlight.hold = true
+        let sharedRevision = UUID()
+        let sending = EventRegistration_Tab1_ViewModel(service: inFlight, favorites: favorites, sessionRevision: sharedRevision)
+        await sending.refresh()
+        let competing = model(inFlight, revision: sharedRevision); await ready(competing)
+        sending.register(inFlight.available[0]); await until { inFlight.gate != nil }
+        competing.confirm(); await until { competing.phase == .finished }
+        expect(inFlight.calls == ["1"], "in-flight single prevents competing batch mutation")
+        inFlight.release(.uncertain("unknown")); await until { !sending.isBusy }
+
+        let notSent = Fake(); notSent.throwNotSubmitted = true
+        let retryRevision = UUID()
+        let failedBeforePOST = model(notSent, revision: retryRevision); await ready(failedBeforePOST)
+        failedBeforePOST.confirm(); await until { failedBeforePOST.phase == .finished }
+        expect(failedBeforePOST.items.allSatisfy { if case .notSent = $0.result { return true }; return false }, "typed pre-POST error is not unknown")
+        let retryBeforePOST = model(notSent, revision: retryRevision); await ready(retryBeforePOST)
+        expect(retryBeforePOST.eligibleCount == 3, "pre-POST error permits same-session retry")
+        notSent.throwNotSubmitted = false
+        retryBeforePOST.confirm(); await until { retryBeforePOST.phase == .finished }
+        expect(retryBeforePOST.items.allSatisfy { if case .confirmed = $0.result { return true }; return false }, "repaired preflight succeeds")
+        let unknownSingle = Fake(); unknownSingle.throwTimeout = true
+        let singleRevision = UUID()
+        let unknownSingleModel = EventRegistration_Tab1_ViewModel(service: unknownSingle, favorites: favorites, sessionRevision: singleRevision)
+        await unknownSingleModel.refresh(); unknownSingleModel.register(unknownSingle.available[0]); await until { !unknownSingleModel.isBusy }
+        expect(unknownSingleModel.alert?.kind == .uncertain, "unknown injected single-service throw stays uncertain")
+        let afterUnknownSingle = model(unknownSingle, revision: singleRevision); await ready(afterUnknownSingle)
+        expect(afterUnknownSingle.eligibleCount == 2, "unknown single-service throw reserves its activity")
+        print("PASS: bidirectional and in-flight single/batch fences, typed pre-send retry, unknown injected errors remain uncertain")
+
         let localized = EventBatchEligibility.registrationDates("2026/9/21上午08:00:00起\n2026/10/1下午12:00:00止")
         expect(localized.count == 2 && localized[1].duration == 1, "actual school Chinese AM/PM timestamps preserve seconds")
         var taipei = Calendar(identifier: .gregorian); taipei.timeZone = TimeZone(identifier: "Asia/Taipei")!
@@ -327,7 +401,8 @@ with tempfile.TemporaryDirectory(prefix="niu-event-batch-") as directory:
     binary = folder / "checks"
     sources = ["Models/EventRegistrationModels.swift", "Services/EventRegistrationClient.swift",
                "ViewModels/EventRegistrationViewModel.swift", "Batch/EventBatchEligibility.swift",
-               "Batch/EventBatchRegistrationViewModel.swift", "Batch/EventBatchPreviewFixtures.swift"]
+               "Batch/EventBatchRegistrationViewModel.swift", "Batch/EventBatchPreviewFixtures.swift",
+               "Stores/EventFavoritesStore.swift", "ViewModels/EventRegistration_Tab1_ViewModel.swift"]
     subprocess.run(["xcrun", "swiftc", "-DDEBUG", "-swift-version", "5", "-parse-as-library",
                     "-module-cache-path", str(folder / "ModuleCache"),
                     *[str(root / "Features/EventRegistration" / p) for p in sources],
