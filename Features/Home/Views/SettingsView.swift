@@ -541,6 +541,18 @@ private struct NotificationMenuView: View {
                         )
                     )
 
+                    EventReminderSettingsSection(
+                        enabled: Binding(
+                            get: { appState.notificationSettings.eventReminderEnabled },
+                            set: { value in Task { await appState.setEventRemindersEnabled(value) } }
+                        ),
+                        leadTime: Binding(
+                            get: { appState.notificationSettings.eventReminderLeadTime },
+                            set: { value in Task { await appState.setEventReminderLeadTime(value) } }
+                        ),
+                        status: appState.eventReminderStatus
+                    )
+
                     notificationToggle(
                         icon: "rectangle.topthird.inset.filled",
                         title: "即時動態（Live Activities）",
