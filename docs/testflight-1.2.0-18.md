@@ -24,7 +24,7 @@
 
 ## 發行紀錄
 
-- 程式來源：本機 main 的 2caaaa7（建置號調整）；本次變更為 `git log b5b5c5f..2caaaa7`：2b8e0a2（原生郵件）、927ae9f（作業排序）、e53a972（課程搜尋）、5f1cdbb（審查修正）、2caaaa7（建置號）。2b8e0a2..e53a972 已推送 GitHub；5f1cdbb 之後尚未推送。
+- 程式來源：本機 main 的 2caaaa7（建置號調整）；本次變更為 `git log b5b5c5f..2caaaa7`：2b8e0a2（原生郵件）、927ae9f（作業排序）、e53a972（課程搜尋）、5f1cdbb（審查修正）、2caaaa7（建置號）。全部已推送 GitHub（含本紀錄 133f677）。
 - 版本規則：1.2.0 尚未正式上架，沿用版本號，建置號由 17 遞增為 18（依 1.2.0 (17) 發行紀錄判斷先前最大建置號為 17）。
 - 發行團隊：Very Fast Network LTD（G4LXL97NF9）。
 - 封存：~/Library/Developer/Xcode/Archives/2026-10-04/NIU-TestFlight-1.2.0-18.xcarchive。
