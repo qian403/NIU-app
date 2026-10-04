@@ -6,6 +6,11 @@ struct EventRegistration_Tab1_View: View {
     var onBatchRegister: (([EventData]) -> Void)? = nil
     @State private var selectedEvent: EventData?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var selectionAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.38, dampingFraction: 0.78)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +41,8 @@ struct EventRegistration_Tab1_View: View {
             if viewModel.isSelecting && !dynamicTypeSize.isAccessibilitySize { selectionActions }
         }
         .disabled(viewModel.isBusy)
+        .animation(selectionAnimation, value: viewModel.isSelecting)
+        .sensoryFeedback(.selection, trigger: viewModel.selectedIDs)
         .onAppear { viewModel.synchronizeFavorites() }
         .onDisappear { viewModel.cancelSelection() }
         .sheet(item: $selectedEvent) { event in
@@ -82,49 +89,75 @@ struct EventRegistration_Tab1_View: View {
     }
 
     private func eventRow(_ event: EventData) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
-            HStack(alignment: .top, spacing: 8) {
-                Button {
-                    if viewModel.isSelecting { viewModel.toggleSelection(event) }
-                    else { selectedEvent = event }
-                } label: {
-                    let cardLayout = dynamicTypeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-                        : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
-                    cardLayout {
-                        if viewModel.isSelecting {
-                            Image(systemName: viewModel.selectedIDs.contains(event.id) ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(Color.accentColor)
-                                .frame(minWidth: 44, minHeight: 44)
-                                .accessibilityHidden(true)
-                        }
-                        EventRow(event: event)
-                    }
-                    .contentShape(Rectangle())
+        let isSelected = viewModel.selectedIDs.contains(event.id)
+        return VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
+            if dynamicTypeSize.isAccessibilitySize {
+                eventActions(event).frame(maxWidth: .infinity, alignment: .trailing)
+                eventDetailsButton(event)
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    eventDetailsButton(event)
+                    eventActions(event)
                 }
-                .buttonStyle(.plain)
-                .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                    viewModel.beginSelection(event)
-                })
-                .accessibilityValue(viewModel.isSelecting ? (viewModel.selectedIDs.contains(event.id) ? "已選取" : "未選取") : "")
-                .accessibilityHint(viewModel.isSelecting ? "切換選取狀態" : "顯示活動詳情；也可長按進入多選")
-                .accessibilityAction(named: Text(viewModel.selectedIDs.contains(event.id) ? "取消選取" : "選取活動")) {
-                    viewModel.toggleSelection(event)
-                }
-
-                favoriteButton(event)
             }
 
             EventStatusBadge(text: event.event_state, color: event.stateColor)
         }
         .padding(Theme.Spacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.accentColor.opacity(isSelected ? 0.045 : 0))
+                }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.65) : Color(.separator).opacity(0.35),
+                              lineWidth: isSelected ? 1.5 : 0.5)
                 .allowsHitTesting(false)
         }
+        .animation(selectionAnimation, value: isSelected)
+    }
+
+    private func eventDetailsButton(_ event: EventData) -> some View {
+        Button {
+            if viewModel.isSelecting { viewModel.toggleSelection(event) }
+            else { selectedEvent = event }
+        } label: {
+            EventRow(event: event)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+            viewModel.beginSelection(event)
+        })
+        .accessibilityValue(viewModel.isSelecting ? (viewModel.selectedIDs.contains(event.id) ? "已選取" : "未選取") : "")
+        .accessibilityHint(viewModel.isSelecting ? "切換選取狀態" : "顯示活動詳情；也可長按進入多選")
+        .accessibilityAction(named: Text(viewModel.selectedIDs.contains(event.id) ? "取消選取" : "選取活動")) {
+            viewModel.toggleSelection(event)
+        }
+    }
+
+    private func eventActions(_ event: EventData) -> some View {
+        HStack(spacing: 2) {
+            if viewModel.isSelecting {
+                let isSelected = viewModel.selectedIDs.contains(event.id)
+                Button { viewModel.toggleSelection(event) } label: {
+                    EventSelectionIndicator(isSelected: isSelected)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(isSelected ? "取消選取" : "選取")：\(event.name)")
+                .accessibilityValue(isSelected ? "已選取" : "未選取")
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.65, anchor: .trailing).combined(with: .opacity))
+            }
+            favoriteButton(event)
+        }
+        .fixedSize()
     }
 
     private func favoriteButton(_ event: EventData) -> some View {
@@ -187,6 +220,57 @@ struct EventRegistration_Tab1_View: View {
             } label: {
                 Label("批次報名", systemImage: "person.badge.plus").frame(minHeight: 44)
             }
+        }
+    }
+}
+
+/// The stroke reveals in order while the disc gives one small, interruptible bounce.
+private struct EventSelectionIndicator: View {
+    let isSelected: Bool
+    @State private var revealed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .title3) private var diameter = 24.0
+
+    var body: some View {
+        let motionReduced = reduceMotion
+        let selected = revealed
+        return ZStack {
+            Circle()
+                .strokeBorder(Color.accentColor.opacity(revealed ? 0 : 0.45), lineWidth: 1.5)
+            Circle()
+                .fill(Color.accentColor)
+                .opacity(revealed ? 1 : 0)
+                .scaleEffect(reduceMotion || revealed ? 1 : 0.65)
+            EventSelectionCheckmark()
+                .trim(from: 0, to: revealed ? 1 : 0)
+                .stroke(.white, style: StrokeStyle(lineWidth: diameter * 0.095, lineCap: .round, lineJoin: .round))
+                .padding(diameter * 0.26)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2).delay(revealed ? 0.08 : 0), value: revealed)
+        }
+        .frame(width: diameter, height: diameter)
+        .animation(.easeOut(duration: reduceMotion ? 0.15 : 0.22), value: revealed)
+        .keyframeAnimator(initialValue: 1.0, trigger: revealed) { content, scale in
+            content.scaleEffect(motionReduced ? 1 : scale)
+        } keyframes: { _ in
+            if selected && !motionReduced {
+                CubicKeyframe(0.88, duration: 0.08)
+                SpringKeyframe(1.12, duration: 0.16, spring: .snappy)
+                SpringKeyframe(1, duration: 0.2, spring: .smooth)
+            } else {
+                LinearKeyframe(1, duration: 0.1)
+            }
+        }
+        .onChange(of: isSelected, initial: true) { _, selected in revealed = selected }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct EventSelectionCheckmark: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.38, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         }
     }
 }
