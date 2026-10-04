@@ -161,6 +161,8 @@
 		C0DEAF010000000000000003 /* MoodleUpcomingRepository in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000003; };
 		C0DEAF010000000000000004 /* MoodleUpcomingViewModel in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000004; };
 		C0DEAF010000000000000005 /* MoodleUpcomingViews in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000005; };
+		EAFA00000000000000000A11 /* Features/EventRegistration/Stores/EventFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAFA00000000000000000A12 /* Features/EventRegistration/Stores/EventFavoritesStore.swift */; };
+		EAFA00000000000000000A21 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAFA00000000000000000A22 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -359,6 +361,8 @@
 		C0DEAF020000000000000003 /* MoodleUpcomingRepository */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingRepository.swift; sourceTree = SOURCE_ROOT; };
 		C0DEAF020000000000000004 /* MoodleUpcomingViewModel */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift; sourceTree = SOURCE_ROOT; };
 		C0DEAF020000000000000005 /* MoodleUpcomingViews */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViews.swift; sourceTree = SOURCE_ROOT; };
+		EAFA00000000000000000A12 /* Features/EventRegistration/Stores/EventFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Stores/EventFavoritesStore.swift; sourceTree = "<group>"; };
+		EAFA00000000000000000A22 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -743,6 +747,8 @@
 				E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */,
 				87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */,
 				9C82E15AA17F583EDF46F641 /* Features/EventRegistration/Services/EventRegistrationClient.swift */,
+				EAFA00000000000000000A12 /* Features/EventRegistration/Stores/EventFavoritesStore.swift */,
+				EAFA00000000000000000A22 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift */,
 				164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */,
 				AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */,
 				AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */,
@@ -1079,6 +1085,8 @@
 				B3FE21C2F45E4762945AE2BC /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift in Sources */,
 				EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */,
 				DB019DBAF3FFAB53B86A173B /* Features/EventRegistration/Services/EventRegistrationClient.swift in Sources */,
+				EAFA00000000000000000A11 /* Features/EventRegistration/Stores/EventFavoritesStore.swift in Sources */,
+				EAFA00000000000000000A21 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift in Sources */,
 				19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */,
 				E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */,
 				10A32DB22F431F630009BB45 /* View+Extensions.swift in Sources */,

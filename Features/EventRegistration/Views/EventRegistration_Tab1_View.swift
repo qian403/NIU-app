@@ -3,25 +3,34 @@ import SwiftUI
 struct EventRegistration_Tab1_View: View {
     @ObservedObject var viewModel: EventRegistration_Tab1_ViewModel
     var showApplied: () -> Void = {}
+    var onBatchRegister: (([EventData]) -> Void)? = nil
     @State private var selectedEvent: EventData?
 
     var body: some View {
-        EventListScaffold(
-            items: viewModel.filteredEvents,
-            totalCount: viewModel.events.count,
-            phase: viewModel.phase,
-            updatedAt: viewModel.updatedAt,
-            searchText: $viewModel.searchText,
-            searchHint: "可搜尋活動編號、名稱、主辦單位或內容",
-            emptyTitle: "目前沒有可報名的活動",
-            emptySymbol: "calendar.badge.exclamationmark",
-            reload: viewModel.reload,
-            refresh: viewModel.refresh
-        ) { event in
-            Button { selectedEvent = event } label: { EventRow(event: event) }
-                .buttonStyle(.plain)
-                .accessibilityHint("顯示活動詳情")
+        VStack(spacing: 0) {
+            controls
+            EventListScaffold(
+                items: viewModel.filteredEvents,
+                totalCount: viewModel.events.count,
+                phase: viewModel.phase,
+                updatedAt: viewModel.updatedAt,
+                searchText: $viewModel.searchText,
+                searchHint: "可搜尋活動編號、名稱、主辦單位或內容",
+                emptyTitle: "目前沒有可報名的活動",
+                emptySymbol: "calendar.badge.exclamationmark",
+                filteredEmptyTitle: viewModel.hasNoFavorites ? "還沒有收藏的活動" : nil,
+                reload: viewModel.reload,
+                refresh: viewModel.refresh
+            ) { event in
+                eventRow(event)
+            }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if viewModel.isSelecting { selectionActions }
+        }
+        .disabled(viewModel.isBusy)
+        .onAppear { viewModel.synchronizeFavorites() }
+        .onDisappear { viewModel.cancelSelection() }
         .sheet(item: $selectedEvent) { event in
             EventDetailView(event: event) { _ in
                 viewModel.register(event)
@@ -39,6 +48,104 @@ struct EventRegistration_Tab1_View: View {
             Text(alert.message)
         }
     }
+
+    private var controls: some View {
+        HStack {
+            Toggle(isOn: $viewModel.favoritesOnly) {
+                Label("只看收藏", systemImage: "star.fill")
+                    .frame(minHeight: 44)
+            }
+            .toggleStyle(.button)
+            Spacer()
+            Button {
+                if viewModel.isSelecting { viewModel.cancelSelection() }
+                else { viewModel.beginSelection() }
+            } label: {
+                Text(viewModel.isSelecting ? "取消選取" : "選取")
+                    .frame(minHeight: 44)
+            }
+            .disabled(!viewModel.isSelecting && viewModel.filteredEvents.isEmpty)
+        }
+        .padding(.horizontal)
+    }
+
+    private func eventRow(_ event: EventData) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            Button {
+                if viewModel.isSelecting { viewModel.toggleSelection(event) }
+                else { selectedEvent = event }
+            } label: {
+                HStack(spacing: 0) {
+                    if viewModel.isSelecting {
+                        Image(systemName: viewModel.selectedIDs.contains(event.id) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(Color.accentColor)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .accessibilityHidden(true)
+                    }
+                    EventRow(event: event)
+                }
+            }
+            .buttonStyle(.plain)
+            .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                viewModel.beginSelection(event)
+            })
+            .accessibilityValue(viewModel.isSelecting ? (viewModel.selectedIDs.contains(event.id) ? "已選取" : "未選取") : "")
+            .accessibilityHint(viewModel.isSelecting ? "切換選取狀態" : "顯示活動詳情；也可長按進入多選")
+            .accessibilityAction(named: Text(viewModel.selectedIDs.contains(event.id) ? "取消選取" : "選取活動")) {
+                viewModel.toggleSelection(event)
+            }
+
+            Button { viewModel.toggleFavorite(event) } label: {
+                Image(systemName: viewModel.favoriteIDs.contains(event.id) ? "star.fill" : "star")
+                    .font(.title3)
+                    .foregroundStyle(viewModel.favoriteIDs.contains(event.id) ? Color.orange : Color.secondary)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(viewModel.favoriteIDs.contains(event.id) ? "取消收藏" : "收藏")：\(event.name)")
+            .accessibilityValue(viewModel.favoriteIDs.contains(event.id) ? "已收藏" : "未收藏")
+        }
+    }
+
+    private var selectionActions: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text("已選取 \(viewModel.selectedIDs.count) 個活動")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button { viewModel.selectAllVisible() } label: {
+                    Text("全選目前篩選").frame(minHeight: 44)
+                }
+                .disabled(viewModel.filteredEvents.isEmpty)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack { batchButtons }
+                VStack(alignment: .leading, spacing: 0) { batchButtons }
+            }
+            .disabled(viewModel.selectedIDs.isEmpty)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+        .background(.bar)
+    }
+
+    @ViewBuilder private var batchButtons: some View {
+        Button { viewModel.favoriteSelection(true) } label: {
+            Label("加入收藏", systemImage: "star.fill").frame(minHeight: 44)
+        }
+        Button { viewModel.favoriteSelection(false) } label: {
+            Label("取消收藏", systemImage: "star.slash").frame(minHeight: 44)
+        }
+        if let onBatchRegister {
+            Button {
+                let events = viewModel.batchRegistrationEvents()
+                if !events.isEmpty { onBatchRegister(events) }
+            } label: {
+                Label("批次報名", systemImage: "person.badge.plus").frame(minHeight: 44)
+            }
+        }
+    }
 }
 
 // MARK: - 共用列表外框
@@ -53,6 +160,7 @@ struct EventListScaffold<Item: Identifiable, Row: View>: View {
     let searchHint: String
     let emptyTitle: String
     let emptySymbol: String
+    var filteredEmptyTitle: String? = nil
     let reload: () -> Void
     let refresh: () async -> Void
     @ViewBuilder let row: (Item) -> Row
@@ -76,9 +184,9 @@ struct EventListScaffold<Item: Identifiable, Row: View>: View {
                 EventLoadFailureView(message: message, retry: reload)
             case .loaded:
                 ContentUnavailableView {
-                    Label(emptyTitle, systemImage: emptySymbol)
+                    Label(filteredEmptyTitle ?? emptyTitle, systemImage: filteredEmptyTitle == nil ? emptySymbol : "star")
                 } description: {
-                    Text("校方目前沒有列出活動。")
+                    Text(filteredEmptyTitle == nil ? "校方目前沒有列出活動。" : "點選活動旁的星號即可收藏，或關閉「只看收藏」查看所有活動。")
                 } actions: {
                     Button("重新整理", action: reload)
                 }
@@ -88,7 +196,12 @@ struct EventListScaffold<Item: Identifiable, Row: View>: View {
                 LazyVStack(spacing: Theme.Spacing.small) {
                     EventListStatus(phase: phase, updatedAt: updatedAt, retry: reload)
                     if items.isEmpty {
-                        ContentUnavailableView.search(text: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+                        if let filteredEmptyTitle {
+                            ContentUnavailableView(filteredEmptyTitle, systemImage: "star",
+                                description: Text("點選活動旁的星號即可收藏，或關閉「只看收藏」查看所有活動。"))
+                        } else {
+                            ContentUnavailableView.search(text: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+                        }
                     }
                     ForEach(items) { item in
                         row(item)

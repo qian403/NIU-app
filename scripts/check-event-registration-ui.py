@@ -33,6 +33,18 @@ import SwiftUI
     func getSavedCredentials() -> (username: String, password: String)? { fatalError("Keychain forbidden") }
 }
 
+@MainActor enum StorageKeys {
+    static let username = "fixture.username"
+    static let authSessionID = "fixture.session"
+}
+
+@MainActor let fixtureFavorites: EventFavoritesStore = {
+    let suite = "dev.niu.event-ui-fixture"
+    guard let defaults = UserDefaults(suiteName: suite) else { fatalError("Fixture defaults unavailable") }
+    defaults.removePersistentDomain(forName: suite)
+    return EventFavoritesStore(defaults: defaults, account: { "synthetic" }, session: { "fixture" })
+}()
+
 let scenario = "SCENARIO"
 
 func event(_ id: String, _ name: String, _ state: String) -> EventData {
@@ -80,7 +92,7 @@ func applied(_ id: String, _ name: String, _ state: String, _ eventState: String
 
 struct Harness: View {
     @StateObject private var appliedModel = EventRegistration_Tab2_ViewModel(service: FixtureService())
-    @StateObject private var availableModel = EventRegistration_Tab1_ViewModel(service: FixtureService())
+    @StateObject private var availableModel = EventRegistration_Tab1_ViewModel(service: FixtureService(), favorites: fixtureFavorites)
 
     var body: some View {
         NavigationStack {
@@ -90,7 +102,7 @@ struct Harness: View {
                     .navigationTitle("活動報名").navigationBarTitleDisplayMode(.inline)
                     .onAppear { appliedModel.loadIfNeeded() }
             case "uncertain", "busy":
-                EventRegistrationView(service: FixtureService())
+                EventRegistrationView(service: FixtureService(), favorites: fixtureFavorites)
                     .task {
                         try? await Task.sleep(for: .seconds(1))
                         NotificationCenter.default.post(name: .fixtureRegister, object: nil)
@@ -98,7 +110,7 @@ struct Harness: View {
             case "detail":
                 EventDetailView(event: event("12345", "生成式 AI 實作工作坊（測試）", "報名中")) { _ in }
             default:
-                EventRegistrationView(service: FixtureService())
+                EventRegistrationView(service: FixtureService(), favorites: fixtureFavorites)
             }
         }
     }
@@ -137,6 +149,7 @@ with tempfile.TemporaryDirectory(prefix="niu-event-ui-") as directory:
     )))
     sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
     files = [feature / "Models/EventRegistrationModels.swift", feature / "Services/EventRegistrationClient.swift",
+             feature / "Stores/EventFavoritesStore.swift",
              *sorted((feature / "ViewModels").glob("*.swift")),
              *[f for f in sorted((feature / "Views").glob("*.swift")) if f.name != "EventRegistrationView.swift"],
              view, root / "Shared/Theme/Theme.swift"]
