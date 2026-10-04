@@ -11,12 +11,15 @@ import secrets
 import subprocess
 import tempfile
 import threading
+import time
 
 root = Path(__file__).resolve().parents[1]
 ACCOUNT, PASSWORD = "synthetic", "fixture+pass&1"
 state = {
     "sessions": set(), "applied": {}, "login_posts": 0, "apply_posts": 0, "empty_login_pages": 0,
     "register_mode": "normal", "forms": {},
+    "slow_images": False, "images_finished": 0,
+    "slow_html": False, "slow_html_started": 0,
 }
 lock = threading.Lock()
 
@@ -46,7 +49,8 @@ def event_row(event_id, name, extra=""):
 
 
 def page(body):
-    return f"<!doctype html><html><head><meta charset='utf-8'></head><body>{body}</body></html>"
+    image = "<img src='/slow-image'>" if state["slow_images"] else ""
+    return f"<!doctype html><html><head><meta charset='utf-8'></head><body>{body}{image}</body></html>"
 
 
 def list_page(rows, states=""):
@@ -73,7 +77,10 @@ class Handler(BaseHTTPRequestHandler):
         for key, value in (headers or {}).items():
             self.send_header(key, value)
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # The client may navigate away without waiting for the synthetic image.
 
     def redirect(self, location, cookie=None):
         headers = {"Location": location}
@@ -100,6 +107,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         path = url.path
+        if path == "/slow-image":
+            time.sleep(2)
+            with lock:
+                state["images_finished"] += 1
+            return self.send(200, "")
         if path == "/__control":
             query = {k: v[0] for k, v in parse_qs(url.query).items()}
             with lock:
@@ -109,6 +121,10 @@ class Handler(BaseHTTPRequestHandler):
                     state["empty_login_pages"] = int(query["empty"])
                 if "register" in query:
                     state["register_mode"] = query["register"]
+                if "slow_images" in query:
+                    state["slow_images"] = query["slow_images"] == "1"
+                if "slow_html" in query:
+                    state["slow_html"] = query["slow_html"] == "1"
                 snapshot = {k: (sorted(v) if isinstance(v, set) else v) for k, v in state.items() if k != "sessions"}
             return self.send(200, json.dumps(snapshot, ensure_ascii=False))
         if path.startswith("/MvcTeam/Account/Login"):
@@ -116,6 +132,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self.session():
             return self.redirect("/MvcTeam/Account/Login?ReturnUrl=" + path)
         if path == "/MvcTeam/Act":
+            with lock:
+                slow_html = state["slow_html"]
+                if slow_html:
+                    state["slow_html_started"] += 1
+            if slow_html:
+                time.sleep(0.5)
             rows = event_row("12345", "Swift 工作坊") + event_row("22222", "攝影講座") + event_row("33333", "寫作營")
             return self.send(200, list_page(rows))
         if path == "/MvcTeam/Act/ApplyMe":
@@ -300,6 +322,51 @@ import WebKit
                                               credentials: { ("synthetic", "x") })
         do { _ = try await offline.availableEvents(); expect(false, "unreachable server must fail") }
         catch { expect(error as? EventRegistrationError == .unavailable, "unreachable server is unavailable, not empty: \(error)") }
+
+        // Real WebKit, main DOM available immediately but each image stalls for two seconds.
+        // Before the fix the login + redirected list waited over four seconds for those images.
+        _ = try await control("slow_images=1")
+        let fast = client()
+        let started = ContinuousClock.now
+        let fastEvents = try await fast.availableEvents()
+        let elapsed = started.duration(to: .now)
+        state = try await control("")
+        expect(fastEvents.count == 3, "document-ready path still parses the complete list")
+        expect(state["images_finished"] as? Int == 0, "login and list must finish before delayed images")
+        print("PERF: first login + activity list with two-second images: \(elapsed)")
+        // Reuse the browser while old image loads finish; late callbacks must not satisfy a new read.
+        let fastApplied = try await fast.appliedEvents()
+        expect(fastApplied.contains { $0.eventSerialID == "33333" }, "next navigation reads its own applied list")
+        do {
+            _ = try await client(password: "wrong").availableEvents()
+            expect(false, "document-ready must not accept a rejected login")
+        } catch {
+            expect(error as? EventRegistrationError == .invalidCredentials, "slow images do not hide login rejection")
+        }
+        // POSTs retain full navigation completion and verification, even with the faster read path.
+        let slowRegistration = try await fast.register(eventID: "22222")
+        guard case .confirmed = slowRegistration else {
+            return expect(false, "slow resources cannot bypass registration verification")
+        }
+        _ = try await control("slow_html=1&slow_images=0")
+        let cancelledRead = Task { try await fast.availableEvents() }
+        var didStartSlowHTML = false
+        for _ in 0..<100 {
+            state = try await control("")
+            if (state["slow_html_started"] as? Int ?? 0) > 0 { didStartSlowHTML = true; break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        expect(didStartSlowHTML, "cancel fixture waits for a real pending main-document request")
+        cancelledRead.cancel()
+        do { _ = try await cancelledRead.value; expect(false, "pre-commit cancellation must fail") }
+        catch { expect(error is CancellationError, "pre-commit cancellation remains cancellation") }
+        // Let the old HTML response arrive before using the same client again.
+        try await Task.sleep(for: .milliseconds(600))
+        _ = try await control("slow_html=0")
+        let afterCancellation = try await fast.appliedEvents()
+        expect(afterCancellation.contains { $0.eventSerialID == "22222" }, "cancelled navigation cannot overwrite the next read")
+        fast.reset()
+        _ = try await control("slow_images=0")
 
         print("PASS: rendering retry, shared sign-in, quiet re-sign-in, verified register/duplicate/reject/uncertain/error-page, form encoding, confirm() cancellation, no password resubmission, logout cancellation, unreachable server")
     }
