@@ -65,10 +65,11 @@ nonisolated struct MailInboxSnapshot: Sendable {
 nonisolated struct MailAttachmentInfo: Identifiable, Sendable {
     let id: String
     let name: String
-    let size: Int?
+    let size: Int? // BODYSTRUCTURE transfer-encoded octets, not decoded bytes.
     var mime: String = "application/octet-stream"
     var contentID: String? = nil
     var hasFilename: Bool = true
+    var encoding: String? = nil
 }
 
 /// BODYSTRUCTURE metadata only; nested message/rfc822 contents belong to that message.
@@ -106,19 +107,68 @@ nonisolated struct MailPartCatalog: Sendable {
     }
 }
 
+nonisolated enum MailTransferPolicy {
+    // Base64 uses 4 * ceil(decoded / 3) bytes. Allow another 4% (rounded up)
+    // for MIME CRLF wrapping (~3.125% at 64 columns, ~2.63% at 76). Other encodings share this
+    // bounded transport allowance; decoded payloads still have their own cap.
+    static let base64LineBreakPercent = 4
+    static let attachmentEncodedLimit = encodedAllowance(MailDraft.attachmentLimit)
+    // <=20.8 MiB encoded body (+1 sentinel); 22 MiB parser working buffer
+    // leaves room for FETCH framing. Decoded data is separately capped at 15 MiB.
+    // These are per-response/payload bounds, not a total process-memory ceiling:
+    // the two-job queue and SwiftMail/Data decoding copies can coexist.
+    static let responseBufferLimit = 22 * 1024 * 1024
+
+    private static func encodedAllowance(_ decoded: Int) -> Int {
+        let base64 = ((decoded + 2) / 3) * 4
+        return base64 + (base64 * base64LineBreakPercent + 99) / 100
+    }
+
+    static func encodedLimit(for maximumDecodedBytes: Int) throws -> Int {
+        guard maximumDecodedBytes >= 0 else { throw NativeMailError.tooLarge }
+        return encodedAllowance(min(maximumDecodedBytes, MailDraft.attachmentLimit))
+    }
+
+    static func validateEncodedSize(_ size: Int, maximumDecodedBytes: Int) throws {
+        guard size >= 0, size <= (try encodedLimit(for: maximumDecodedBytes)) else { throw NativeMailError.tooLarge }
+    }
+
+    static func validateDecodedSize(_ size: Int, maximumBytes: Int) throws {
+        guard size >= 0, size <= min(maximumBytes, MailDraft.attachmentLimit) else { throw NativeMailError.tooLarge }
+    }
+}
+
 nonisolated enum MailInlinePolicy {
     static let imageLimit = 10 * 1024 * 1024
     static let messageLimit = 15 * 1024 * 1024
-    static func automaticIDs(_ images: [MailAttachmentInfo]) -> Set<String> {
+
+    static func automaticLimits(_ images: [MailAttachmentInfo]) -> [String: Int] {
         var remaining = messageLimit
-        var result = Set<String>()
+        var result: [String: Int] = [:]
         for image in images {
-            // Unknown sizes require an explicit download, never an unbounded automatic fetch.
-            guard let size = image.size, size >= 0, size <= imageLimit, size <= remaining else { continue }
-            guard result.insert(image.id).inserted else { continue }
-            remaining -= size
+            // Reserve decoded budgets before concurrent jobs start. Never trust
+            // BODYSTRUCTURE as the actual decoded size; each fetch enforces its budget.
+            guard result[image.id] == nil, let size = image.size, size >= 0 else { continue }
+            let cap = min(imageLimit, remaining)
+            let budget: Int
+            if image.encoding?.lowercased() == "base64" {
+                guard let encodedCap = try? MailTransferPolicy.encodedLimit(for: cap), size <= encodedCap else { continue }
+                // Round up incomplete groups for unpadded Base64; counting
+                // whitespace/padding as payload also overestimates, safely.
+                // Clamp at the enforced cap so a wrapped 10 MiB image is eligible.
+                budget = min(cap, ((size + 3) / 4) * 3)
+            } else {
+                guard size <= cap else { continue }
+                budget = size
+            }
+            result[image.id] = budget
+            remaining -= budget
         }
         return result
+    }
+
+    static func automaticIDs(_ images: [MailAttachmentInfo]) -> Set<String> {
+        Set(automaticLimits(images).keys)
     }
 }
 
@@ -226,6 +276,9 @@ nonisolated struct MailDraft: Sendable {
     static let attachmentLimit = 15 * 1024 * 1024
 
     static func addresses(_ value: String) throws -> [String] {
+        guard !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw NativeMailError.invalidRecipient
+        }
         let entries = value.components(separatedBy: CharacterSet(charactersIn: ",;，；"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         guard entries.count <= 50, entries.allSatisfy({

@@ -435,6 +435,7 @@ with tempfile.TemporaryDirectory(prefix="niu-moodle-questions-") as directory:
     executable = folder / "checks"
     sources = [
         "Features/Moodle/Models/MoodleModels.swift",
+        "Features/Moodle/Models/MoodleSearch.swift",
         "Features/Moodle/Questions/MoodleQuestionActivity.swift",
         "Features/Moodle/Questions/MoodleQuestionsRepository.swift",
         "Features/Moodle/Questions/MoodleQuestionsViewModel.swift",
