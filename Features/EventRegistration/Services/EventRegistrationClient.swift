@@ -160,6 +160,12 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     private var queueTail: Task<Void, Never>?
     private var operations: [UUID: () -> Void] = [:]
     private var navigationCount = 0
+    private var navigationRevision = UUID()
+    private var currentNavigation: WKNavigation?
+    private var navigationCompleted = false
+    private var acceptsDocumentReady = false
+    private var documentReadyTask: Task<Void, Never>?
+    private var navigationStartedAt = ContinuousClock.now
     private var lastNavigation: Result<URL, Error> = .failure(EventRegistrationError.unavailable)
     private var waiters: [UUID: CheckedContinuation<URL, Error>] = [:]
     private var dialogs: [String] = []
@@ -260,6 +266,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
             }
             let mark = navigationCount
             dialogs.removeAll()
+            prepareNavigation(acceptDocumentReady: false)
             try Task.checkCancellation()
             try validateOperationSession()
             let cancellationState: String
@@ -319,6 +326,11 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     /// Logout or replaced login: fence old work and replace only this service's cookie store.
     func reset() {
+        navigationRevision = UUID()
+        navigationCompleted = true
+        documentReadyTask?.cancel()
+        documentReadyTask = nil
+        currentNavigation = nil
         sessionRevision = UUID()
         let pending = operations.values
         operations.removeAll()
@@ -341,10 +353,10 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     @discardableResult
     private func open(_ url: URL) async throws -> URL {
-        var landed = try await load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
+        var landed = try await load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30), acceptDocumentReady: true)
         if Self.isLoginPage(landed) {
             landed = try await signIn()
-            if !Self.samePage(landed, url) { landed = try await load(URLRequest(url: url, timeoutInterval: 30)) }
+            if !Self.samePage(landed, url) { landed = try await load(URLRequest(url: url, timeoutInterval: 30), acceptDocumentReady: true) }
             if Self.isLoginPage(landed) { throw EventRegistrationError.loginFailed }
         }
         guard Self.samePage(landed, url) else {
@@ -367,10 +379,11 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
                 // A login page that keeps rendering empty is usually a stuck web content process.
                 if attempt == Self.loginAttempts - 1 { discardWebView() }
                 let landed = try await load(URLRequest(url: try endpoint("/MvcTeam/Account/Login"),
-                                                       cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
+                                                       cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30), acceptDocumentReady: true)
                 if !Self.isLoginPage(landed) { return landed }
             }
             let mark = navigationCount
+            prepareNavigation(acceptDocumentReady: true)
             let state = try await evaluate(Scripts.login, [
                 "account": credentials.username, "password": credentials.password
             ])
@@ -485,6 +498,11 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        // This isolated-world marker is set after the main document is parsed, without waiting
+        // for images/frames. Page scripts cannot spoof it. Reads still validate their DOM below.
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: "globalThis.niuActivityDocumentReady = true;",
+            injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
         view.navigationDelegate = self
@@ -494,17 +512,31 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     }
 
     private func discardWebView() {
+        documentReadyTask?.cancel()
+        documentReadyTask = nil
+        currentNavigation = nil
         webView?.navigationDelegate = nil
         webView?.uiDelegate = nil
         webView?.stopLoading()
         webView = nil
     }
 
-    private func load(_ request: URLRequest) async throws -> URL {
+    private func prepareNavigation(acceptDocumentReady: Bool) {
+        navigationRevision = UUID()
+        documentReadyTask?.cancel()
+        documentReadyTask = nil
+        currentNavigation = nil
+        navigationCompleted = false
+        acceptsDocumentReady = acceptDocumentReady
+        navigationStartedAt = .now
+    }
+
+    private func load(_ request: URLRequest, acceptDocumentReady: Bool = false) async throws -> URL {
         let view = try page()
         let mark = navigationCount
         dialogs.removeAll()
-        view.load(request)
+        prepareNavigation(acceptDocumentReady: acceptDocumentReady)
+        currentNavigation = view.load(request)
         return try await waitForNavigation(after: mark, timeout: .seconds(30))
     }
 
@@ -524,13 +556,26 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     private func waitForNavigation(after mark: Int, timeout: Duration) async throws -> URL {
         if navigationCount > mark { return try lastNavigation.get() }
+        let revision = navigationRevision
         let id = UUID()
         let timer = Task { [weak self] in
             try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
             self?.waiters.removeValue(forKey: id)?.resume(throwing: EventRegistrationError.timedOut)
         }
-        defer { timer.cancel() }
+        defer {
+            timer.cancel()
+            if revision == navigationRevision {
+                documentReadyTask?.cancel()
+                documentReadyTask = nil
+                if !navigationCompleted {
+                    // Cancellation/timeout can precede didCommit. Fence that late callback too.
+                    navigationCompleted = true
+                    currentNavigation = nil
+                    webView?.stopLoading()
+                }
+            }
+        }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
@@ -543,7 +588,19 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         }
     }
 
-    private func record(_ result: Result<URL, Error>) {
+    private func record(_ result: Result<URL, Error>, documentReady: Bool = false) {
+        guard !navigationCompleted else { return }
+        navigationCompleted = true
+        documentReadyTask?.cancel()
+        documentReadyTask = nil
+        #if DEBUG
+        let outcome: String
+        switch result {
+        case .success: outcome = documentReady ? "內容就緒" : "整頁完成"
+        case .failure: outcome = "載入失敗"
+        }
+        print("[EventRegistration] \(outcome) elapsed=\(navigationStartedAt.duration(to: .now))")
+        #endif
         navigationCount += 1
         lastNavigation = result
         let waiting = waiters.values
@@ -553,12 +610,18 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     private func serialized<T: Sendable>(_ body: @escaping @MainActor () async throws -> T) async throws -> T {
         let previous = queueTail
+        #if DEBUG
+        let queuedAt = ContinuousClock.now
+        #endif
         let id = UUID()
         let saved = credentials()
         let session = EventOperationSession(revision: sessionRevision, username: saved?.username, password: saved?.password)
         let task = Task { @MainActor () async throws -> T in
             await previous?.value
             try Task.checkCancellation()
+            #if DEBUG
+            print("[EventRegistration] 開始處理 queue_wait=\(queuedAt.duration(to: .now))")
+            #endif
             return try await EventOperationContext.$session.withValue(session) {
                 try self.validateOperationSession()
                 let result = try await body()
@@ -583,16 +646,47 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
               session.password == current?.password else { throw CancellationError() }
     }
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        guard webView === self.webView, !navigationCompleted, currentNavigation == nil else { return }
+        currentNavigation = navigation
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard webView === self.webView, navigation === currentNavigation,
+              acceptsDocumentReady, !navigationCompleted else { return }
+        documentReadyTask?.cancel()
+        documentReadyTask = Task { [weak self, weak webView, weak navigation] in
+            // Bounded by the navigation timeout; didFinish remains the fallback if evaluation fails.
+            for _ in 0..<600 {
+                do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+                guard let self, let webView, let navigation,
+                      webView === self.webView, navigation === self.currentNavigation,
+                      !self.navigationCompleted else { return }
+                let ready = try? await webView.callAsyncJavaScript(
+                    "return globalThis.niuActivityDocumentReady === true;", arguments: [:], in: nil, contentWorld: .defaultClient)
+                guard !Task.isCancelled, navigation === self.currentNavigation,
+                      webView === self.webView, !self.navigationCompleted else { return }
+                if ready as? Bool == true, let url = webView.url,
+                   Self.samePage(url, self.origin, pathOnly: false) {
+                    self.record(.success(url), documentReady: true)
+                    return
+                }
+            }
+        }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard webView === self.webView, let url = webView.url else { return }
+        guard webView === self.webView, navigation === currentNavigation, let url = webView.url else { return }
         record(.success(url))
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard navigation === currentNavigation else { return }
         failed(webView, error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard navigation === currentNavigation else { return }
         failed(webView, error)
     }
 
