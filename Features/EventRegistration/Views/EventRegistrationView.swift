@@ -5,8 +5,12 @@ struct EventRegistrationView: View {
     @StateObject private var tab1ViewModel: EventRegistration_Tab1_ViewModel
     @StateObject private var tab2ViewModel: EventRegistration_Tab2_ViewModel
 
-    init(service: (any EventRegistrationServing)? = nil) {
-        _tab1ViewModel = StateObject(wrappedValue: EventRegistration_Tab1_ViewModel(service: service))
+    private let onBatchRegister: (([EventData]) -> Void)?
+
+    init(service: (any EventRegistrationServing)? = nil, favorites: EventFavoritesStore? = nil,
+         onBatchRegister: (([EventData]) -> Void)? = nil) {
+        self.onBatchRegister = onBatchRegister
+        _tab1ViewModel = StateObject(wrappedValue: EventRegistration_Tab1_ViewModel(service: service, favorites: favorites))
         _tab2ViewModel = StateObject(wrappedValue: EventRegistration_Tab2_ViewModel(service: service))
     }
 
@@ -21,9 +25,9 @@ struct EventRegistrationView: View {
             .padding(.vertical, Theme.Spacing.xsmall)
 
             TabView(selection: $viewModel.selectedTab.animation(Theme.Animation.fast)) {
-                EventRegistration_Tab1_View(viewModel: tab1ViewModel) {
+                EventRegistration_Tab1_View(viewModel: tab1ViewModel, showApplied: {
                     withAnimation(Theme.Animation.fast) { viewModel.selectedTab = 1 }
-                }
+                }, onBatchRegister: onBatchRegister)
                 .tag(0)
 
                 EventRegistration_Tab2_View(viewModel: tab2ViewModel)
@@ -31,6 +35,7 @@ struct EventRegistrationView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
         }
+        .disabled(tab1ViewModel.activity != nil || tab2ViewModel.activity != nil)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .overlay {
             if let activity = tab1ViewModel.activity ?? tab2ViewModel.activity {

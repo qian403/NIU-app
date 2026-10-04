@@ -19,6 +19,8 @@ for tab, model in [(1, "EventData"), (2, "EventData_Apply")]:
 struct SearchTab{tab} {{
     var events: [{model}]
     var searchText = ""
+    var favoritesOnly = false
+    var favoriteIDs = Set<String>()
 {view_model[start:end]}
 }}
 """
