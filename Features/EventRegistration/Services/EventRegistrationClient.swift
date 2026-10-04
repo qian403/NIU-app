@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import Combine
 
 extension Notification.Name {
     static let didChangeEventRegistrationSession = Notification.Name("didChangeEventRegistrationSession")
@@ -45,6 +46,71 @@ nonisolated enum EventActionOutcome: Equatable {
     case rejected(String)
     /// The request was sent but its result could not be verified.
     case uncertain(String)
+}
+
+/// Only the production mutation boundary may assert that no POST was submitted.
+nonisolated struct EventRegistrationNotSubmittedError: LocalizedError {
+    let reason: String
+    let wasCancelled: Bool
+
+    init(_ error: Error) {
+        wasCancelled = error is CancellationError
+        reason = error is CancellationError ? "操作已取消。"
+            : (error as? LocalizedError)?.errorDescription ?? EventRegistrationError.unavailable.localizedDescription
+    }
+
+    var errorDescription: String? { "尚未送出報名：\(reason)" }
+}
+
+/// Shared by direct client calls and both UI entry points, including injected services.
+@MainActor
+final class EventRegistrationSubmission {
+    static let shared = EventRegistrationSubmission()
+    private var reservations: [UUID: [String: UUID]] = [:]
+    private var resetObserver: AnyCancellable?
+
+    private init() {
+        resetObserver = NotificationCenter.default.publisher(for: .didChangeEventRegistrationSession)
+            .sink { [weak self] _ in self?.reservations.removeAll() }
+    }
+
+    func blockedIDs(session: UUID) -> Set<String> { Set(reservations[session, default: [:]].keys) }
+
+    func submit(eventID: String, service: any EventRegistrationServing, session: UUID) async throws -> EventActionOutcome {
+        // Production register owns its fence so direct callers cannot bypass it. Do not reserve twice.
+        if let client = service as? EventRegistrationClient {
+            guard client.sessionRevision == session else { throw CancellationError() }
+            return try await client.register(eventID: eventID)
+        }
+        return try await perform(eventID: eventID, session: session) {
+            try await service.register(eventID: eventID)
+        }
+    }
+
+    func perform(eventID: String, session: UUID,
+                 operation: () async throws -> EventActionOutcome) async throws -> EventActionOutcome {
+        guard reservations[session]?[eventID] == nil else {
+            return .uncertain("此活動已送出或結果不明，未再次送出；請查看「已報名活動」。")
+        }
+        let token = UUID()
+        reservations[session, default: [:]][eventID] = token
+        func release() {
+            // A reset or replacement must not be changed by a late completion.
+            guard reservations[session]?[eventID] == token else { return }
+            reservations[session]?[eventID] = nil
+        }
+        do {
+            let outcome = try await operation()
+            if case .uncertain = outcome {} else { release() }
+            return outcome
+        } catch let error as EventRegistrationNotSubmittedError {
+            release()
+            throw error
+        } catch {
+            // Unknown injected-service errors (including cancellation) cannot prove no mutation.
+            throw error
+        }
+    }
 }
 
 struct EventRegistrationForm: Equatable {
@@ -138,6 +204,23 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     // MARK: Mutations
 
     func register(eventID: String) async throws -> EventActionOutcome {
+        let id: String
+        do { id = try Self.validated(eventID) }
+        catch { throw EventRegistrationNotSubmittedError(error) }
+        let revision = sessionRevision
+        var submissionStarted = false
+        return try await EventRegistrationSubmission.shared.perform(eventID: id, session: revision) {
+            do {
+                return try await self.registerUnreserved(eventID: id, onSubmit: { submissionStarted = true })
+            } catch {
+                // Never label an old-session or post-boundary cancellation as "not submitted".
+                guard revision == self.sessionRevision, !submissionStarted else { throw error }
+                throw EventRegistrationNotSubmittedError(error)
+            }
+        }
+    }
+
+    private func registerUnreserved(eventID: String, onSubmit: @escaping () -> Void) async throws -> EventActionOutcome {
         let id = try Self.validated(eventID)
         let url = try endpoint("/MvcTeam/Act/Apply/\(id)")
         return try await serialized { [self] in
@@ -157,7 +240,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
             request.httpMethod = "POST"
             request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.httpBody = Self.formBody([("__RequestVerificationToken", token), ("id", id), ("action", "我要報名")])
-            return try await submitThenVerify(request, uncertain: "已送出報名，但尚無法確認校方是否完成。請到「已報名活動」確認，勿立即重複報名。") {
+            return try await submitThenVerify(request, uncertain: "已送出報名，但尚無法確認校方是否完成。請到「已報名活動」確認，勿立即重複報名。", onSubmit: onSubmit) {
                 if let record = try await self.loadApplied().first(where: { $0.eventSerialID == id }) {
                     return .confirmed(Self.registeredMessage("已完成報名", state: record.state))
                 }
@@ -354,10 +437,12 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     }
 
     private func submitThenVerify(_ request: URLRequest, uncertain: String,
+                                  onSubmit: () -> Void = {},
                                   confirmation: @escaping () async throws -> EventActionOutcome?) async throws -> EventActionOutcome {
         // Cancellation before this boundary proves no mutation was submitted.
         try Task.checkCancellation()
         try validateOperationSession()
+        onSubmit()
         do { _ = try await load(request) }
         catch {
             try validateOperationSession()

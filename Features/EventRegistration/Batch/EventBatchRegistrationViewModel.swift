@@ -42,22 +42,17 @@ final class EventBatchRegistrationViewModel: ObservableObject {
     private var sendTask: Task<Void, Never>?
     private var readID = UUID()
     private var sessionObserver: AnyCancellable?
-    /// A sheet may be dismissed and reopened; uncertain IDs must outlive that sheet.
-    private static var uncertainBySession: [UUID: Set<String>] = [:]
-    /// Remains subscribed even when every batch sheet has closed, so logout clears IDs.
-    private static let sessionResetObserver = NotificationCenter.default.publisher(for: .didChangeEventRegistrationSession)
-        .sink { _ in uncertainBySession.removeAll() }
 
     init(events: [EventData], service: (any EventRegistrationServing)? = nil,
          sessionRevision: (@MainActor () -> UUID)? = nil, now: @escaping () -> Date = Date.init) {
         var seen = Set<String>()
         self.events = events.filter { seen.insert($0.id).inserted }
-        self.service = service ?? EventRegistrationClient.shared
-        let revision = sessionRevision ?? { EventRegistrationClient.shared.sessionRevision }
+        let service = service ?? EventRegistrationClient.shared
+        self.service = service
+        let revision = sessionRevision ?? { (service as? EventRegistrationClient)?.sessionRevision ?? EventRegistrationClient.shared.sessionRevision }
         self.revision = revision
         initialRevision = revision()
         self.now = now
-        _ = Self.sessionResetObserver
         sessionObserver = NotificationCenter.default.publisher(for: .didChangeEventRegistrationSession)
             .sink { [weak self] _ in self?.sessionDidChange() }
     }
@@ -87,7 +82,7 @@ final class EventBatchRegistrationViewModel: ObservableObject {
                 let appliedIDs = Set(applied.map(\.eventSerialID))
                 // Duplicate server IDs are ambiguous: never choose an arbitrary version.
                 let grouped = Dictionary(grouping: available, by: \.eventSerialID)
-                let uncertain = Self.uncertainBySession[initialRevision, default: []]
+                let uncertain = EventRegistrationSubmission.shared.blockedIDs(session: initialRevision)
                 items = events.map { selected in
                     let fresh = grouped[selected.id]
                     let eligibility: EventBatchEligibility
@@ -124,15 +119,19 @@ final class EventBatchRegistrationViewModel: ObservableObject {
                     continue
                 }
                 let id = items[index].id
-                // Reserve before awaiting to prevent a second sheet from sending the same ID.
-                guard Self.uncertainBySession[initialRevision, default: []].insert(id).inserted else {
+                guard !EventRegistrationSubmission.shared.blockedIDs(session: initialRevision).contains(id) else {
                     items[index].result = .notSent("此活動已送出或結果不明，請查看「已報名活動」。")
                     continue
                 }
                 items[index].result = .sending
                 let outcome: EventActionOutcome
-                do { outcome = try await service.register(eventID: id) }
-                catch {
+                do {
+                    outcome = try await EventRegistrationSubmission.shared.submit(eventID: id, service: service, session: initialRevision)
+                } catch let error as EventRegistrationNotSubmittedError {
+                    guard validateSession() else { break }
+                    items[index].result = .notSent(error.localizedDescription)
+                    continue
+                } catch {
                     // An arbitrary service error cannot prove that a mutation never reached school.
                     outcome = .uncertain("無法確認是否完成：\(EventRegistrationError.message(for: error)) 請查看「已報名活動」，勿立即重送。")
                 }
@@ -140,10 +139,8 @@ final class EventBatchRegistrationViewModel: ObservableObject {
                 switch outcome {
                 case .confirmed(let reason):
                     items[index].result = .confirmed(reason)
-                    Self.uncertainBySession[initialRevision]?.remove(id)
                 case .rejected(let reason):
                     items[index].result = .rejected(reason)
-                    Self.uncertainBySession[initialRevision]?.remove(id)
                 case .uncertain(let reason): items[index].result = .uncertain(reason)
                 }
                 NotificationCenter.default.post(name: .didChangeEventRegistration, object: nil)
@@ -168,7 +165,6 @@ final class EventBatchRegistrationViewModel: ObservableObject {
 
     @discardableResult private func validateSession() -> Bool {
         guard revision() == initialRevision else {
-            Self.uncertainBySession.removeValue(forKey: initialRevision)
             stopRequested = true
             readTask?.cancel()
             items = []

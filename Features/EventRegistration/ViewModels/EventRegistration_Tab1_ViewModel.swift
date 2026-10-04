@@ -109,12 +109,15 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
     private let service: any EventRegistrationServing
     private let favorites: EventFavoritesStore
     private let session: EventFavoritesStore.Session?
+    private let registrationSession: UUID
     private var loadTask: Task<Void, Never>?
     private var loadID = UUID()
     private var cancellables = Set<AnyCancellable>()
 
-    init(service: (any EventRegistrationServing)? = nil, favorites: EventFavoritesStore? = nil) {
+    init(service: (any EventRegistrationServing)? = nil, favorites: EventFavoritesStore? = nil,
+         sessionRevision: UUID? = nil) {
         self.service = service ?? EventRegistrationClient.shared
+        registrationSession = sessionRevision ?? (service as? EventRegistrationClient)?.sessionRevision ?? EventRegistrationClient.shared.sessionRevision
         let favorites = favorites ?? .shared
         self.favorites = favorites
         session = favorites.currentSession
@@ -197,12 +200,15 @@ final class EventRegistration_Tab1_ViewModel: ObservableObject {
             guard let self else { return }
             let result: EventActionAlert
             do {
-                result = EventActionAlert(try await service.register(eventID: event.eventSerialID), action: "報名")
-            } catch is CancellationError {
-                activity = nil
-                return
-            } catch {
+                result = EventActionAlert(try await EventRegistrationSubmission.shared.submit(
+                    eventID: event.eventSerialID, service: service, session: registrationSession), action: "報名")
+            } catch let error as EventRegistrationNotSubmittedError {
                 result = EventActionAlert(error: error, action: "報名")
+            } catch is CancellationError {
+                guard favorites.isCurrent(session) else { activity = nil; synchronizeFavorites(); return }
+                result = EventActionAlert(.uncertain("無法確認是否完成報名，請查看「已報名活動」，勿立即重送。"), action: "報名")
+            } catch {
+                result = EventActionAlert(.uncertain("無法確認是否完成：\(EventRegistrationError.message(for: error)) 請查看「已報名活動」，勿立即重送。"), action: "報名")
             }
             activity = nil
             guard favorites.isCurrent(session) else { synchronizeFavorites(); return }
