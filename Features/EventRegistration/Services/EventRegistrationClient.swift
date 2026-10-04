@@ -1,6 +1,20 @@
 import Foundation
 import WebKit
 
+extension Notification.Name {
+    static let didChangeEventRegistrationSession = Notification.Name("didChangeEventRegistrationSession")
+}
+
+private nonisolated struct EventOperationSession: Sendable {
+    let revision: UUID
+    let username: String?
+    let password: String?
+}
+
+private nonisolated enum EventOperationContext {
+    @TaskLocal static var session: EventOperationSession?
+}
+
 nonisolated enum EventRegistrationError: LocalizedError, Equatable {
     case credentialsMissing
     case invalidCredentials
@@ -73,7 +87,8 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     static let websiteURL = URL(string: "https://ccsys.niu.edu.tw/MvcTeam/Act")
 
     private let origin: URL
-    private let dataStore: WKWebsiteDataStore
+    private var dataStore: WKWebsiteDataStore
+    private(set) var sessionRevision = UUID()
     private let credentials: @MainActor () -> (username: String, password: String)?
     private var webView: WKWebView?
     private var queueTail: Task<Void, Never>?
@@ -94,7 +109,8 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
              LoginRepository.shared.getSavedCredentials()
          }) {
         self.origin = origin
-        self.dataStore = dataStore ?? .default()
+        // Activity login is isolated from the app's other school services and from future accounts.
+        self.dataStore = dataStore ?? .nonPersistent()
         self.credentials = credentials
     }
 
@@ -156,10 +172,20 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         return try await serialized { [self] in
             try await open(url)
             acceptsConfirmation = true
-            defer { acceptsConfirmation = false }
+            defer {
+                if EventOperationContext.session?.revision == sessionRevision { acceptsConfirmation = false }
+            }
             let mark = navigationCount
             dialogs.removeAll()
-            switch try await evaluate(Scripts.cancel) {
+            try Task.checkCancellation()
+            try validateOperationSession()
+            let cancellationState: String
+            do { cancellationState = try await evaluate(Scripts.cancel) }
+            catch {
+                try validateOperationSession()
+                return .uncertain("取消操作可能已送出，請重新整理「已報名活動」確認，勿立即重送。")
+            }
+            switch cancellationState {
             case "submitted": break
             case "no_cancel_button":
                 return .rejected("找不到取消報名的選項，可能已超過可取消的期間。請到校方網頁確認。")
@@ -167,8 +193,8 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
                 return .rejected("取消報名頁面內容不完整，沒有送出取消。請重新整理後再試。")
             }
             do { _ = try await waitForNavigation(after: mark, timeout: .seconds(20)) }
-            catch is CancellationError { throw CancellationError() }
             catch {
+                try validateOperationSession()
                 // The page may answer without navigating; verification below decides.
             }
             return try await verify(uncertain: "已送出取消，但尚無法確認校方是否完成。請重新整理「已報名活動」確認。") {
@@ -208,8 +234,9 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         }
     }
 
-    /// Logout: stop every operation and drop the browser. Cookies are removed by the app's logout.
+    /// Logout or replaced login: fence old work and replace only this service's cookie store.
     func reset() {
+        sessionRevision = UUID()
         let pending = operations.values
         operations.removeAll()
         pending.forEach { $0() }
@@ -223,6 +250,8 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         webView?.uiDelegate = nil
         webView?.stopLoading()
         webView = nil
+        dataStore = .nonPersistent()
+        NotificationCenter.default.post(name: .didChangeEventRegistrationSession, object: nil)
     }
 
     // MARK: Sign-in
@@ -326,9 +355,12 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     private func submitThenVerify(_ request: URLRequest, uncertain: String,
                                   confirmation: @escaping () async throws -> EventActionOutcome?) async throws -> EventActionOutcome {
+        // Cancellation before this boundary proves no mutation was submitted.
+        try Task.checkCancellation()
+        try validateOperationSession()
         do { _ = try await load(request) }
-        catch is CancellationError { throw CancellationError() }
         catch {
+            try validateOperationSession()
             // The request may have reached the school before the response failed.
             return .uncertain(uncertain)
         }
@@ -340,8 +372,10 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         let failure = await failureMessage()
         do {
             if let confirmed = try await confirmation() { return confirmed }
-        } catch is CancellationError { throw CancellationError() }
-        catch { return .uncertain(uncertain) }
+        } catch {
+            try validateOperationSession()
+            return .uncertain(uncertain)
+        }
         if let failure { return .rejected("校方回應：\(failure)") }
         return .uncertain(uncertain)
     }
@@ -361,6 +395,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     private func page() throws -> WKWebView {
         try Task.checkCancellation()
+        try validateOperationSession()
         if let webView { return webView }
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
@@ -397,6 +432,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
             throw EventRegistrationError.invalidResponse
         }
         try Task.checkCancellation()
+        try validateOperationSession()
         guard let text = value as? String else { throw EventRegistrationError.invalidResponse }
         return text
     }
@@ -433,10 +469,17 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     private func serialized<T: Sendable>(_ body: @escaping @MainActor () async throws -> T) async throws -> T {
         let previous = queueTail
         let id = UUID()
+        let saved = credentials()
+        let session = EventOperationSession(revision: sessionRevision, username: saved?.username, password: saved?.password)
         let task = Task { @MainActor () async throws -> T in
             await previous?.value
             try Task.checkCancellation()
-            return try await body()
+            return try await EventOperationContext.$session.withValue(session) {
+                try self.validateOperationSession()
+                let result = try await body()
+                try self.validateOperationSession()
+                return result
+            }
         }
         operations[id] = { task.cancel() }
         queueTail = Task { _ = try? await task.value }
@@ -446,6 +489,13 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         } catch {
             throw Self.normalized(error)
         }
+    }
+
+    private func validateOperationSession() throws {
+        guard let session = EventOperationContext.session else { return }
+        let current = credentials()
+        guard session.revision == sessionRevision, session.username == current?.username,
+              session.password == current?.password else { throw CancellationError() }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -700,7 +750,7 @@ private nonisolated enum Scripts {
                 let row = rows[i];
                 let row_state = rowStates[i];
                 let dialog = row.querySelector('.table');
-                if (!row || !dialog) { continue; }
+                if (!row || !dialog) { throw new Error('applied_event_incomplete'); }
                 let name = row.querySelector('h3') ? row.querySelector('h3').innerText.trim() : '';
                 let departmentNode = row.querySelector('.col-sm-3.text-center.enr-list-dep-nam.hidden-xs');
                 let department = departmentNode && departmentNode.title
@@ -728,6 +778,7 @@ private nonisolated enum Scripts {
                             : row.querySelector('p').innerText))
                         .split(' ')[0].trim())
                     : '';
+                if (!/^[0-9]+$/.test(eventSerialID)) { throw new Error('applied_event_id_missing'); }
                 let eventTime = row.querySelector('.fa-calendar') ? row.querySelector('.fa-calendar').parentElement.innerText.replace(/\\s+/g,'').replace('~','起\\n')+'止'.trim() : '';
                 let eventLocation = row.querySelector('.fa-map-marker') ? row.querySelector('.fa-map-marker').parentElement.innerText.trim() : '';
                 let eventDetail = dialog.querySelectorAll('tr')[3] && dialog.querySelectorAll('tr')[3].querySelectorAll('td')[1]
