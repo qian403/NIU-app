@@ -13,6 +13,8 @@ protocol MoodleCourseListAPIClientProtocol: MoodleSessionProviding {
 
 @MainActor
 protocol MoodleForumAPIClientProtocol {
+    var sessionRevision: Int { get }
+    func fetchForumDiscussions(forumId: Int, page: Int) async throws -> MoodleDiscussionsResponse
     func fetchForumsByCourse(courseId: Int) async throws -> [MoodleForum]
     func fetchForumDiscussions(forumId: Int) async throws -> MoodleDiscussionsResponse
 }
@@ -63,9 +65,15 @@ extension MoodleService: MoodleAPIClientProtocol {}
 @MainActor
 protocol MoodleCourseRepositoryProtocol {
     var isAuthenticated: Bool { get }
+    /// Optional catalog entries, including semesters with no enrolled courses.
+    var availableSemesters: [String] { get }
 
     func authenticate(username: String, password: String) async throws
     func fetchCourses() async throws -> [MoodleCourse]
+}
+
+extension MoodleCourseRepositoryProtocol {
+    var availableSemesters: [String] { [] }
 }
 
 @MainActor
@@ -90,30 +98,77 @@ struct MoodleCourseRepository: MoodleCourseRepositoryProtocol {
 @MainActor
 protocol MoodleAnnouncementsRepositoryProtocol {
     func fetchAnnouncements(courseId: Int) async throws -> [MoodleDiscussion]
+    func fetchCompleteAnnouncements(courseId: Int, cached: [MoodleDiscussion]) async throws -> [MoodleDiscussion]
     func fetchDiscussions(forumId: Int) async throws -> MoodleDiscussionsResponse
 }
 
 @MainActor
-struct MoodleAnnouncementsRepository: MoodleAnnouncementsRepositoryProtocol {
+final class MoodleAnnouncementsRepository: MoodleAnnouncementsRepositoryProtocol {
     private let client: any MoodleForumAPIClientProtocol
+    private struct Preview {
+        let revision: Int
+        let forumsWithMore: [Int]
+    }
+    private var previews: [Int: Preview] = [:]
 
     init(client: (any MoodleForumAPIClientProtocol)? = nil) {
         self.client = client ?? MoodleService.shared
     }
 
     func fetchAnnouncements(courseId: Int) async throws -> [MoodleDiscussion] {
+        let revision = client.sessionRevision
         let forums = try await client.fetchForumsByCourse(courseId: courseId)
         let announcementForums = forums.filter { $0.type == "news" || $0.name.contains("公告") }
         let targets = announcementForums.isEmpty ? forums.filter { $0.type == "news" } : announcementForums
 
         var discussions: [MoodleDiscussion] = []
+        var forumsWithMore: [Int] = []
         for forum in targets {
             let response = try await client.fetchForumDiscussions(forumId: forum.id)
+            guard let consumed = response.consumedPageCount else { throw MoodleUpcomingError.incompleteResponse }
             discussions.append(contentsOf: response.discussions)
+            if consumed >= 20 { forumsWithMore.append(forum.id) }
         }
+        try Task.checkCancellation()
+        guard revision == client.sessionRevision else { throw CancellationError() }
+        previews[courseId] = Preview(revision: revision, forumsWithMore: forumsWithMore)
         return discussions
             .filter { !$0.plainMessage.contains("API 錯誤") }
             .sorted { $0.timemodified > $1.timemodified }
+    }
+
+    func fetchCompleteAnnouncements(courseId: Int, cached: [MoodleDiscussion]) async throws -> [MoodleDiscussion] {
+        let initial: [MoodleDiscussion]
+        if previews[courseId]?.revision == client.sessionRevision {
+            initial = cached
+        } else {
+            initial = try await fetchAnnouncements(courseId: courseId)
+        }
+        guard let preview = previews[courseId] else { return initial }
+        var discussions = Dictionary(initial.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for forumID in preview.forumsWithMore {
+            var seenPages = Set<String>()
+            // Bound malformed pagination; an incomplete result must remain an error.
+            for page in 1...100 {
+                try Task.checkCancellation()
+                guard preview.revision == client.sessionRevision else { throw CancellationError() }
+                let response = try await client.fetchForumDiscussions(forumId: forumID, page: page)
+                try Task.checkCancellation()
+                guard preview.revision == client.sessionRevision else { throw CancellationError() }
+                guard let consumed = response.consumedPageCount,
+                      seenPages.insert(response.pageFingerprint).inserted else {
+                    throw MoodleUpcomingError.incompleteResponse
+                }
+                let newItems = response.discussions.filter { discussions[$0.id] == nil }
+                for item in newItems { discussions[item.id] = item }
+                if consumed < 20 { break }
+                guard (!newItems.isEmpty || !(response.warnings ?? []).isEmpty), page < 100 else {
+                    throw MoodleUpcomingError.incompleteResponse
+                }
+            }
+        }
+        return discussions.values.filter { !$0.plainMessage.contains("API 錯誤") }
+            .sorted { $0.timemodified == $1.timemodified ? $0.id < $1.id : $0.timemodified > $1.timemodified }
     }
 
     func fetchDiscussions(forumId: Int) async throws -> MoodleDiscussionsResponse {
@@ -142,22 +197,29 @@ struct MoodleAssignmentsRepository: MoodleAssignmentsRepositoryProtocol {
 
     func fetchAssignments(courseId: Int) async throws -> MoodleAssignmentsSnapshot {
         let assignments = try await client.fetchAssignments(courseId: courseId)
-        let statuses = await withTaskGroup(of: (Int, Bool).self) { group in
-            for assignment in assignments {
-                group.addTask { @MainActor [client] in
-                    do {
-                        let status = try await client.fetchSubmissionStatus(assignId: assignment.id)
-                        return (assignment.id, status.lastattempt?.submission?.status == "submitted")
-                    } catch {
-                        return (assignment.id, false)
-                    }
+        var statuses: [Int: Bool] = [:]
+        for offset in stride(from: 0, to: assignments.count, by: 4) {
+            try Task.checkCancellation()
+            let batch = assignments[offset..<min(offset + 4, assignments.count)]
+            let result = try await withThrowingTaskGroup(of: (Int, Bool).self) { group in
+                for assignment in batch {
+                    let id = assignment.id
+                    group.addTask { [self, id] in try await submissionStatus(for: id) }
                 }
+                var result: [Int: Bool] = [:]
+                for try await (id, isSubmitted) in group { result[id] = isSubmitted }
+                return result
             }
-            var result: [Int: Bool] = [:]
-            for await (id, isSubmitted) in group { result[id] = isSubmitted }
-            return result
+            statuses.merge(result) { _, new in new }
         }
+        try Task.checkCancellation()
         return MoodleAssignmentsSnapshot(assignments: assignments, submittedStatus: statuses)
+    }
+
+    private func submissionStatus(for id: Int) async throws -> (Int, Bool) {
+        try Task.checkCancellation()
+        let status = try await client.fetchSubmissionStatus(assignId: id)
+        return (id, try MoodleUpcomingRules.isSubmitted(status))
     }
 
     func findAssignment(courseId: Int, module: MoodleModule) async throws -> MoodleAssignment? {
@@ -220,5 +282,73 @@ struct MoodleGradesRepository: MoodleGradesRepositoryProtocol {
 
     func fetchGrades(courseId: Int) async throws -> [MoodleGradeItem] {
         try await client.fetchGradeItems(courseId: courseId)
+    }
+}
+
+/// Shared dependencies follow navigation into detail screens without global overrides.
+@MainActor
+struct MoodleDetailRepositories {
+    let announcements: any MoodleAnnouncementsRepositoryProtocol
+    let assignments: any MoodleAssignmentsRepositoryProtocol
+    let resources: any MoodleResourcesRepositoryProtocol
+    let questions: any MoodleQuestionsRepositoryProtocol
+    let attendance: any MoodleAttendanceRepositoryProtocol
+    let grades: any MoodleGradesRepositoryProtocol
+    let submission: any MoodleSubmissionRepositoryProtocol
+    let posts: any MoodleDiscussionPostsRepositoryProtocol
+
+    static var live: Self {
+        Self(announcements: MoodleAnnouncementsRepository(), assignments: MoodleAssignmentsRepository(),
+             resources: MoodleResourcesRepository(), questions: MoodleQuestionsRepository(client: MoodleService.shared),
+             attendance: MoodleAttendanceRepository(), grades: MoodleGradesRepository(),
+             submission: MoodleSubmissionRepository(), posts: MoodleDiscussionPostsRepository())
+    }
+}
+
+@MainActor
+protocol MoodleDiscussionPostsRepositoryProtocol {
+    func fetchPosts(discussionId: Int) async throws -> [MoodlePost]
+}
+
+@MainActor
+struct MoodleDiscussionPostsRepository: MoodleDiscussionPostsRepositoryProtocol {
+    func fetchPosts(discussionId: Int) async throws -> [MoodlePost] {
+        try await MoodleService.shared.fetchDiscussionPosts(discussionId: discussionId).posts
+    }
+}
+
+@MainActor
+protocol MoodleSubmissionRepositoryProtocol {
+    func webSubmissionURL(for assignment: MoodleAssignment) -> String?
+    func fetchStatus(assignment: MoodleAssignment) async throws -> MoodleSubmissionStatus
+    func fetchGrades(courseId: Int) async throws -> [MoodleGradeItem]
+    func fileURL(for rawURL: String) -> URL?
+    func clear(assignment: MoodleAssignment) async throws
+    func submit(assignment: MoodleAssignment) async throws
+    func upload(assignment: MoodleAssignment, localFileURL: URL) async throws
+}
+
+@MainActor
+struct MoodleSubmissionRepository: MoodleSubmissionRepositoryProtocol {
+    func webSubmissionURL(for assignment: MoodleAssignment) -> String? {
+        "https://euni.niu.edu.tw/mod/assign/view.php?id=\(assignment.cmid)&action=editsubmission"
+    }
+    func fetchStatus(assignment: MoodleAssignment) async throws -> MoodleSubmissionStatus {
+        try await MoodleService.shared.fetchSubmissionStatus(assignId: assignment.id)
+    }
+    func fetchGrades(courseId: Int) async throws -> [MoodleGradeItem] {
+        try await MoodleService.shared.fetchGradeItems(courseId: courseId)
+    }
+    func fileURL(for rawURL: String) -> URL? { MoodleService.shared.fileURL(for: rawURL) }
+    func clear(assignment: MoodleAssignment) async throws {
+        try await MoodleService.shared.clearAssignmentSubmission(assignId: assignment.id)
+    }
+    func submit(assignment: MoodleAssignment) async throws {
+        try await MoodleService.shared.submitAssignmentForGrading(assignId: assignment.id, acceptSubmissionStatement: true)
+    }
+    func upload(assignment: MoodleAssignment, localFileURL: URL) async throws {
+        _ = try await MoodleService.shared.uploadAssignmentSubmissionFile(
+            assignId: assignment.id, assignmentCMID: assignment.cmid,
+            assignmentCourseID: assignment.course, localFileURL: localFileURL)
     }
 }

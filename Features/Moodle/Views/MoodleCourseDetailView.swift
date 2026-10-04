@@ -3,256 +3,301 @@ import SwiftUI
 struct MoodleCourseDetailView: View {
     let course: MoodleCourse
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var tabIconHeight: CGFloat = 24
-    @ScaledMetric(relativeTo: .caption) private var tabLabelLineHeight: CGFloat = 18
     @StateObject private var viewModel: MoodleCourseDetailViewModel
-    @StateObject private var announcementsViewModel: MoodleAnnouncementsViewModel
-    @StateObject private var assignmentsViewModel: MoodleAssignmentsListViewModel
-    @StateObject private var questionsViewModel: MoodleQuestionsViewModel
-    @StateObject private var resourcesViewModel: MoodleResourcesViewModel
-    @StateObject private var attendanceViewModel: MoodleAttendanceViewModel
-    @StateObject private var gradesViewModel: MoodleGradesViewModel
-    private let resourcesRepository: any MoodleResourcesRepositoryProtocol
+    @State private var selectedAssignment: MoodleAssignment?
 
-    init(course: MoodleCourse) {
-        let resourcesRepository = MoodleResourcesRepository()
+    init(course: MoodleCourse, repositories: MoodleDetailRepositories? = nil, initialQuery: String = "") {
         self.course = course
-        self.resourcesRepository = resourcesRepository
-        _viewModel = StateObject(wrappedValue: MoodleCourseDetailViewModel())
-        _announcementsViewModel = StateObject(wrappedValue: MoodleAnnouncementsViewModel())
-        _assignmentsViewModel = StateObject(wrappedValue: MoodleAssignmentsListViewModel())
-        _questionsViewModel = StateObject(wrappedValue: MoodleQuestionsViewModel(
-            repository: MoodleQuestionsRepository(client: MoodleService.shared)
-        ))
-        _resourcesViewModel = StateObject(
-            wrappedValue: MoodleResourcesViewModel(repository: resourcesRepository)
-        )
-        _attendanceViewModel = StateObject(wrappedValue: MoodleAttendanceViewModel())
-        _gradesViewModel = StateObject(wrappedValue: MoodleGradesViewModel())
+        _viewModel = StateObject(wrappedValue: MoodleCourseDetailViewModel(
+            course: course, repositories: repositories ?? .live, initialQuery: initialQuery))
     }
+
+    init(model: MoodleCourseDetailViewModel) {
+        course = model.course
+        _viewModel = StateObject(wrappedValue: model)
+    }
+
+    private var isSearching: Bool { !MoodleSearch.trimmed(viewModel.searchText).isEmpty }
 
     var body: some View {
-        VStack(spacing: 0) {
-            courseSummary
-            tabBar
-
-            TabView(selection: $viewModel.selectedTab) {
-                ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
-                    tabContent(for: tab)
-                        .tag(tab)
-                }
+        List {
+            if isSearching {
+                searchResults
+            } else {
+                overview
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle(course.cleanName)
+        .listStyle(.insetGrouped)
+        .navigationTitle(course.shortname.htmlDecoded)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $viewModel.searchText,
-                    placement: .navigationBarDrawer(displayMode: .automatic),
-                    prompt: viewModel.searchPrompt)
+                    placement: .navigationBarDrawer(displayMode: .automatic), prompt: "搜尋整門課")
         .scrollDismissesKeyboard(.interactively)
-        .onChange(of: viewModel.searchText, initial: true) { _, query in
-            updateSearch(query)
-        }
-        .task(id: searchAnnouncement) {
-            let announcement = searchAnnouncement
-            guard let count = announcement.count, !announcement.query.isEmpty else { return }
-            do {
-                try await Task.sleep(for: .milliseconds(500))
-                try Task.checkCancellation()
-                AccessibilityNotification.Announcement("找到 \(count) 項\(announcement.tab.rawValue)").post()
-            } catch is CancellationError {
-                return
-            } catch {
-                return
+        .refreshable { await viewModel.refresh() }
+        .onAppear { viewModel.updateSearch() }
+        .task { await viewModel.loadOverview() }
+        // Editing the query filters locally; only entering/leaving search changes its task.
+        .task(id: isSearching) { if isSearching { await viewModel.loadSearchExtras() } }
+        .navigationDestination(isPresented: Binding(
+            get: { selectedAssignment != nil }, set: { if !$0 { selectedAssignment = nil } }
+        )) {
+            if let assignment = selectedAssignment {
+                MoodleAssignmentView(assignment: assignment, repository: viewModel.repositories.submission) { submitted in
+                    viewModel.assignments.updateSubmission(assignmentID: assignment.id, submitted: submitted)
+                }
             }
         }
     }
 
-    private struct SearchAnnouncement: Equatable {
-        let query: String
-        let tab: MoodleCourseDetailViewModel.Tab
-        let count: Int?
-    }
-
-    private var searchAnnouncement: SearchAnnouncement {
-        let count: Int?
-        switch viewModel.selectedTab {
-        case .announcements:
-            count = announcementsViewModel.isLoading || announcementsViewModel.errorMessage != nil
-                ? nil : announcementsViewModel.filteredDiscussions.count
-        case .assignments:
-            count = assignmentsViewModel.isLoading || assignmentsViewModel.errorMessage != nil
-                ? nil : assignmentsViewModel.filteredAssignments.count
-        case .questions:
-            count = questionsViewModel.isLoading || questionsViewModel.errorMessage != nil
-                ? nil : questionsViewModel.filteredSections.reduce(0) { $0 + $1.modules.count }
-        case .resources:
-            count = resourcesViewModel.isLoading || resourcesViewModel.errorMessage != nil
-                ? nil : resourcesViewModel.filteredSections.reduce(0) { $0 + $1.modules.count }
-        case .attendance:
-            if case .loaded = attendanceViewModel.state, attendanceViewModel.lastErrorMessage == nil {
-                count = attendanceViewModel.filteredSections.reduce(0) { $0 + $1.records.count }
-            } else {
-                count = nil
+    @ViewBuilder private var overview: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(course.cleanName).font(.title2.bold())
+                    .fixedSize(horizontal: false, vertical: true)
+                if let teacher = course.teacherName {
+                    Text(teacher).font(.subheadline).foregroundStyle(.secondary)
+                }
             }
-        case .grades:
-            count = gradesViewModel.isLoading || gradesViewModel.errorMessage != nil
-                ? nil : gradesViewModel.filteredItems.count
+            .padding(.vertical, 4)
+            .accessibilityElement(children: .combine)
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                summary(now: context.date)
+            }
         }
-        return SearchAnnouncement(query: MoodleSearch.trimmed(viewModel.searchText),
-                                  tab: viewModel.selectedTab, count: count)
-    }
-
-    private func updateSearch(_ query: String) {
-        announcementsViewModel.searchText = query
-        assignmentsViewModel.searchText = query
-        questionsViewModel.searchText = query
-        resourcesViewModel.searchText = query
-        attendanceViewModel.searchText = query
-        gradesViewModel.searchText = query
-    }
-
-    // MARK: - Tab Bar
-
-    private var courseSummary: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "book.closed.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 42, height: 42)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(course.cleanName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(1)
-                HStack(spacing: 10) {
-                    if let teacher = course.teacherName {
-                        Label(teacher, systemImage: "person")
+        Section("待繳作業") {
+            MoodleCourseSectionStatus(model: viewModel, destination: .assignments)
+            if viewModel.assignments.hasLoaded {
+                if viewModel.pendingAssignments.isEmpty {
+                    Text("沒有待繳作業").foregroundStyle(.secondary).frame(minHeight: 44)
+                } else {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        // A VStack keeps the shared upcoming row's layout stable in List.
+                        VStack(spacing: 8) {
+                            ForEach(viewModel.pendingPreview) { assignment in
+                                pendingRow(assignment, now: context.date)
+                                if assignment.id != viewModel.pendingPreview.last?.id { Divider() }
+                            }
+                        }
                     }
-                    if let credits = course.credits {
-                        Label("\(credits) 學分", systemImage: "book")
+                    if viewModel.pendingAssignments.count > 3 {
+                        pageLink(.assignments, title: "查看全部作業（\(viewModel.pendingAssignments.count)）")
                     }
                 }
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
             }
-
-            Spacer()
         }
-        .padding(.horizontal, Theme.Spacing.medium)
-        .padding(.top, Theme.Spacing.small)
-    }
-
-    private var tabBar: some View {
-        // Keep all six destinations visible; larger text gets two rows.
-        let columnCount = dynamicTypeSize >= .xxLarge ? 3 : 6
-        return LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4, alignment: .top), count: columnCount),
-            spacing: 6
-        ) {
-            ForEach(MoodleCourseDetailViewModel.Tab.allCases, id: \.self) { tab in
-                Button {
-                    selectTab(tab)
+        Section("最新公告") {
+            MoodleCourseSectionStatus(model: viewModel, destination: .announcements)
+            if viewModel.announcements.hasLoaded {
+                if viewModel.latestAnnouncements.isEmpty {
+                    Text("目前沒有公告").foregroundStyle(.secondary).frame(minHeight: 44)
+                }
+                ForEach(viewModel.latestAnnouncements) { discussion in
+                    NavigationLink {
+                        MoodleForumView(discussion: discussion, repository: viewModel.repositories.posts)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(discussion.subject).font(.headline).fixedSize(horizontal: false, vertical: true)
+                            Text("\(discussion.userfullname)・\(MoodlePresentation.relativeTime(discussion.timeModifiedDate))")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                pageLink(.announcements, title: "查看全部公告")
+            }
+        }
+        Section("課程內容") {
+            ForEach(MoodleCourseDetailViewModel.Destination.allCases) { destination in
+                NavigationLink {
+                    MoodleCoursePage(model: viewModel, destination: destination)
                 } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: tab.iconName)
-                            .font(.body.weight(.semibold))
-                            .frame(height: tabIconHeight)
-                        Text(tab.rawValue)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(
-                                minHeight: tabLabelLineHeight * (dynamicTypeSize.isAccessibilitySize ? 2 : 1),
-                                alignment: .top
-                            )
+                    let detail = viewModel.detail(destination)
+                    let layout = dynamicTypeSize > .large
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                        : AnyLayout(HStackLayout(spacing: 12))
+                    layout {
+                        Label(destination.rawValue, systemImage: destination.iconName)
+                        if dynamicTypeSize <= .large { Spacer(minLength: 4) }
+                        if let detail { Text(detail).font(.subheadline).foregroundStyle(.secondary) }
                     }
-                    .foregroundStyle(viewModel.selectedTab == tab ? Color.accentColor : Color(.secondaryLabel))
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel([destination.rawValue, detail].compactMap { $0 }.joined(separator: "，"))
                 }
-                .glassEffect(
-                    viewModel.selectedTab == tab
-                        ? .regular.tint(Color.accentColor.opacity(0.12)).interactive()
-                        : .regular.interactive(),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
-                .overlay(alignment: .bottom) {
-                    if viewModel.selectedTab == tab {
-                        Capsule()
-                            .fill(Color.accentColor)
-                            .frame(width: 16, height: 3)
-                            .padding(.bottom, 3)
-                            .accessibilityHidden(true)
-                    }
+                if destination == .attendance || destination == .grades {
+                    MoodleCourseSectionStatus(model: viewModel, destination: destination)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(tab.rawValue)
-                .accessibilityAddTraits(viewModel.selectedTab == tab ? .isSelected : [])
             }
         }
-        .padding(.horizontal, Theme.Spacing.medium)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    let translation = value.translation
-                    guard value.startLocation.x > 24,
-                          abs(translation.width) > 50,
-                          abs(translation.width) > abs(translation.height) * 1.5 else { return }
-                    selectAdjacentTab(offset: translation.width < 0 ? 1 : -1)
-                }
-        )
     }
 
-    private func selectTab(_ tab: MoodleCourseDetailViewModel.Tab) {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-            viewModel.selectedTab = tab
+    private func summary(now: Date) -> some View {
+        let layout = dynamicTypeSize > .large
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 16))
+        return layout {
+            summaryValue("下一份待繳", value: viewModel.error(.assignments) != nil
+                         ? "暫時無法更新" : viewModel.nextDeadline(now: now))
+            if let percent = viewModel.attendancePercent {
+                summaryValue("出席率", value: "\(percent)%")
+            }
+            if let grade = viewModel.currentGrade {
+                summaryValue("目前成績", value: grade)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func summaryValue(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(value).font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private func pendingRow(_ assignment: MoodleAssignment, now: Date) -> some View {
+        if let due = assignment.dueDateValue {
+            MoodleUpcomingRow(item: MoodleUpcomingItem(assignmentID: assignment.id, courseID: course.id,
+                name: assignment.name, courseName: course.cleanName, dueDate: due), now: now,
+                opening: false, action: { selectedAssignment = assignment }, showsCourseName: false)
+        } else {
+            Button { selectedAssignment = assignment } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(assignment.name).font(.headline)
+                    Label("未設定截止日", systemImage: "clock").font(.subheadline).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("開啟作業詳情")
         }
     }
 
-    private func selectAdjacentTab(offset: Int) {
-        let tabs = MoodleCourseDetailViewModel.Tab.allCases
-        guard let currentIndex = tabs.firstIndex(of: viewModel.selectedTab) else { return }
-        let nextIndex = currentIndex + offset
-        guard tabs.indices.contains(nextIndex) else { return }
-        selectTab(tabs[nextIndex])
+    private func pageLink(_ destination: MoodleCourseDetailViewModel.Destination, title: String, query: String = "") -> some View {
+        NavigationLink {
+            MoodleCoursePage(model: viewModel, destination: destination, initialQuery: query)
+        } label: {
+            Text(title).frame(minHeight: 44)
+        }
     }
 
-    // MARK: - Tab Content
+    @ViewBuilder private var searchResults: some View {
+        let groups = viewModel.searchGroups
+        if viewModel.searchComplete && groups.allSatisfy({ $0.count == 0 }) {
+            ContentUnavailableView.search(text: viewModel.searchText)
+                .listRowBackground(Color.clear)
+        } else {
+            ForEach(groups) { group in
+                if group.count > 0 || !viewModel.hasSearchLoaded(group.destination)
+                    || viewModel.error(group.destination) != nil || viewModel.isLoading(group.destination) {
+                    Section {
+                        MoodleCourseSectionStatus(model: viewModel, destination: group.destination)
+                        ForEach(group.preview) { result in
+                            NavigationLink {
+                                MoodleCoursePage(model: viewModel, destination: group.destination,
+                                                 initialQuery: viewModel.searchText)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(result.title).font(.headline).fixedSize(horizontal: false, vertical: true)
+                                    Text(result.subtitle).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                .frame(minHeight: 44)
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                        if group.count > 0 {
+                            pageLink(group.destination, title: viewModel.hasSearchLoaded(group.destination)
+                                     ? "查看全部\(group.destination.rawValue)（\(group.count)）" : "查看全部\(group.destination.rawValue)",
+                                     query: viewModel.searchText)
+                        }
+                    } header: {
+                        Text(viewModel.hasSearchLoaded(group.destination)
+                             ? "\(group.destination.rawValue)（\(group.count)）" : group.destination.rawValue)
+                    }
+                }
+            }
+        }
+    }
+}
 
-    @ViewBuilder
-    private func tabContent(for tab: MoodleCourseDetailViewModel.Tab) -> some View {
-        switch tab {
-        case .announcements:
-            MoodleCourseAnnouncementsView(
-                courseId: course.id,
-                viewModel: announcementsViewModel
-            )
+/// View-owned retry task is cancelled on disappearance; one failure never hides
+/// other sections or discards previously loaded data.
+private struct MoodleCourseSectionStatus: View {
+    @ObservedObject var model: MoodleCourseDetailViewModel
+    let destination: MoodleCourseDetailViewModel.Destination
+    @State private var retryID = 0
+    var body: some View {
+        Group {
+            if model.isLoading(destination) || (!model.hasLoaded(destination) && model.error(destination) == nil) {
+                ProgressView("正在載入\(destination.rawValue)…").font(.subheadline).frame(minHeight: 44)
+            } else if model.error(destination) != nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        failureLabel
+                        Spacer()
+                        retryButton
+                    }
+                    VStack(alignment: .leading) { failureLabel; retryButton }
+                }
+                .font(.subheadline)
+            }
+        }
+        .task(id: retryID) { if retryID > 0 { await model.retry(destination) } }
+    }
+    private var failureLabel: some View {
+        Label("\(destination.rawValue)更新失敗\(model.hasLoaded(destination) ? "，保留上次資料" : "")",
+              systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+    }
+    private var retryButton: some View {
+        Button("重試") { retryID += 1 }.frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel("重試載入\(destination.rawValue)")
+    }
+}
+
+/// Constructed only after a push (also used as a fixture root).
+struct MoodleCoursePage: View {
+    @ObservedObject var model: MoodleCourseDetailViewModel
+    let destination: MoodleCourseDetailViewModel.Destination
+    var initialQuery = ""
+    @State private var didSetQuery = false
+
+    var body: some View {
+        content.onAppear {
+            guard !didSetQuery else { return }
+            didSetQuery = true
+            switch destination {
+            case .assignments: model.assignments.searchText = initialQuery
+            case .announcements: model.announcements.searchText = initialQuery
+            case .resources: model.resourcesModel().searchText = initialQuery
+            case .questions: model.questionsModel().searchText = initialQuery
+            case .attendance: model.attendance.searchText = initialQuery
+            case .grades: model.grades.searchText = initialQuery
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch destination {
         case .assignments:
-            MoodleCourseAssignmentsView(
-                courseId: course.id,
-                viewModel: assignmentsViewModel
-            )
+            MoodleCourseAssignmentsView(courseId: model.course.id, viewModel: model.assignments,
+                                        submissionRepository: model.repositories.submission)
+        case .announcements:
+            MoodleCourseAnnouncementsView(courseId: model.course.id, viewModel: model.announcements,
+                                          postsRepository: model.repositories.posts)
         case .resources:
-            MoodleCourseResourcesView(
-                courseId: course.id,
-                viewModel: resourcesViewModel,
-                repository: resourcesRepository
-            )
+            MoodleCourseResourcesView(courseId: model.course.id, viewModel: model.resourcesModel(),
+                                      repository: model.repositories.resources)
         case .questions:
-            MoodleCourseQuestionsView(courseId: course.id, viewModel: questionsViewModel)
+            MoodleCourseQuestionsView(courseId: model.course.id, viewModel: model.questionsModel())
         case .attendance:
-            MoodleCourseAttendanceView(courseId: course.id, viewModel: attendanceViewModel)
+            MoodleCourseAttendanceView(courseId: model.course.id, viewModel: model.attendance)
         case .grades:
-            MoodleCourseGradesView(courseId: course.id, viewModel: gradesViewModel)
+            MoodleCourseGradesView(courseId: model.course.id, viewModel: model.grades)
         }
     }
 }

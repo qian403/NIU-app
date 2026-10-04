@@ -14,6 +14,9 @@ struct MoodleCourseAttendanceView: View {
             searchText: viewModel.searchText,
             searchSections: viewModel.filteredSections
         )
+        .navigationTitle("出缺席")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $viewModel.searchText, prompt: "搜尋出缺席")
         .task { await viewModel.loadCourse(courseId) }
         .refreshable { await viewModel.loadCourse(courseId, force: true) }
     }

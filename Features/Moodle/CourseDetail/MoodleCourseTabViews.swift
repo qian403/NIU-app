@@ -26,26 +26,67 @@ final class MoodleAnnouncementsViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let repository: any MoodleAnnouncementsRepositoryProtocol
-    private var hasLoaded = false
+    private(set) var hasLoaded = false
+    private(set) var hasLoadedAll = false
+    private let loads = MoodleCourseLoadCoordinator()
+    private var loadGeneration = 0
 
     init(repository: (any MoodleAnnouncementsRepositoryProtocol)? = nil) {
         self.repository = repository ?? MoodleAnnouncementsRepository()
     }
 
     func load(courseId: Int, force: Bool = false) async {
+        await loads.run(force: force) { [self] in
+            await performLoad(courseId: courseId, force: force)
+        }
+    }
+
+    func loadComplete(courseId: Int, force: Bool = false) async {
+        await load(courseId: courseId, force: force)
+        guard !Task.isCancelled, hasLoaded, errorMessage == nil else { return }
+        // A refresh can supersede pagination and finish before the old task.
+        // Continue only while this consumer is active and no actual error occurred.
+        repeat {
+            await loads.run(force: false, phase: .completeAnnouncements) { [self] in
+                guard hasLoaded, errorMessage == nil, !hasLoadedAll else { return }
+                loadGeneration &+= 1
+                let generation = loadGeneration
+                isLoading = true
+                errorMessage = nil
+                defer { if generation == loadGeneration { isLoading = false } }
+                do {
+                    let result = try await repository.fetchCompleteAnnouncements(courseId: courseId, cached: discussions)
+                    try Task.checkCancellation()
+                    guard generation == loadGeneration else { return }
+                    discussions = result
+                    hasLoadedAll = true
+                } catch {
+                    guard generation == loadGeneration, !Task.isCancelled else { return }
+                    errorMessage = error is CancellationError ? "公告載入已中止，請重試。" : error.localizedDescription
+                }
+            }
+        } while !Task.isCancelled && hasLoaded && !hasLoadedAll && errorMessage == nil
+    }
+
+    private func performLoad(courseId: Int, force: Bool) async {
         guard force || !hasLoaded else { return }
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        defer { if generation == loadGeneration { isLoading = false } }
         isLoading = true
         errorMessage = nil
         do {
-            discussions = try await repository.fetchAnnouncements(courseId: courseId)
+            let result = try await repository.fetchAnnouncements(courseId: courseId)
+            try Task.checkCancellation()
+            guard generation == loadGeneration else { return }
+            discussions = result
             hasLoaded = true
-        } catch is CancellationError {
-            isLoading = false
-            return
+            hasLoadedAll = false
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled,
+                  !(error is CancellationError) else { return }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 }
 
@@ -53,7 +94,11 @@ struct MoodleCourseAnnouncementsView: View {
     let courseId: Int
     @ObservedObject var viewModel: MoodleAnnouncementsViewModel
 
-    init(courseId: Int, viewModel: MoodleAnnouncementsViewModel) {
+    private let postsRepository: (any MoodleDiscussionPostsRepositoryProtocol)?
+
+    init(courseId: Int, viewModel: MoodleAnnouncementsViewModel,
+         postsRepository: (any MoodleDiscussionPostsRepositoryProtocol)? = nil) {
+        self.postsRepository = postsRepository
         self.courseId = courseId
         self.viewModel = viewModel
     }
@@ -70,7 +115,7 @@ struct MoodleCourseAnnouncementsView: View {
         ) {
             LazyVStack(spacing: 10) {
                 ForEach(viewModel.filteredDiscussions) { discussion in
-                    NavigationLink(destination: MoodleForumView(discussion: discussion)) {
+                    NavigationLink(destination: MoodleForumView(discussion: discussion, repository: postsRepository)) {
                         MoodleDiscussionRow(discussion: discussion, messagePreview: viewModel.messagePreviews[discussion.id])
                     }
                     .buttonStyle(.plain)
@@ -78,9 +123,12 @@ struct MoodleCourseAnnouncementsView: View {
             }
             .padding(Theme.Spacing.medium)
         } retry: {
-            await viewModel.load(courseId: courseId, force: true)
+            await viewModel.loadComplete(courseId: courseId, force: true)
         }
-        .task { await viewModel.load(courseId: courseId) }
+        .navigationTitle("公告")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $viewModel.searchText, prompt: "搜尋公告")
+        .task { await viewModel.loadComplete(courseId: courseId) }
     }
 }
 
@@ -110,11 +158,21 @@ final class MoodleAssignmentsListViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let repository: any MoodleAssignmentsRepositoryProtocol
-    private var hasLoaded = false
+    private(set) var hasLoaded = false
+    private let loads = MoodleCourseLoadCoordinator()
+    private var loadGeneration = 0
+    private var submissionRevision = 0
+    private var localStatusUpdates: [Int: (revision: Int, submitted: Bool)] = [:]
     private(set) var sortOrder = MoodleAssignmentSortOrder.defaultOrder
 
     init(repository: (any MoodleAssignmentsRepositoryProtocol)? = nil) {
         self.repository = repository ?? MoodleAssignmentsRepository()
+    }
+
+    func updateSubmission(assignmentID: Int, submitted: Bool) {
+        submissionRevision &+= 1
+        localStatusUpdates[assignmentID] = (submissionRevision, submitted)
+        submittedStatus[assignmentID] = submitted
     }
 
     func setSortOrder(_ order: MoodleAssignmentSortOrder) {
@@ -124,21 +182,34 @@ final class MoodleAssignmentsListViewModel: ObservableObject {
     }
 
     func load(courseId: Int, force: Bool = false) async {
+        await loads.run(force: force) { [self] in
+            await performLoad(courseId: courseId, force: force)
+        }
+    }
+
+    private func performLoad(courseId: Int, force: Bool) async {
         guard force || !hasLoaded else { return }
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        defer { if generation == loadGeneration { isLoading = false } }
         isLoading = true
         errorMessage = nil
         do {
+            let startingSubmissionRevision = submissionRevision
             let snapshot = try await repository.fetchAssignments(courseId: courseId)
+            try Task.checkCancellation()
+            guard generation == loadGeneration else { return }
             assignments = sortOrder.sorted(snapshot.assignments)
-            submittedStatus = snapshot.submittedStatus
+            var statuses = snapshot.submittedStatus
+            localStatusUpdates = localStatusUpdates.filter { $0.value.revision > startingSubmissionRevision }
+            for (id, update) in localStatusUpdates { statuses[id] = update.submitted }
+            submittedStatus = statuses
             hasLoaded = true
-        } catch is CancellationError {
-            isLoading = false
-            return
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled,
+                  !(error is CancellationError) else { return }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 }
 
@@ -149,7 +220,11 @@ struct MoodleCourseAssignmentsView: View {
     private var sortOrder = MoodleAssignmentSortOrder.defaultOrder
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(courseId: Int, viewModel: MoodleAssignmentsListViewModel) {
+    private let submissionRepository: (any MoodleSubmissionRepositoryProtocol)?
+
+    init(courseId: Int, viewModel: MoodleAssignmentsListViewModel,
+         submissionRepository: (any MoodleSubmissionRepositoryProtocol)? = nil) {
+        self.submissionRepository = submissionRepository
         self.courseId = courseId
         self.viewModel = viewModel
     }
@@ -182,6 +257,9 @@ struct MoodleCourseAssignmentsView: View {
                 viewModel.setSortOrder(order)
             }
         }
+        .navigationTitle("作業")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $viewModel.searchText, prompt: "搜尋作業")
         .task {
             viewModel.setSortOrder(sortOrder)
             await viewModel.load(courseId: courseId)
@@ -200,7 +278,11 @@ struct MoodleCourseAssignmentsView: View {
         ) {
             LazyVStack(spacing: 10) {
                 ForEach(viewModel.filteredAssignments) { assignment in
-                    NavigationLink(destination: MoodleAssignmentView(assignment: assignment)) {
+                    NavigationLink {
+                        MoodleAssignmentView(assignment: assignment, repository: submissionRepository) { submitted in
+                            viewModel.updateSubmission(assignmentID: assignment.id, submitted: submitted)
+                        }
+                    } label: {
                         MoodleAssignmentRow(
                             assignment: assignment,
                             introPreview: viewModel.introPreviews[assignment.id] ?? "",
@@ -221,8 +303,11 @@ struct MoodleCourseAssignmentsView: View {
 final class MoodleGradesViewModel: ObservableObject {
     @Published private(set) var items: [MoodleGradeItem] = [] {
         didSet {
+            itemTitles = [:]
             searchIndex = MoodleSearchIndex(items) { item in
-                [MoodleSearch.plainText(item.itemname ?? (item.itemtype == "course" ? "課程總分" : "分類"))]
+                let title = MoodleSearch.plainText(item.itemname ?? (item.itemtype == "course" ? "課程總分" : "分類"))
+                itemTitles[item.id] = title
+                return [title]
             }
             updateSearch()
         }
@@ -230,6 +315,7 @@ final class MoodleGradesViewModel: ObservableObject {
     @Published var searchText = "" { didSet { updateSearch() } }
     @Published private(set) var filteredItems: [MoodleGradeItem] = []
     private var searchIndex = MoodleSearchIndex()
+    private(set) var itemTitles: [Int: String] = [:]
 
     private func updateSearch() {
         filteredItems = searchIndex.filter(items, query: searchText)
@@ -238,26 +324,38 @@ final class MoodleGradesViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let repository: any MoodleGradesRepositoryProtocol
-    private var hasLoaded = false
+    private(set) var hasLoaded = false
+    private let loads = MoodleCourseLoadCoordinator()
+    private var loadGeneration = 0
 
     init(repository: (any MoodleGradesRepositoryProtocol)? = nil) {
         self.repository = repository ?? MoodleGradesRepository()
     }
 
     func load(courseId: Int, force: Bool = false) async {
+        await loads.run(force: force) { [self] in
+            await performLoad(courseId: courseId, force: force)
+        }
+    }
+
+    private func performLoad(courseId: Int, force: Bool) async {
         guard force || !hasLoaded else { return }
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        defer { if generation == loadGeneration { isLoading = false } }
         isLoading = true
         errorMessage = nil
         do {
-            items = try await repository.fetchGrades(courseId: courseId)
+            let result = try await repository.fetchGrades(courseId: courseId)
+            try Task.checkCancellation()
+            guard generation == loadGeneration else { return }
+            items = result
             hasLoaded = true
-        } catch is CancellationError {
-            isLoading = false
-            return
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled,
+                  !(error is CancellationError) else { return }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 }
 
@@ -298,7 +396,7 @@ struct MoodleCourseGradesView: View {
                 VStack(spacing: 0) {
                     if let error = viewModel.errorMessage {
                         Label("更新失敗，以下為上次資料：\(error)", systemImage: "exclamationmark.triangle.fill")
-                            .font(.system(size: 11))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(10)
                     }
@@ -311,6 +409,9 @@ struct MoodleCourseGradesView: View {
                 .refreshable { await viewModel.load(courseId: courseId, force: true) }
             }
         }
+        .navigationTitle("成績")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $viewModel.searchText, prompt: "搜尋成績")
         .task { await viewModel.load(courseId: courseId) }
     }
 }
@@ -322,19 +423,19 @@ struct MoodleDiscussionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(discussion.subject)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(.primary)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             Text(messagePreview ?? discussion.plainMessage)
-                .font(.system(size: 13))
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             HStack {
                 Text(discussion.userfullname)
                 Spacer()
-                Text(discussion.timeModifiedDate, style: .relative)
+                Text(MoodlePresentation.relativeTime(discussion.timeModifiedDate))
             }
-            .font(.system(size: 11))
+            .font(.caption)
             .foregroundStyle(.secondary)
         }
         .padding(Theme.Spacing.medium)
@@ -347,26 +448,30 @@ private struct MoodleAssignmentRow: View {
     let assignment: MoodleAssignment
     let introPreview: String
     let isSubmitted: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(alignment: .top))
+            layout {
                 Text(assignment.name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 statusBadge
             }
             if !introPreview.isEmpty {
                 Text(introPreview)
-                    .font(.system(size: 13))
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             if let due = assignment.dueDateValue {
-                Label("截止：\(due.formatted(date: .abbreviated, time: .shortened))", systemImage: "clock")
-                    .font(.system(size: 12))
+                Label("截止：\(MoodlePresentation.dateTime(due))", systemImage: "clock")
+                    .font(.caption)
                     .foregroundStyle(assignment.isOverdue ? .red : .secondary)
             }
         }
@@ -379,14 +484,14 @@ private struct MoodleAssignmentRow: View {
     private var statusBadge: some View {
         if isSubmitted {
             Text("已繳交")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.green)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(Color.green.opacity(0.12), in: Capsule())
         } else if assignment.isOverdue {
             Text("已截止")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.red)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -454,7 +559,7 @@ private struct MoodleCourseTabContainer<Content: View>: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundStyle(.red)
                                 Text("更新失敗，以下為上次資料：\(errorMessage)")
-                                    .font(.system(size: 11))
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
                                 Spacer()

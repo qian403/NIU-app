@@ -2,6 +2,12 @@ import SwiftUI
 
 struct MoodleForumView: View {
     let discussion: MoodleDiscussion
+    private let repository: any MoodleDiscussionPostsRepositoryProtocol
+
+    init(discussion: MoodleDiscussion, repository: (any MoodleDiscussionPostsRepositoryProtocol)? = nil) {
+        self.discussion = discussion
+        self.repository = repository ?? MoodleDiscussionPostsRepository()
+    }
     
     @State private var posts: [MoodlePost] = []
     @State private var isLoading = true
@@ -12,18 +18,18 @@ struct MoodleForumView: View {
                 // Header
                 VStack(alignment: .leading, spacing: 8) {
                     Text(discussion.subject)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.title3.weight(.bold))
                         .foregroundColor(.primary)
                     
                     HStack {
                         Text(discussion.userfullname)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.footnote.weight(.medium))
                             .foregroundColor(.secondary)
                         
                         Spacer()
                         
-                        Text(discussion.createdDate.formatted(date: .abbreviated, time: .shortened))
-                            .font(.system(size: 12))
+                        Text(MoodlePresentation.dateTime(discussion.createdDate))
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -33,7 +39,7 @@ struct MoodleForumView: View {
 
                 // Always show the main discussion content first.
                 Text(discussion.plainMessage.isEmpty ? "（無內文）" : discussion.plainMessage)
-                    .font(.system(size: 15))
+                    .font(.subheadline)
                     .foregroundColor(.secondary)
                     .textSelection(.enabled)
                     .padding(Theme.Spacing.medium)
@@ -66,14 +72,17 @@ struct MoodleForumView: View {
     
     private func loadPosts() async {
         do {
-            let resp = try await MoodleService.shared.fetchDiscussionPosts(discussionId: discussion.id)
+            let fetchedPosts = try await repository.fetchPosts(discussionId: discussion.id)
+            try Task.checkCancellation()
             // Some Moodle instances return the first post in both discussion + posts API.
             // Exclude it to avoid duplicated content in the detail view.
-            posts = resp.posts
+            posts = fetchedPosts
                 .filter { $0.subject != discussion.subject || $0.plainMessage != discussion.plainMessage }
                 .sorted { $0.timecreated < $1.timecreated }
+        } catch is CancellationError {
+            return
         } catch {
-            print("[Moodle] Discussion posts fallback: \(error)")
+            if Task.isCancelled { return }
         }
         isLoading = false
     }
@@ -86,18 +95,18 @@ private struct PostView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(post.author?.fullname ?? "未知")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundColor(.secondary)
                 
                 Spacer()
                 
-                Text(post.createdDate.formatted(date: .abbreviated, time: .shortened))
-                    .font(.system(size: 12))
+                Text(MoodlePresentation.dateTime(post.createdDate))
+                    .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             Text(post.plainMessage)
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundColor(.secondary)
                 .textSelection(.enabled)
         }

@@ -4,7 +4,7 @@ import Combine
 @MainActor
 final class MoodleViewModel: ObservableObject {
     
-    enum LoadState {
+    enum LoadState: Equatable {
         case idle
         case loading
         case loaded
@@ -15,9 +15,34 @@ final class MoodleViewModel: ObservableObject {
     @Published var coursesBySemester: [(semester: String, courses: [MoodleCourse])] = []
     @Published var selectedSemester: String?
     
+    @Published private(set) var isRefreshing = false
+    private var requestID = UUID()
+
+    enum ContentState: Equatable {
+        case loading, empty, courses
+        case error(String)
+    }
+
+    var contentState: ContentState {
+        if !currentSemesterCourses.isEmpty { return .courses }
+        // A loaded empty semester remains visible while other semesters are cached.
+        if !coursesBySemester.isEmpty { return .empty }
+        switch loadState {
+        case .idle, .loading: return .loading
+        case .loaded: return .empty
+        case .error(let message): return .error(message)
+        }
+    }
+
+    static func selection(_ current: String?, in semesters: [String]) -> String? {
+        let normalized = current?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.flatMap { semesters.contains($0) ? $0 : nil } ?? semesters.first
+    }
+
     private let repository: any MoodleCourseRepositoryProtocol
 
-    init(repository: (any MoodleCourseRepositoryProtocol)? = nil) {
+    init(repository: (any MoodleCourseRepositoryProtocol)? = nil, initialSemester: String? = nil) {
+        selectedSemester = initialSemester
         self.repository = repository ?? MoodleCourseRepository()
     }
     
@@ -43,18 +68,24 @@ final class MoodleViewModel: ObservableObject {
     var isAuthenticated: Bool { repository.isAuthenticated }
     
     func loadCourses(username: String, password: String) async {
-        let isFirstLoad = coursesBySemester.isEmpty
-        if isFirstLoad {
-            loadState = .loading
-        }
-        
+        let request = UUID()
+        requestID = request
+        let previousState = loadState
+        isRefreshing = true
+        if coursesBySemester.isEmpty { loadState = .loading }
+        defer { if requestID == request { isRefreshing = false } }
+
         do {
             // Authenticate if needed
             if !repository.isAuthenticated {
                 try await repository.authenticate(username: username, password: password)
             }
             
+            try Task.checkCancellation()
+            guard requestID == request else { return }
             let courses = try await repository.fetchCourses()
+            try Task.checkCancellation()
+            guard requestID == request else { return }
             
             // Group by semester, sort semesters descending (newest first)
             // Include all courses (not just visible ones) so all semesters show up
@@ -70,19 +101,24 @@ final class MoodleViewModel: ObservableObject {
                 sorted = [(semester: fallback, courses: courses.sorted { ($0.lastaccess ?? 0) > ($1.lastaccess ?? 0) })]
             }
             
-            coursesBySemester = sorted
-            // Only set selectedSemester on first load, or if current selection is no longer valid
-            let currentSelected = selectedSemester?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if currentSelected == nil || currentSelected?.isEmpty == true || !sorted.contains(where: { $0.semester == currentSelected }) {
-                selectedSemester = sorted.first?.semester
+            for raw in repository.availableSemesters {
+                let semester = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !semester.isEmpty, !sorted.contains(where: { $0.semester == semester }) {
+                    sorted.append((semester: semester, courses: []))
+                }
             }
+            sorted.sort { $0.semester > $1.semester }
+            coursesBySemester = sorted
+            selectedSemester = Self.selection(selectedSemester, in: sorted.map(\.semester))
             loadState = .loaded
             
         } catch {
-            // Only show error if we have no data yet
-            if isFirstLoad {
-                loadState = .error(error.localizedDescription)
+            guard requestID == request else { return }
+            if Task.isCancelled || error is CancellationError {
+                loadState = previousState == .loading ? .idle : previousState
+                return
             }
+            loadState = .error("課程載入失敗，請稍後重試。")
             // NSError.userInfo can contain credential-bearing URLs. Log only
             // the error category and numeric code, never the complete error.
             let diagnostic = error as NSError
@@ -95,7 +131,8 @@ final class MoodleViewModel: ObservableObject {
     }
 
     private static func inferSemester(from date: Date) -> String {
-        let cal = Calendar.current
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .gmt
         let year = cal.component(.year, from: date) - 1911
         let month = cal.component(.month, from: date)
         let term = (month >= 8 || month == 1) ? 1 : 2

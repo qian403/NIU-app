@@ -6,6 +6,7 @@ import WebKit
 
 struct MoodleAttendanceScannerView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let onReturnHome: () -> Void
     @StateObject private var scanner = MoodleAttendanceScanner()
     @State private var attendanceURL: URL?
@@ -124,19 +125,17 @@ struct MoodleAttendanceScannerView: View {
             .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
 
-            VStack(spacing: 0) {
-                instructionHeader
-                Spacer()
-                scanFrame
-                Spacer()
-                zoomControls
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView {
+                    scannerControls
+                }
+            } else {
+                scannerControls
             }
-            .padding(.horizontal, Theme.Spacing.large)
-            .padding(.bottom, Theme.Spacing.large)
 
             if let validationMessage {
                 Text(validationMessage)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 18)
@@ -148,13 +147,25 @@ struct MoodleAttendanceScannerView: View {
         }
     }
 
+    private var scannerControls: some View {
+        VStack(spacing: Theme.Spacing.medium) {
+            instructionHeader
+            Spacer(minLength: 0)
+            scanFrame
+            Spacer(minLength: 0)
+            zoomControls
+        }
+        .padding(.horizontal, Theme.Spacing.large)
+        .padding(.bottom, Theme.Spacing.large)
+    }
+
     private var instructionHeader: some View {
         VStack(spacing: Theme.Spacing.small) {
             Text("對準老師顯示的 QR Code")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(.white)
             Text("掃描後會開啟 M 園區點名網址並完成網頁登入")
-                .font(.system(size: 13, weight: .medium))
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(.white.opacity(0.78))
 
             preparationStatus
@@ -165,7 +176,7 @@ struct MoodleAttendanceScannerView: View {
 
     private var preparationStatus: some View {
         Label("將使用 M 園區網頁登入點名", systemImage: "safari.fill")
-            .font(.system(size: 13, weight: .semibold))
+            .font(.headline.weight(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
@@ -175,11 +186,12 @@ struct MoodleAttendanceScannerView: View {
     private var scanFrame: some View {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
             .stroke(Color.white.opacity(0.95), style: StrokeStyle(lineWidth: 3, dash: [20, 8]))
+            // Camera targeting geometry stays bounded to the preview; it contains no text.
             .frame(maxWidth: 310, maxHeight: 310)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 Image(systemName: "qrcode.viewfinder")
-                    .font(.system(size: 44, weight: .ultraLight))
+                    .font(.largeTitle.weight(.ultraLight))
                     .foregroundStyle(.white.opacity(0.9))
             }
             .shadow(color: .black.opacity(0.45), radius: 12)
@@ -200,23 +212,25 @@ struct MoodleAttendanceScannerView: View {
                     in: 1...max(scanner.maxZoomFactor, 1)
                 )
                 .tint(.white)
+                .accessibilityLabel("相機縮放")
 
                 Text(String(format: "%.1f×", scanner.zoomFactor))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
-                    .frame(width: 42, alignment: .trailing)
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
-            HStack(spacing: Theme.Spacing.medium) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 80 : 44))],
+                      spacing: Theme.Spacing.small) {
                 ForEach(scanner.zoomPresets, id: \.self) { factor in
                     Button {
                         scanner.setZoom(factor, animated: true)
                     } label: {
                         Text("\(Int(factor))×")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(.headline.weight(.semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 42, height: 34)
+                            .frame(minWidth: 44, minHeight: 44)
                             .background(
                                 Circle().fill(
                                     abs(scanner.zoomFactor - factor) < 0.15
@@ -231,9 +245,9 @@ struct MoodleAttendanceScannerView: View {
                 if scanner.isTorchAvailable {
                     Button(action: scanner.toggleTorch) {
                         Image(systemName: scanner.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.headline.weight(.semibold))
                             .foregroundStyle(scanner.isTorchOn ? .yellow : .white)
-                            .frame(width: 42, height: 34)
+                            .frame(minWidth: 44, minHeight: 44)
                             .background(Circle().fill(Color.black.opacity(0.45)))
                     }
                     .buttonStyle(.plain)
@@ -293,13 +307,13 @@ struct MoodleAttendanceScannerView: View {
     ) -> some View {
         VStack(spacing: Theme.Spacing.medium) {
             Image(systemName: icon)
-                .font(.system(size: 42, weight: .light))
+                .font(.largeTitle.weight(.light))
                 .foregroundStyle(.white)
             Text(title)
                 .font(.title3.bold())
                 .foregroundStyle(.white)
             Text(message)
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xlarge)
@@ -506,14 +520,14 @@ private struct MoodleAttendanceSubmissionView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
             HStack(alignment: .top, spacing: Theme.Spacing.small) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(.green)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("你已完成點名")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.headline.weight(.semibold))
                     Text("要分享這次的點名連結嗎？")
-                        .font(.system(size: 13))
+                        .font(.footnote)
                         .foregroundStyle(Color(.secondaryLabel))
                 }
             }
@@ -618,9 +632,9 @@ private struct MoodleAttendanceSubmissionView: View {
             ProgressView()
                 .controlSize(.large)
             Text("正在送出點名…")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.headline.weight(.semibold))
             Text("請不要離開此頁，正在等待 M 園區確認。")
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(Color(.secondaryLabel))
                 .multilineTextAlignment(.center)
         }
@@ -636,23 +650,20 @@ private struct MoodleAttendanceSubmissionView: View {
     ) -> some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.large) {
-                ZStack {
-                    Circle()
-                        .fill(color.opacity(0.12))
-                        .frame(width: 104, height: 104)
-                    Image(systemName: icon)
-                        .font(.system(size: 58, weight: .medium))
-                        .foregroundStyle(color)
-                }
+                Image(systemName: icon)
+                    .font(.largeTitle.weight(.medium))
+                    .foregroundStyle(color)
+                    .padding(Theme.Spacing.large)
+                    .background(color.opacity(0.12), in: Circle())
                 .glassEffect(.regular, in: Circle())
                 .padding(.top, Theme.Spacing.xlarge)
 
                 VStack(spacing: Theme.Spacing.small) {
                     Text(title)
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .font(.title.weight(.bold))
                         .foregroundStyle(Color(.label))
                     Text(message)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color(.secondaryLabel))
                         .multilineTextAlignment(.center)
                 }
@@ -683,7 +694,7 @@ private struct MoodleAttendanceSubmissionView: View {
                                 }
                                 Text(verificationButtonTitle)
                             }
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.headline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
@@ -697,7 +708,7 @@ private struct MoodleAttendanceSubmissionView: View {
                             showsWebResponse = true
                         } label: {
                             Label("查看 M 園區回應", systemImage: "safari")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.headline.weight(.semibold))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
@@ -708,7 +719,7 @@ private struct MoodleAttendanceSubmissionView: View {
                         Button("返回掃描") {
                             dismiss()
                         }
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color(.secondaryLabel))
                         .padding(.top, Theme.Spacing.xsmall)
                     }
@@ -726,9 +737,9 @@ private struct MoodleAttendanceSubmissionView: View {
                     .foregroundStyle(color)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("M 園區回應")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.headline.weight(.semibold))
                     Text(showsVerification ? "伺服器已接受點名，可再核對出席紀錄" : "伺服器未確認這次點名")
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(Color(.secondaryLabel))
                 }
                 Spacer()
@@ -742,10 +753,10 @@ private struct MoodleAttendanceSubmissionView: View {
                 Label("點名時段", systemImage: "clock")
                     .foregroundStyle(Color(.secondaryLabel))
                 Spacer()
-                Text(Date.now.formatted(date: .omitted, time: .shortened))
+                Text(MoodlePresentation.time(.now))
                     .fontWeight(.semibold)
             }
-            .font(.system(size: 13))
+            .font(.footnote)
 
             if let sessionID = MoodleAttendanceQRCode.sessionID(from: attendanceURL) {
                 HStack {
@@ -756,7 +767,7 @@ private struct MoodleAttendanceSubmissionView: View {
                         .fontWeight(.semibold)
                         .monospacedDigit()
                 }
-                .font(.system(size: 13))
+                .font(.footnote)
             }
 
             verificationStatus
@@ -778,7 +789,7 @@ private struct MoodleAttendanceSubmissionView: View {
                 ProgressView()
                 Text("正在讀取 M 園區出席紀錄…")
             }
-            .font(.system(size: 13, weight: .medium))
+            .font(.footnote.weight(.medium))
             .foregroundStyle(Color(.secondaryLabel))
         case .verified(let status, let detail):
             HStack(alignment: .top, spacing: Theme.Spacing.small) {
@@ -786,9 +797,9 @@ private struct MoodleAttendanceSubmissionView: View {
                     .foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("已驗證：\(status)")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.headline.weight(.semibold))
                     Text(detail)
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(Color(.secondaryLabel))
                 }
             }
@@ -797,7 +808,7 @@ private struct MoodleAttendanceSubmissionView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                 Text(message)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundStyle(Color(.secondaryLabel))
             }
         }

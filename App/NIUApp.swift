@@ -6,6 +6,10 @@ struct NIUApp: App {
     
     init() {
         #if DEBUG
+        if MoodleUIFixtureRoot.isEnabled {
+            configureAppearance()
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") || NativeMailUIFixtureScreen.launchScreen() != nil {
             configureAppearance()
             return
@@ -17,7 +21,9 @@ struct NIUApp: App {
     var body: some Scene {
         WindowGroup {
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") || NativeMailUIFixtureScreen.launchScreen() != nil {
+            if MoodleUIFixtureRoot.isEnabled {
+                MoodleUIFixtureRoot()
+            } else if ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") || NativeMailUIFixtureScreen.launchScreen() != nil {
                 NativeMailUIFixtureRoot()
             } else {
                 RootView()

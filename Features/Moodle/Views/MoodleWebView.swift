@@ -59,7 +59,7 @@ struct MoodleWebPageView: View {
                         Spacer()
                         ProgressView()
                         Text("正在載入...")
-                            .font(.system(size: 13))
+                            .font(.footnote)
                             .foregroundColor(.secondary)
                             .padding(.top, 8)
                         Spacer()
@@ -69,10 +69,10 @@ struct MoodleWebPageView: View {
                 if let message = webManager.errorMessage {
                     VStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 24, weight: .light))
+                            .font(.title2.weight(.light))
                             .foregroundColor(.secondary)
                         Text(message)
-                            .font(.system(size: 13))
+                            .font(.footnote)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
@@ -122,7 +122,7 @@ private struct MoodleWebNavigationChrome: ViewModifier {
                             }
                         }) {
                             Image(systemName: "safari")
-                                .font(.system(size: 16))
+                                .font(.body)
                                 .foregroundColor(.primary)
                         }
                     }

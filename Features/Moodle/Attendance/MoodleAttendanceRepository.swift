@@ -163,7 +163,7 @@ struct MoodleAttendanceRepository: MoodleAttendanceRepositoryProtocol {
             return MoodleAttendanceRecord(
                 id: session.id,
                 date: date,
-                timeText: date.formatted(date: .omitted, time: .shortened),
+                timeText: MoodlePresentation.time(date),
                 description: session.description?.strippingHTML,
                 statusLabel: statusLabel ?? "尚未點名",
                 scoreText: attendanceStatus?.grade.map { String(format: "%g", $0) },

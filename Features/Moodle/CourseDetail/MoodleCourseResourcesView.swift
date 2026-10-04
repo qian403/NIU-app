@@ -20,29 +20,41 @@ final class MoodleResourcesViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let repository: any MoodleResourcesRepositoryProtocol
-    private var hasLoaded = false
+    private(set) var hasLoaded = false
+    private let loads = MoodleCourseLoadCoordinator()
+    private var loadGeneration = 0
 
     init(repository: any MoodleResourcesRepositoryProtocol) {
         self.repository = repository
     }
 
     func load(courseId: Int, force: Bool = false) async {
+        await loads.run(force: force) { [self] in
+            await performLoad(courseId: courseId, force: force)
+        }
+    }
+
+    private func performLoad(courseId: Int, force: Bool) async {
         guard force || !hasLoaded else { return }
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        defer { if generation == loadGeneration { isLoading = false } }
         isLoading = true
         errorMessage = nil
         do {
-            sections = try await repository.fetchSections(courseId: courseId).map { section in
+            let result = try await repository.fetchSections(courseId: courseId)
+            try Task.checkCancellation()
+            guard generation == loadGeneration else { return }
+            sections = result.map { section in
                 MoodleCourseSection(id: section.id, name: section.name, visible: section.visible,
                                     summary: section.summary, modules: section.modules.filter { $0.modname != "label" })
             }
             hasLoaded = true
-        } catch is CancellationError {
-            isLoading = false
-            return
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled,
+                  !(error is CancellationError) else { return }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 }
 
@@ -94,7 +106,7 @@ struct MoodleCourseResourcesView: View {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if let error = viewModel.errorMessage {
                             Label("更新失敗，以下為上次資料：\(error)", systemImage: "exclamationmark.triangle.fill")
-                                .font(.system(size: 11))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .padding(10)
                         }
@@ -112,6 +124,9 @@ struct MoodleCourseResourcesView: View {
         }
         .background(Color(.systemGroupedBackground))
         .scrollDismissesKeyboard(.interactively)
+        .navigationTitle("資源")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $viewModel.searchText, prompt: "搜尋資源")
         .task { await viewModel.load(courseId: courseId) }
     }
 }
@@ -127,7 +142,7 @@ private struct SectionView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Section header
             Text(section.name)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundColor(.secondary)
                 .padding(.horizontal, Theme.Spacing.medium)
                 .padding(.vertical, 10)
@@ -264,19 +279,19 @@ private struct ModuleRow: View {
     private var moduleContent: some View {
         HStack(spacing: 12) {
             Image(systemName: module.iconName)
-                .font(.system(size: 16))
+                .font(.body)
                 .foregroundColor(.secondary)
-                .frame(width: 24)
+                .imageScale(.large)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(module.name)
-                    .font(.system(size: 14))
+                    .font(.headline)
                     .foregroundColor(.primary)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
 
                 Text(module.questionActivityKind?.title ?? module.modname)
-                    .font(.system(size: 11))
+                    .font(.caption)
                     .foregroundColor(.secondary)
                 if module.questionActivityKind != nil, module.questionActivityURL == nil {
                     Label("尚未開放或未符合存取條件", systemImage: "lock")
@@ -288,7 +303,7 @@ private struct ModuleRow: View {
             Spacer()
 
             Image(systemName: module.questionActivityKind != nil && module.questionActivityURL == nil ? "lock" : "chevron.right")
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
@@ -332,7 +347,7 @@ private struct MoodleModuleAssignmentView: View {
                 VStack(spacing: 10) {
                     Spacer()
                     Text(errorMessage ?? "找不到此作業資料")
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
@@ -383,7 +398,7 @@ private struct MoodleModuleForumView: View {
                 VStack(spacing: 10) {
                     Spacer()
                     Text(errorMessage)
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
@@ -393,7 +408,7 @@ private struct MoodleModuleForumView: View {
                 VStack(spacing: 10) {
                     Spacer()
                     Text("目前沒有公告內容")
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                     Spacer()
                 }
@@ -462,7 +477,7 @@ private struct MoodlePageContentView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         if let text = extractedText, !text.isEmpty {
                             Text(text)
-                                .font(.system(size: 16))
+                                .font(.body)
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
@@ -484,7 +499,7 @@ private struct MoodlePageContentView: View {
                                         .frame(height: 180)
                                         .overlay(
                                             Text("圖片載入失敗")
-                                                .font(.system(size: 13))
+                                                .font(.footnote)
                                                 .foregroundColor(.secondary)
                                         )
                                 default:
@@ -503,7 +518,7 @@ private struct MoodlePageContentView: View {
                 VStack(spacing: 10) {
                     Spacer()
                     Text(error)
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
@@ -515,7 +530,7 @@ private struct MoodlePageContentView: View {
                     Spacer()
                     ProgressView()
                     Text("正在載入...")
-                        .font(.system(size: 13))
+                        .font(.footnote)
                         .foregroundColor(.secondary)
                         .padding(.top, 8)
                     Spacer()

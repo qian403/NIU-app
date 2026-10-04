@@ -15,6 +15,7 @@ struct MoodleGradeView: View {
 }
 
 private struct GradeItemRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let item: MoodleGradeItem
     
     var body: some View {
@@ -23,17 +24,18 @@ private struct GradeItemRow: View {
             HStack(spacing: 6) {
                 if let module = item.itemmodule {
                     Image(systemName: iconFor(module))
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 
                 Text(cleanTitle)
-                    .font(.system(size: 14, weight: item.isCategory ? .semibold : .regular))
+                    .font(.headline)
                     .foregroundColor(.primary)
             }
             
             // Grade details in a grid
-            HStack(spacing: 0) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading),
+                                     count: dynamicTypeSize.isAccessibilitySize ? 2 : 5), alignment: .leading) {
                 gradeColumn(label: "成績", value: cleanGradeText)
                 gradeColumn(label: "範圍", value: rangeText)
                 gradeColumn(label: "百分比", value: item.percentageformatted?.htmlDecoded ?? "-")
@@ -45,10 +47,10 @@ private struct GradeItemRow: View {
             if let feedback = item.cleanFeedback, !feedback.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: "text.bubble")
-                        .font(.system(size: 11))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                     Text(feedback)
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
@@ -75,7 +77,7 @@ private struct GradeItemRow: View {
             with: "",
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? "-" : cleaned
+        return cleaned.isEmpty ? "-" : MoodlePresentation.grade(cleaned)
     }
 
     private var rangeText: String {
@@ -93,13 +95,12 @@ private struct GradeItemRow: View {
     private func gradeColumn(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.caption)
                 .foregroundColor(.secondary)
             Text(value)
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

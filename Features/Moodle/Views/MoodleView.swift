@@ -1,236 +1,145 @@
 import SwiftUI
 
 struct MoodleView: View {
-    @StateObject private var viewModel = MoodleViewModel()
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var semesterRenderToken = UUID()
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            if !viewModel.coursesBySemester.isEmpty {
-                // Always show courses if we have data, even during refresh
-                courseListContent
-            } else {
-                switch viewModel.loadState {
-                case .idle, .loading:
-                    loadingView
-                case .loaded:
-                    // Loaded but empty
-                    loadingView
-                case .error(let message):
-                    errorView(message)
-                }
-            }
-        }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle("M 園區")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if case .idle = viewModel.loadState {
-                await loadWithCredentials()
-            }
-        }
-        .onChange(of: viewModel.coursesBySemester.count) { _, _ in
-            semesterRenderToken = UUID()
-        }
-        .onChange(of: viewModel.selectedSemester) { _, _ in
-            semesterRenderToken = UUID()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                semesterRenderToken = UUID()
-            }
-        }
-        .refreshable {
-            await loadWithCredentials()
-        }
+    @StateObject private var viewModel: MoodleViewModel
+    @State private var reloadRequest = 0
+    @State private var semesterRequest = 0
+    @State private var loadRequestID = UUID()
+    @State private var upcomingNavigationOwner = UUID()
+    @StateObject private var upcoming: MoodleUpcomingViewModel
+    private let detailRepositories: MoodleDetailRepositories?
+
+    init(repository: (any MoodleCourseRepositoryProtocol)? = nil,
+         detailRepositories: MoodleDetailRepositories? = nil, initialSemester: String? = nil,
+         upcomingRepository: (any MoodleUpcomingRepositoryProtocol)? = nil,
+         clock: @escaping () -> Date = Date.init) {
+        _upcoming = StateObject(wrappedValue: MoodleUpcomingViewModel(repository: upcomingRepository, clock: clock))
+        _viewModel = StateObject(wrappedValue: MoodleViewModel(repository: repository, initialSemester: initialSemester))
+        self.detailRepositories = detailRepositories
     }
-    
-    // MARK: - Content
-    
-    private var courseListContent: some View {
+
+    var body: some View {
         ScrollView {
             LazyVStack(spacing: Theme.Spacing.medium) {
-                overviewHeader
-                semesterSection
-
-                LazyVStack(spacing: Theme.Spacing.medium) {
+                if !viewModel.allSemesters.isEmpty {
+                    semesterSection
+                    MoodleUpcomingSection(model: upcoming, submissionRepository: detailRepositories?.submission, navigationOwner: upcomingNavigationOwner)
+                }
+                if viewModel.isRefreshing && !viewModel.coursesBySemester.isEmpty {
+                    Label("正在更新，顯示上次載入的資料", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if case .error(let message) = viewModel.loadState,
+                   !viewModel.coursesBySemester.isEmpty {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                    retryButton("重試")
+                }
+                switch viewModel.contentState {
+                case .loading:
+                    ProgressView("載入課程中…")
+                        .padding(.vertical, Theme.Spacing.xxlarge)
+                        .frame(maxWidth: .infinity)
+                case .error(let message):
+                    ContentUnavailableView {
+                        Label("課程載入失敗", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(message)
+                    } actions: {
+                        retryButton("重試")
+                    }
+                case .empty:
+                    ContentUnavailableView {
+                        Label("這個學期沒有課程", systemImage: "books.vertical")
+                    } description: {
+                        Text("目前沒有可顯示的課程，可重新整理取得最新資料。")
+                    } actions: {
+                        retryButton("重新整理")
+                    }
+                case .courses:
                     ForEach(viewModel.currentSemesterCourses) { course in
-                        NavigationLink(destination: MoodleCourseDetailView(course: course)) {
+                        NavigationLink {
+                            MoodleCourseDetailView(course: course, repositories: detailRepositories)
+                        } label: {
                             CourseCard(course: course)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(.plain)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityHint("開啟課程內容")
                     }
                 }
             }
-            .padding(.horizontal, Theme.Spacing.medium)
-            .padding(.vertical, Theme.Spacing.small)
+            .padding(Theme.Spacing.medium)
         }
-    }
-
-    private var overviewHeader: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "graduationcap.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 48, height: 48)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("我的課程")
-                    .font(.system(size: 18, weight: .bold))
-                Text("\(viewModel.currentSemesterCourses.count) 門課程 · 下拉即可同步")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+        .background(Theme.Colors.groupedBackground.ignoresSafeArea())
+        .navigationTitle("M 園區")
+        .navigationBarTitleDisplayMode(.large)
+        .task(id: reloadRequest) { await loadWithCredentials() }
+        .refreshable { await loadWithCredentials() }
+        .modifier(MoodleUpcomingNavigation(model: upcoming, repository: detailRepositories?.submission, owner: upcomingNavigationOwner))
+        .task(id: semesterRequest) {
+            if semesterRequest > 0 {
+                await upcoming.load(courses: viewModel.currentSemesterCourses)
             }
-
-            Spacer()
         }
-        .padding(Theme.Spacing.medium)
-        .glassEffect(
-            .regular,
-            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
-        )
     }
-    
+
     private var semesterSection: some View {
-        Group {
-            if displaySemesters.count > 1 {
-                HStack {
-                    Text("學期")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Menu {
-                        ForEach(displaySemesters, id: \.self) { semester in
-                            Button {
-                                viewModel.selectedSemester = semester
-                            } label: {
-                                HStack {
-                                    Text(semester)
-                                    if viewModel.selectedSemesterDisplay == semester {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(viewModel.selectedSemesterDisplay ?? displaySemesters.first ?? "學期")
-                                .font(.system(size: 14, weight: .medium))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .glassEffect(.regular.interactive(), in: Capsule())
+        VStack(alignment: .leading, spacing: Theme.Spacing.xxsmall) {
+            Menu {
+                Picker("學期", selection: Binding(get: { viewModel.selectedSemester }, set: {
+                    upcoming.invalidate()
+                    viewModel.selectedSemester = $0
+                    semesterRequest += 1
+                })) {
+                    ForEach(viewModel.allSemesters, id: \.self) { semester in
+                        Text(semester).tag(Optional(semester))
                     }
                 }
-            } else if let semester = displaySemesters.first {
-                HStack {
-                    Text("學期")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(semester)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .glassEffect(.regular, in: Capsule())
+            } label: {
+                HStack(spacing: Theme.Spacing.xsmall) {
+                    Text(viewModel.selectedSemester ?? "選擇學期")
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
                 }
-            } else {
-                HStack {
-                    Text("學期載入中")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
+                .font(.headline)
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("學期")
+            .accessibilityValue(viewModel.selectedSemester ?? "尚未選擇")
+            Text("\(viewModel.currentSemesterCourses.count) 門課程")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
-        .frame(minHeight: 44, alignment: .center)
-        .id(semesterRenderToken)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
-    
-    private var loadingView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            ProgressView()
-            Text("載入課程中...")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+
+    private func retryButton(_ title: String) -> some View {
+        Button(title) { reloadRequest += 1 }
+            .frame(minWidth: 44, minHeight: 44)
+            .disabled(viewModel.isRefreshing)
     }
-    
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40, weight: .light))
-                .foregroundColor(.secondary)
-            Text(message)
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Button("重試") {
-                Task { await loadWithCredentials() }
-            }
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .background(Color.accentColor)
-            .cornerRadius(20)
-            Spacer()
-        }
-    }
-    
-    // MARK: - Helpers
-    
+
     private func loadWithCredentials() async {
+        let request = UUID()
+        loadRequestID = request
+        upcoming.invalidate()
         if viewModel.isAuthenticated {
             await viewModel.loadCourses(username: "", password: "")
-            return
+        } else {
+            guard let creds = LoginRepository.shared.getSavedCredentials() else {
+                viewModel.loadState = .error("找不到登入資料，請登出後重新登入")
+                return
+            }
+            await viewModel.loadCourses(username: creds.username, password: creds.password)
         }
-        guard let creds = LoginRepository.shared.getSavedCredentials() else {
-            viewModel.loadState = .error("找不到登入資料，請登出後重新登入")
-            return
-        }
-        await viewModel.loadCourses(username: creds.username, password: creds.password)
-    }
-
-    private var displaySemesters: [String] {
-        if !viewModel.allSemesters.isEmpty {
-            return viewModel.allSemesters
-        }
-        if let selected = viewModel.selectedSemesterDisplay {
-            return [selected]
-        }
-        if let course = viewModel.currentSemesterCourses.first {
-            let label = course.semesterLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !label.isEmpty { return [label] }
-            return [inferredSemester(from: course.startDate)]
-        }
-        return []
-    }
-
-    private func inferredSemester(from date: Date) -> String {
-        let cal = Calendar.current
-        let year = cal.component(.year, from: date) - 1911
-        let month = cal.component(.month, from: date)
-        let term = (month >= 8 || month == 1) ? 1 : 2
-        let academicYear = month == 1 ? (year - 1) : year
-        return "\(academicYear)-\(term)"
+        guard request == loadRequestID, !Task.isCancelled, viewModel.isAuthenticated else { return }
+        await upcoming.load(courses: viewModel.currentSemesterCourses)
     }
 }
-
 
 // MARK: - Schedule → Moodle course
 
@@ -255,7 +164,7 @@ struct MoodleScheduleCourseView: View {
             VStack(spacing: 16) {
                 ProgressView()
                 Text("正在 M 園區尋找「\(viewModel.courseName)」…")
-                    .font(.system(size: 14))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -272,7 +181,7 @@ struct MoodleScheduleCourseView: View {
             ScrollView {
                 LazyVStack(spacing: Theme.Spacing.medium) {
                     Text("找到多門名稱相符的課程，請選擇：")
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -305,10 +214,10 @@ struct MoodleScheduleCourseView: View {
         VStack(spacing: 16) {
             Spacer()
             Image(systemName: icon)
-                .font(.system(size: 40, weight: .light))
+                .font(.largeTitle.weight(.light))
                 .foregroundStyle(.secondary)
             Text(message)
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
@@ -319,7 +228,7 @@ struct MoodleScheduleCourseView: View {
             }
             NavigationLink(destination: MoodleView()) {
                 Text("查看所有 M 園區課程")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .frame(minHeight: 44)
             }
             Spacer()
@@ -337,102 +246,48 @@ private struct CourseCard: View {
     let course: MoodleCourse
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 40, height: 40)
-                    .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-
+        VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
+            HStack(alignment: .top) {
                 Text(course.cleanName)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
-                    .fixedSize()
                     .accessibilityHidden(true)
             }
-            
-            // Teacher & credits
-            HStack(spacing: 12) {
-                if let teacher = course.teacherName {
-                    HStack(spacing: 4) {
-                        Image(systemName: "person")
-                            .font(.system(size: 11))
-                        Text(teacher)
-                            .font(.system(size: 12))
-                    }
-                    .foregroundColor(.secondary)
-                }
-                
-                if let credits = course.credits {
-                    HStack(spacing: 4) {
-                        Image(systemName: "book")
-                            .font(.system(size: 11))
-                        Text("\(credits) 學分")
-                            .font(.system(size: 12))
-                    }
-                    .foregroundColor(.secondary)
-                }
+            Text(course.teacherName ?? course.idnumber)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if let credits = course.credits {
+                Text("\(credits) 學分")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            
-            // Progress bar
             if let progress = course.progress, progress > 0 {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("完成進度")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(Int(progress))%")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.primary)
-                    }
-                    
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.primary.opacity(0.08))
-                                .frame(height: 4)
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.primary.opacity(0.6))
-                                .frame(width: geo.size.width * CGFloat(progress / 100.0), height: 4)
-                        }
-                    }
-                    .frame(height: 4)
-                }
-            }
-            
-            HStack {
-                Text(course.idnumber)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                if course.hidden {
-                    Label("已隱藏", systemImage: "eye.slash")
-                        .font(.system(size: 10, weight: .medium))
+                ProgressView(value: progress, total: 100) {
+                    Text("完成進度 \(Int(progress))%")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
+            if course.hidden {
+                Label("已隱藏", systemImage: "eye.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(Theme.Spacing.medium)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(
-            .regular.interactive(),
-            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
-        )
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 
 #Preview {
-    NavigationStack {
-        MoodleView()
-    }
+    NavigationStack { MoodleView() }
 }

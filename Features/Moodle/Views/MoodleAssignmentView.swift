@@ -3,7 +3,18 @@ import UniformTypeIdentifiers
 
 struct MoodleAssignmentView: View {
     let assignment: MoodleAssignment
+    private let repository: any MoodleSubmissionRepositoryProtocol
+    private let onSubmissionChange: ((Bool) -> Void)?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(assignment: MoodleAssignment, repository: (any MoodleSubmissionRepositoryProtocol)? = nil,
+         onSubmissionChange: ((Bool) -> Void)? = nil) {
+        self.onSubmissionChange = onSubmissionChange
+        self.assignment = assignment
+        self.repository = repository ?? MoodleSubmissionRepository()
+    }
     
+    @State private var submissionRequestID = UUID()
     @State private var submissionStatus: MoodleSubmissionStatus?
     @State private var gradeItem: MoodleGradeItem?
     @State private var isLoading = true
@@ -18,7 +29,7 @@ struct MoodleAssignmentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 // Title
                 Text(assignment.name)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.title3.weight(.bold))
                     .foregroundColor(.primary)
                 
                 // Status badges
@@ -45,18 +56,18 @@ struct MoodleAssignmentView: View {
                 
                 // Due date
                 if let due = assignment.dueDateValue {
-                    infoRow(icon: "clock", title: "截止時間", value: due.formatted(date: .long, time: .shortened))
+                    infoRow(icon: "clock", title: "截止時間", value: MoodlePresentation.dateTime(due))
                 }
                 
                 // Description
                 if !assignment.plainIntro.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("作業說明")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.headline.weight(.semibold))
                             .foregroundColor(.primary)
                         
                         Text(assignment.plainIntro)
-                            .font(.system(size: 14))
+                            .font(.subheadline)
                             .foregroundColor(.secondary)
                             .textSelection(.enabled)
                     }
@@ -70,7 +81,7 @@ struct MoodleAssignmentView: View {
                         Spacer()
                         ProgressView()
                         Text("載入繳交狀態...")
-                            .font(.system(size: 13))
+                            .font(.footnote)
                             .foregroundColor(.secondary)
                         Spacer()
                     }
@@ -78,7 +89,7 @@ struct MoodleAssignmentView: View {
                 } else if let attempt = submissionStatus?.lastattempt {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("繳交狀態")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.headline.weight(.semibold))
                             .foregroundColor(.primary)
                         
                         if let submission = attempt.submission {
@@ -93,27 +104,19 @@ struct MoodleAssignmentView: View {
                                 infoRow(
                                     icon: "calendar",
                                     title: "最後修改",
-                                    value: date.formatted(date: .abbreviated, time: .shortened)
+                                    value: MoodlePresentation.dateTime(date)
                                 )
                             }
                         }
                         
-                        if let graded = attempt.graded {
-                            infoRow(
-                                icon: "checkmark.circle",
-                                title: "已評分",
-                                value: graded ? "是" : "否"
-                            )
+                        if let gradeValue = formattedGrade {
+                            infoRow(icon: "graduationcap", title: "作業評分", value: gradeValue)
+                        } else if let status = MoodlePresentation.gradingStatus(
+                            graded: attempt.graded, grade: formattedGrade
+                        ) {
+                            infoRow(icon: "checkmark.circle", title: "評分狀態", value: status)
                         }
 
-                        if let gradeValue = formattedGrade {
-                            infoRow(
-                                icon: "graduationcap",
-                                title: "作業評分",
-                                value: gradeValue
-                            )
-                        }
-                        
                         if let feedback = gradeItem?.cleanFeedback, !feedback.isEmpty {
                             infoRow(
                                 icon: "text.bubble",
@@ -127,7 +130,7 @@ struct MoodleAssignmentView: View {
                         Divider()
                         VStack(alignment: .leading, spacing: 8) {
                             Text("已繳交檔案")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.headline.weight(.semibold))
                                 .foregroundColor(.primary)
 
                             ForEach(submissionFiles) { file in
@@ -138,17 +141,17 @@ struct MoodleAssignmentView: View {
                                                 .foregroundColor(.secondary)
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(file.filename)
-                                                    .font(.system(size: 13, weight: .medium))
+                                                    .font(.footnote.weight(.medium))
                                                     .foregroundColor(.primary)
                                                 if let size = file.filesize {
                                                     Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
-                                                        .font(.system(size: 11))
+                                                        .font(.caption)
                                                         .foregroundColor(.secondary)
                                                 }
                                             }
                                             Spacer()
                                             Image(systemName: "chevron.right")
-                                                .font(.system(size: 11))
+                                                .font(.caption)
                                                 .foregroundColor(.secondary)
                                         }
                                     }
@@ -169,7 +172,7 @@ struct MoodleAssignmentView: View {
                             Image(systemName: "square.and.arrow.up")
                             Text(isUploading ? "上傳中..." : "上傳檔案")
                         }
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundColor(.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -182,19 +185,22 @@ struct MoodleAssignmentView: View {
                     .disabled(isUploading)
                     .contentShape(Rectangle())
 
-                    NavigationLink(destination: MoodleWebPageView(
-                        title: "網頁上傳作業",
-                        targetURL: editSubmissionURL
-                    )) {
-                        HStack {
-                            Image(systemName: "globe")
-                            Text("網頁模式（備用）")
+                    if let editSubmissionURL = repository.webSubmissionURL(for: assignment) {
+                        NavigationLink(destination: MoodleWebPageView(
+                            title: "網頁上傳作業",
+                            targetURL: editSubmissionURL
+                        )) {
+                            HStack {
+                                Image(systemName: "globe")
+                                Text("網頁模式（備用）")
+                            }
+                            .font(.caption.weight(.regular))
+                            .foregroundColor(.secondary)
                         }
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(.secondary)
+                        .buttonStyle(.plain)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
 
                     if !submissionFiles.isEmpty {
                         Button(role: .destructive) {
@@ -204,7 +210,7 @@ struct MoodleAssignmentView: View {
                                 Image(systemName: "trash")
                                 Text(isDeleting ? "刪除中..." : "刪除已繳交檔案")
                             }
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundColor(.red.opacity(0.8))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
@@ -226,7 +232,7 @@ struct MoodleAssignmentView: View {
                                 Image(systemName: "paperplane")
                                 Text(isSubmittingForGrading ? "送出中..." : "送出作業（最終）")
                             }
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundColor(.blue)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
@@ -243,12 +249,12 @@ struct MoodleAssignmentView: View {
 
                 if let actionMessage {
                     Text(actionMessage)
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
                 Text("上傳完成後會自動儲存為作業草稿，最後再按「送出作業（最終）」完成繳交。")
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundColor(.secondary)
             }
             .padding(Theme.Spacing.medium)
@@ -270,7 +276,7 @@ struct MoodleAssignmentView: View {
     
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 12))
+            .font(.caption)
             .foregroundColor(color)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
@@ -279,23 +285,21 @@ struct MoodleAssignmentView: View {
     }
     
     private func infoRow(icon: String, title: String, value: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-                .frame(width: 20)
-            
-            Text(title)
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .frame(width: 70, alignment: .leading)
-            
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
+        return layout {
+            Label(title, systemImage: icon)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 13))
-                .foregroundColor(.primary)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .accessibilityElement(children: .combine)
     }
-    
+
     private func submissionStatusText(_ status: String?) -> String {
         switch status {
         case "submitted": return "已繳交"
@@ -306,13 +310,7 @@ struct MoodleAssignmentView: View {
     }
 
     private var formattedGrade: String? {
-        if let grade = gradeItem?.gradeformatted, !grade.isEmpty {
-            return grade
-        }
-        if let raw = gradeItem?.graderaw, let max = gradeItem?.grademax, max > 0 {
-            return String(format: "%.2f / %.2f", raw, max)
-        }
-        return nil
+        MoodlePresentation.assignmentGrade(gradeItem)
     }
 
     private var submissionFiles: [MoodleSubmissionFile] {
@@ -323,26 +321,41 @@ struct MoodleAssignmentView: View {
         submissionStatus?.lastattempt?.submission?.status == "submitted"
     }
 
-    private var editSubmissionURL: String {
-        "https://euni.niu.edu.tw/mod/assign/view.php?id=\(assignment.cmid)&action=editsubmission"
-    }
-
     private func tokenizedFileURL(_ rawURL: String?) -> URL? {
         guard let rawURL else { return nil }
-        return MoodleService.shared.fileURL(for: rawURL)
+        return repository.fileURL(for: rawURL)
     }
     
     private func loadSubmission() async {
+        let request = UUID()
+        submissionRequestID = request
+        defer { if submissionRequestID == request { isLoading = false } }
         do {
-            async let submissionTask = MoodleService.shared.fetchSubmissionStatus(assignId: assignment.id)
-            async let gradeTask = MoodleService.shared.fetchGradeItems(courseId: assignment.course)
-            submissionStatus = try await submissionTask
-            let gradeItems = try await gradeTask
-            gradeItem = findAssignmentGrade(in: gradeItems)
+            async let submissionTask = repository.fetchStatus(assignment: assignment)
+            async let gradeTask = repository.fetchGrades(courseId: assignment.course)
+            let status = try await submissionTask
+            try Task.checkCancellation()
+            guard submissionRequestID == request else { return }
+            // Submission remains useful even when the optional grade endpoint fails.
+            submissionStatus = status
+            if let submitted = try? MoodleUpcomingRules.isSubmitted(status) {
+                onSubmissionChange?(submitted)
+            }
+            do {
+                let gradeItems = try await gradeTask
+                try Task.checkCancellation()
+                guard submissionRequestID == request else { return }
+                gradeItem = findAssignmentGrade(in: gradeItems)
+            } catch {
+                guard submissionRequestID == request, !Task.isCancelled,
+                      !(error is CancellationError) else { return }
+                actionMessage = "評分暫時無法載入，繳交狀態已更新。"
+            }
         } catch {
-            print("[Moodle] Load submission error: \(error)")
+            guard submissionRequestID == request, !Task.isCancelled,
+                  !(error is CancellationError) else { return }
+            actionMessage = "繳交狀態載入失敗，請重新開啟作業。"
         }
-        isLoading = false
     }
 
     private func clearSubmissionFiles() async {
@@ -350,7 +363,7 @@ struct MoodleAssignmentView: View {
         actionMessage = nil
         defer { isDeleting = false }
         do {
-            try await MoodleService.shared.clearAssignmentSubmission(assignId: assignment.id)
+            try await repository.clear(assignment: assignment)
             actionMessage = "已刪除繳交檔案"
             await loadSubmission()
         } catch {
@@ -363,10 +376,7 @@ struct MoodleAssignmentView: View {
         actionMessage = nil
         defer { isSubmittingForGrading = false }
         do {
-            try await MoodleService.shared.submitAssignmentForGrading(
-                assignId: assignment.id,
-                acceptSubmissionStatement: true
-            )
+            try await repository.submit(assignment: assignment)
             actionMessage = "作業已送出"
             await loadSubmission()
         } catch {
@@ -417,12 +427,7 @@ struct MoodleAssignmentView: View {
             let copiedURL = try prepareReadableCopy(from: sourceURL)
             defer { try? FileManager.default.removeItem(at: copiedURL) }
 
-            _ = try await MoodleService.shared.uploadAssignmentSubmissionFile(
-                assignId: assignment.id,
-                assignmentCMID: assignment.cmid,
-                assignmentCourseID: assignment.course,
-                localFileURL: copiedURL
-            )
+            try await repository.upload(assignment: assignment, localFileURL: copiedURL)
 
             actionMessage = "檔案已上傳並儲存為草稿"
             await loadSubmission()
