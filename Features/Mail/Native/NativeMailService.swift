@@ -14,8 +14,8 @@ nonisolated struct NativeMailService: NativeMailServing {
                                       operation: @Sendable (IMAPServer) async throws -> T) async throws -> T {
         _ = Self.configureLogging
         let server = IMAPServer(host: "mail.niu.edu.tw", port: 993, transportSecurity: .implicitTLS,
-                                responseBufferLimit: 20 * 1024 * 1024,
-                                parserLimits: IMAPParserLimits(bodySizeLimit: 20 * 1024 * 1024,
+                                responseBufferLimit: MailTransferPolicy.responseBufferLimit,
+                                parserLimits: IMAPParserLimits(bodySizeLimit: UInt64(MailTransferPolicy.attachmentEncodedLimit + 1),
                                                               messageAttributeLimit: 1024))
         return try await withTaskCancellationHandler {
             do {
@@ -102,7 +102,7 @@ nonisolated struct NativeMailService: NativeMailServing {
             let name = named ? part.suggestedFilename
                 : MessagePart(section: part.section, contentType: part.contentType).suggestedFilename
             return MailPartMetadata(info: MailAttachmentInfo(id: part.section.description, name: name,
-                size: part.size, mime: part.contentType, contentID: part.contentId, hasFilename: named),
+                size: part.size, mime: part.contentType, contentID: part.contentId, hasFilename: named, encoding: part.encoding),
                 disposition: part.disposition, isAttachment: attachments.contains(part.section.description))
         })
     }
@@ -229,11 +229,13 @@ nonisolated struct NativeMailService: NativeMailServing {
                 throw NativeMailError.missingMessage
             }
             let limit = min(maximumBytes, MailDraft.attachmentLimit)
-            guard limit >= 0, (item.size ?? 0) <= limit else { throw NativeMailError.tooLarge }
+            let encodedLimit = try MailTransferPolicy.encodedLimit(for: limit)
+            try MailTransferPolicy.validateEncodedSize(item.size ?? 0, maximumDecodedBytes: limit)
             try Task.checkCancellation()
-            item.data = try await server.fetchPart(section: item.section, of: UID(key.uid), offset: 0, count: limit + 1)
-            guard (item.data?.count ?? 0) <= limit,
-                  let data = item.decodedData(), data.count <= limit else { throw NativeMailError.tooLarge }
+            item.data = try await server.fetchPart(section: item.section, of: UID(key.uid), offset: 0, count: encodedLimit + 1)
+            try MailTransferPolicy.validateEncodedSize(item.data?.count ?? 0, maximumDecodedBytes: limit)
+            guard let data = item.decodedData() else { throw NativeMailError.invalidResponse }
+            try MailTransferPolicy.validateDecodedSize(data.count, maximumBytes: limit)
             return data
         }
     }
@@ -242,18 +244,7 @@ nonisolated struct NativeMailService: NativeMailServing {
     func send(credentials: MailCredentials, draft: MailDraft) async throws -> MailSendOutcome {
         try draft.validate()
         _ = Self.configureLogging
-        var email = Email(sender: EmailAddress(address: credentials.address),
-                          recipients: try MailDraft.addresses(draft.to).map { EmailAddress(address: $0) },
-                          ccRecipients: try MailDraft.addresses(draft.cc).map { EmailAddress(address: $0) },
-                          bccRecipients: try MailDraft.addresses(draft.bcc).map { EmailAddress(address: $0) },
-                          subject: draft.subject, textBody: draft.body,
-                          attachments: draft.attachments.map { Attachment(filename: $0.name, mimeType: $0.mime, data: $0.data) })
-        email.messageID = MessageID(draft.messageID)
-        if let reference = draft.inReplyTo, let id = MessageID(reference) {
-            let references = draft.references.compactMap { MessageID($0)?.description }
-            email.additionalHeaders = ["In-Reply-To": id.description,
-                                       "References": (references.isEmpty ? [id.description] : references).joined(separator: " ")]
-        }
+        let email = try Self.outgoingEmail(credentials: credentials, draft: draft)
         let smtp = SMTPServer(host: "mail.niu.edu.tw", port: 465, transportSecurity: .implicitTLS)
         do {
             var submitted = false
@@ -275,8 +266,8 @@ nonisolated struct NativeMailService: NativeMailServing {
                 throw NativeMailError.connection
             }
         }
-        let sentEmail = email
         do {
+            let sentEmail = try Self.sentCopy(of: email, bcc: draft.bcc)
             try await withIMAP(credentials: credentials) { server in
                 let folders = try await server.listMailboxes()
                 guard let sent = folders.first(where: { $0.isSelectable && Self.folderRole($0) == .sent }) else {
@@ -290,6 +281,35 @@ nonisolated struct NativeMailService: NativeMailServing {
             // Never retry SMTP when only the sent-folder copy failed.
             return .accepted(copySaved: false)
         }
+    }
+
+    static func outgoingEmail(credentials: MailCredentials, draft: MailDraft) throws -> Email {
+        var email = Email(sender: EmailAddress(address: credentials.address),
+                          recipients: try MailDraft.addresses(draft.to).map { EmailAddress(address: $0) },
+                          ccRecipients: try MailDraft.addresses(draft.cc).map { EmailAddress(address: $0) },
+                          bccRecipients: try MailDraft.addresses(draft.bcc).map { EmailAddress(address: $0) },
+                          subject: draft.subject, textBody: draft.body,
+                          attachments: draft.attachments.map { Attachment(filename: $0.name, mimeType: $0.mime, data: $0.data) })
+        email.messageID = MessageID(draft.messageID)
+        if let reference = draft.inReplyTo, let id = MessageID(reference) {
+            let references = draft.references.compactMap { MessageID($0)?.description }
+            email.additionalHeaders = ["In-Reply-To": id.description,
+                                       "References": (references.isEmpty ? [id.description] : references).joined(separator: " ")]
+        }
+        return email
+    }
+
+    static func sentCopy(of email: Email, bcc: String) throws -> Email {
+        // SwiftMail writes additionalHeaders verbatim, including in SMTP DATA.
+        // Only call this after SMTP succeeds; Email is a value-type backup copy.
+        let recipients = try MailDraft.addresses(bcc)
+        var copy = email
+        if !recipients.isEmpty {
+            var headers = copy.additionalHeaders ?? [:]
+            headers["Bcc"] = recipients.joined(separator: ", ")
+            copy.additionalHeaders = headers
+        }
+        return copy
     }
 
     static func plainTextHTML(_ html: String) throws -> String {

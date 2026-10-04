@@ -64,6 +64,14 @@ assert '(catalog.attachments + catalog.inlineImages).contains' in service_source
 assert 'MailPartMetadata.hasOriginalFilename(part.filename, cidFallback: cidFallback)' in service_source
 assert 'MessagePart(section: part.section, contentType: part.contentType).suggestedFilename' in service_source
 assert 'offset: 0, count: limit + 1' in service_source
+# Compile the exact production email builders into the offline service fixture.
+email_builders = service_source[service_source.index("    static func outgoingEmail("):
+                                service_source.index("    static func plainTextHTML(")]
+assert service_source.index("try await smtp.sendEmail(email)") < service_source.index("Self.sentCopy(of: email")
+assert "server.append(email: sentEmail" in service_source
+assert "count: encodedLimit + 1" in service_source
+assert "MailTransferPolicy.responseBufferLimit" in service_source
+assert "UInt64(MailTransferPolicy.attachmentEncodedLimit + 1)" in service_source
 checks = r'''
 import Foundation
 import Combine
@@ -406,7 +414,133 @@ func summary(_ uid: UInt32, folder: String = "INBOX") -> MailSummary {
         precondition(pngContent.inlineImages[1].contentID != nil && !pngContent.inlineImages[1].hasFilename)
         let png = try await pngService.attachment(credentials: pngCredentials, key: pngKey, part: "photo")
         precondition(png.starts(with: [137, 80, 78, 71]), "fixture generates a real PNG")
+        // Real locked SwiftMail MIME writer, for both SMTP encoding modes.
+        var bccDraft = MailDraft()
+        bccDraft.to = "visible@example.com"; bccDraft.cc = "carbon@example.com"
+        bccDraft.bcc = "first@example.com； second@example.com,third@example.com"
+        bccDraft.subject = "BCC regression"; bccDraft.body = "Synthetic body"
+        bccDraft.inReplyTo = "<parent@example.com>"
+        bccDraft.references = ["<ancestor@example.com>", "<parent@example.com>"]
+        for onlyBCC in [false, true] {
+            if onlyBCC { bccDraft.to = ""; bccDraft.cc = "" }
+            try bccDraft.validate()
+            let smtpEmail = try NativeMailService.outgoingEmail(credentials: pngCredentials, draft: bccDraft)
+            let sentEmail = try NativeMailService.sentCopy(of: smtpEmail, bcc: bccDraft.bcc)
+            precondition(smtpEmail.bccRecipients.map(\.address) == ["first@example.com", "second@example.com", "third@example.com"])
+            precondition(sentEmail.messageID == smtpEmail.messageID)
+            for use8Bit in [false, true] {
+                let smtp = smtpEmail.constructContent(use8BitMIME: use8Bit)
+                let backup = sentEmail.constructContent(use8BitMIME: use8Bit)
+                let smtpHeaders = smtp.components(separatedBy: "\r\n\r\n")[0]
+                let backupHeaders = backup.components(separatedBy: "\r\n\r\n")[0]
+                precondition(!smtpHeaders.lowercased().contains("\r\nbcc:"))
+                for address in smtpEmail.bccRecipients { precondition(!smtp.contains(address.address)) }
+                precondition(backupHeaders.contains("\r\nBcc: first@example.com, second@example.com, third@example.com\r\n"))
+                precondition(backupHeaders.contains("In-Reply-To: <parent@example.com>"))
+                precondition(backupHeaders.contains("References: <ancestor@example.com> <parent@example.com>"))
+                precondition(backupHeaders.contains("Message-Id: \(bccDraft.messageID)"))
+                precondition(smtpEmail.additionalHeaders?["Bcc"] == nil, "backup must not mutate SMTP value")
+            }
+        }
+        for injected in ["safe@example.com\r\nBcc: attacker@example.com", "safe@example.com\n", "safe@example.com\r", "safe@example.com\u{0}"] {
+            let email = try NativeMailService.outgoingEmail(credentials: pngCredentials, draft: bccDraft)
+            do { _ = try NativeMailService.sentCopy(of: email, bcc: injected); fatalError("Bcc header injection accepted") }
+            catch NativeMailError.invalidRecipient {}
+        }
+        bccDraft.bcc = ""; bccDraft.to = "visible@example.com"
+        let noBCC = try NativeMailService.outgoingEmail(credentials: pngCredentials, draft: bccDraft)
+        let noBCCBackup = try NativeMailService.sentCopy(of: noBCC, bcc: "")
+        precondition(noBCCBackup.additionalHeaders?["Bcc"] == nil)
+        print("PASS: locked SwiftMail constructContent preserves full sent-copy Bcc (including Bcc-only), SMTP omits Bcc, header injection rejected")
+
         let mb = 1024 * 1024
+        // A real 1x1 PNG: 70 decoded bytes, 94 Base64 bytes without padding.
+        let unpaddedPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg"
+        precondition(unpaddedPNG.utf8.count == 94 && !unpaddedPNG.contains("="))
+        // Restore transport padding for Foundation's strict Base64 decoder.
+        let decodedPNG = Data(base64Encoded: unpaddedPNG + "==")!
+        precondition(decodedPNG.count == 70 && decodedPNG.starts(with: [137, 80, 78, 71]))
+        let unpaddedImage = MailAttachmentInfo(id: "unpadded", name: "pixel.png", size: unpaddedPNG.utf8.count,
+                                              mime: "image/png", encoding: "base64")
+        precondition(MailInlinePolicy.automaticIDs([unpaddedImage]) == ["unpadded"])
+        let unpaddedBudget = MailInlinePolicy.automaticLimits([unpaddedImage])["unpadded"]!
+        precondition(unpaddedBudget >= decodedPNG.count)
+        try MailTransferPolicy.validateEncodedSize(unpaddedPNG.utf8.count, maximumDecodedBytes: unpaddedBudget)
+        try MailTransferPolicy.validateDecodedSize(decodedPNG.count, maximumBytes: unpaddedBudget)
+        print("PASS: unpadded 94-byte Base64 PNG reserves enough automatic budget for 70 decoded bytes")
+        func encodedPayload(_ bytes: Int, columns: Data.Base64EncodingOptions = .lineLength76Characters) -> Data {
+            Data(repeating: 0xa5, count: bytes).base64EncodedData(options: [columns, .endLineWithCarriageReturn, .endLineWithLineFeed])
+        }
+        for columns in [Data.Base64EncodingOptions.lineLength64Characters, .lineLength76Characters] {
+            for size in [12 * mb, MailDraft.attachmentLimit] {
+                let encoded = encodedPayload(size, columns: columns)
+                precondition(encoded.count > MailDraft.attachmentLimit)
+                try MailTransferPolicy.validateEncodedSize(encoded.count, maximumDecodedBytes: MailDraft.attachmentLimit)
+                let decoded = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters)!
+                precondition(decoded.count == size)
+                try MailTransferPolicy.validateDecodedSize(decoded.count, maximumBytes: MailDraft.attachmentLimit)
+            }
+            let boundaryImages = [
+                MailAttachmentInfo(id: "ten", name: "ten.png", size: encodedPayload(10 * mb, columns: columns).count, encoding: "base64"),
+                MailAttachmentInfo(id: "five", name: "five.png", size: encodedPayload(5 * mb, columns: columns).count, encoding: "base64")
+            ]
+            precondition(MailInlinePolicy.automaticLimits(boundaryImages) == ["ten": 10 * mb, "five": 5 * mb])
+        }
+        let excess = encodedPayload(MailDraft.attachmentLimit + 1)
+        try MailTransferPolicy.validateEncodedSize(excess.count, maximumDecodedBytes: MailDraft.attachmentLimit)
+        do {
+            try MailTransferPolicy.validateDecodedSize(Data(base64Encoded: excess, options: .ignoreUnknownCharacters)!.count,
+                                                       maximumBytes: MailDraft.attachmentLimit)
+            fatalError("oversized decoded attachment accepted")
+        } catch NativeMailError.tooLarge {}
+        do { try MailTransferPolicy.validateEncodedSize(MailTransferPolicy.attachmentEncodedLimit + 1, maximumDecodedBytes: MailDraft.attachmentLimit); fatalError("encoded overflow accepted") }
+        catch NativeMailError.tooLarge {}
+        do { _ = try MailTransferPolicy.encodedLimit(for: -1); fatalError("negative budget") }
+        catch NativeMailError.tooLarge {}
+        precondition(MailTransferPolicy.attachmentEncodedLimit + 1 < MailTransferPolicy.responseBufferLimit)
+        let encodedImages = [
+            MailAttachmentInfo(id: "ten", name: "ten.png", size: encodedPayload(10 * mb).count, encoding: "base64"),
+            MailAttachmentInfo(id: "five", name: "five.png", size: encodedPayload(5 * mb).count, encoding: "BASE64"),
+            MailAttachmentInfo(id: "over", name: "over.png", size: encodedPayload(mb).count, encoding: "base64")
+        ]
+        let inlineLimits = MailInlinePolicy.automaticLimits(encodedImages)
+        precondition(inlineLimits == ["ten": 10 * mb, "five": 5 * mb], "inline decoded single/total budgets include MIME wrapping")
+        precondition(inlineLimits.values.reduce(0, +) == MailInlinePolicy.messageLimit)
+        print("PASS: 12 MiB and 15 MiB decoded Base64 (64/76 columns) accepted; >15 MiB decoded and encoded overflow rejected; inline 10/15 MiB budgets enforced")
+        let forwardFixture = Fixture()
+        await forwardFixture.setDelayedAttachments(true)
+        let forwardModel = NativeMailViewModel(service: forwardFixture, fileStore: fileStore,
+            session: { "forward-test" }, credentials: { ("forward-test", "synthetic") })
+        forwardModel.prepare(account: "forward-test")
+        try await settle { await forwardFixture.inboxWaiters["forward-test:INBOX"] != nil }
+        await forwardFixture.finishInbox("forward-test")
+        try await settle { !forwardModel.isLoading }
+        forwardModel.compose(.forward, summary: summary(77))
+        try await settle { await forwardFixture.detailWaiters[77] != nil }
+        let forwarded = [MailAttachmentInfo(id: "large", name: "large.bin", size: encodedPayload(12 * mb).count, encoding: "base64")]
+        await forwardFixture.finishDetail(77, text: "forward", images: forwarded)
+        try await settle { !forwardModel.isPreparingDraft }
+        forwardModel.draft.attachments = [MailOutgoingAttachment(name: "existing.bin", mime: "application/octet-stream", data: Data(count: 3 * mb))]
+        forwardModel.includeForwardAttachments()
+        try await settle { await forwardFixture.attachmentWaiters["77:large"] != nil }
+        let forwardLimit = await forwardFixture.attachmentLimits["77:large"]
+        precondition(forwardLimit == 12 * mb, "forward passes remaining decoded budget, not BODYSTRUCTURE octets")
+        await forwardFixture.finishAttachment(77, "large", data: Data(count: 12 * mb))
+        try await settle { !forwardModel.isImporting }
+        precondition(forwardModel.draft.attachments.map { $0.data.count } == [3 * mb, 12 * mb])
+        precondition(forwardModel.forwardAttachments.isEmpty && forwardModel.sendMessage == nil)
+        forwardModel.discardDraft()
+        forwardModel.compose(.forward, summary: summary(78))
+        try await settle { await forwardFixture.detailWaiters[78] != nil }
+        await forwardFixture.finishDetail(78, text: "oversize", images: forwarded)
+        try await settle { !forwardModel.isPreparingDraft }
+        forwardModel.includeForwardAttachments()
+        try await settle { await forwardFixture.attachmentWaiters["78:large"] != nil }
+        await forwardFixture.finishAttachment(78, "large", data: Data(count: MailDraft.attachmentLimit + 1))
+        try await settle { !forwardModel.isImporting }
+        precondition(forwardModel.draft.attachments.isEmpty && forwardModel.sendMessage == NativeMailError.tooLarge.errorDescription)
+        forwardModel.reset()
+        print("PASS: forwarding accepts encoded 16+ MiB / decoded 12 MiB with 3 MiB existing draft; actual decoded overflow rejected")
         let images = [
             MailAttachmentInfo(id: "a", name: "a.png", size: 6 * mb, mime: "image/png"),
             MailAttachmentInfo(id: "b", name: "b.png", size: 6 * mb, mime: "image/png"),
@@ -808,12 +942,13 @@ func summary(_ uid: UInt32, folder: String = "INBOX") -> MailSummary {
 with tempfile.TemporaryDirectory(prefix="niu-native-mail-check-") as directory:
     temp = Path(directory)
     source = temp / "Checks.swift"
-    source.write_text(checks)
+    source.write_text(checks + "\nextension NativeMailService {\n" + email_builders + "\n}\n")
     binary = temp / "checks"
     # Compile the project's existing checkout in isolation. Never resolve/download dependencies.
     explicit_soup = os.environ.get("NIU_SWIFTSOUP_SOURCE")
     candidates = ([Path(explicit_soup)] if explicit_soup else []) + list(
         (Path.home() / "Library/Developer/Xcode/DerivedData").glob("*/SourcePackages/checkouts/SwiftSoup"))
+    candidates += [Path("/tmp/niu-mail-dd/SourcePackages/checkouts/SwiftSoup")]
     candidates += list((root / ".build/checkouts").glob("SwiftSoup"))
     resolved = json.loads((root / "NIU-App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved").read_text())
     soup_revision = next(pin["state"]["revision"] for pin in resolved["pins"] if pin["identity"].lower() == "swiftsoup")
@@ -828,7 +963,51 @@ with tempfile.TemporaryDirectory(prefix="niu-native-mail-check-") as directory:
     subprocess.run(["xcrun", "swiftc", "-swift-version", "5", "-emit-library", "-emit-module", "-module-name", "SwiftSoup",
                     "-module-cache-path", str(temp / "ModuleCache"), "-emit-module-path", str(temp / "SwiftSoup.swiftmodule"),
                     *map(str, sorted((soup / "Sources").rglob("*.swift"))), "-o", str(temp / "libSwiftSoup.dylib")], check=True)
-    files = [root / "Features/Mail/Native/MailHTMLPolicy.swift", root / "Features/Mail/Models/MailModels.swift",
+    # Build MIME-only sources from the locked checkout; no package resolution,
+    # SMTP, IMAP, or network mocks. Only unused network imports are removed in
+    # temporary copies; SwiftCross's UTType re-export uses Apple's native module.
+    mail_revision = next(pin["state"]["revision"] for pin in resolved["pins"] if pin["identity"].lower() == "swiftmail")
+    explicit_mail = os.environ.get("NIU_SWIFTMAIL_SOURCE")
+    mail_candidates = ([Path(explicit_mail)] if explicit_mail else []) + [soup.parent / "SwiftMail"]
+    mail_candidates += [p.parent / "SwiftMail" for p in candidates]
+    mail = None
+    for candidate in mail_candidates:
+        if not (candidate / "Sources/SwiftMail/Extensions/Email+Content.swift").is_file():
+            continue
+        revision = subprocess.run(["git", "-C", str(candidate), "rev-parse", "HEAD"], capture_output=True, text=True)
+        if revision.returncode == 0 and revision.stdout.strip() == mail_revision:
+            mail = candidate
+            break
+    if mail is None:
+        raise SystemExit("Missing locked SwiftMail checkout; set NIU_SWIFTMAIL_SOURCE (offline).")
+    cross = mail.parent / "SwiftCross"
+    cross_revision = next(pin["state"]["revision"] for pin in resolved["pins"] if pin["identity"].lower() == "swiftcross")
+    revision = subprocess.run(["git", "-C", str(cross), "rev-parse", "HEAD"], capture_output=True, text=True)
+    if revision.returncode or revision.stdout.strip() != cross_revision:
+        raise SystemExit("Missing locked SwiftCross checkout next to SwiftMail (offline).")
+    mail_sources = mail / "Sources/SwiftMail"
+    mime_paths = [mail_sources / path for path in [
+        "Core/Models/Email.swift", "Core/Models/EmailAddress.swift", "Core/Models/MessageID.swift",
+        "Core/Models/Attachment.swift", "Core/Models/AddressListEntry.swift",
+        "Extensions/Email+Content.swift", "Extensions/EmailAddress+StringConversion.swift",
+        "IMAP/Extensions/Data+Utilities.swift", "IMAP/Extensions/Int+Utilities.swift",
+        "Extensions/String+RFC2047Encode.swift", "Extensions/String+SafeContent.swift",
+        "MIME/MIMEHeaderEncoding.swift", "MIME/EMLParser+Parameters.swift", "MIME/EMLParser+RFC2231.swift",
+    ]]
+    mime_paths += sorted((mail_sources / "MIME/Address").glob("*.swift"))
+    mime_paths += sorted((mail_sources / "Extensions").glob("String+QuotedPrintable*.swift"))
+    mime_paths += [cross / "Sources/SwiftCross/StringEncoding+IANA.swift"]
+    mime_files = []
+    for index, path in enumerate(mime_paths):
+        destination = temp / f"MIME{index}.swift"
+        contents = path.read_text().replace("import NIO\n", "").replace("import NIOSSL\n", "")
+        contents = contents.replace("import SwiftCross\n", "import UniformTypeIdentifiers\n")
+        destination.write_text(contents)
+        mime_files.append(destination)
+    namespace = temp / "MIMENamespace.swift"
+    namespace.write_text("enum EMLParser {}\n")
+    mime_files.append(namespace)
+    files = mime_files + [root / "Features/Mail/Native/MailHTMLPolicy.swift", root / "Features/Mail/Models/MailModels.swift",
              root / "Features/Mail/Native/NativeMailModels.swift",
              root / "Features/Mail/Native/NativeMailViewModel.swift",
              root / "Features/Mail/Native/NativeMailUIFixtureService.swift"]

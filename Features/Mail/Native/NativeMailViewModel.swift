@@ -336,6 +336,9 @@ final class NativeMailViewModel: ObservableObject {
         while downloadTasks.count < 2 && !downloadQueue.isEmpty {
             let job = downloadQueue.removeFirst(), token = detailToken, epoch = epoch
             let service = service, fileStore = fileStore, cached = downloadedFiles[job.item.id]
+            let limit = job.automatic
+                ? MailInlinePolicy.automaticLimits(content?.inlineImages ?? [])[job.item.id] ?? 0
+                : MailDraft.attachmentLimit
             do {
                 let credentials = try login()
                 isDownloading = true; downloadingPart = job.item.id
@@ -345,7 +348,6 @@ final class NativeMailViewModel: ObservableObject {
                         let url: URL
                         if let cached { url = cached }
                         else {
-                            let limit = job.automatic ? min(job.item.size ?? 0, MailInlinePolicy.imageLimit) : MailDraft.attachmentLimit
                             let data = try await service.attachment(credentials: credentials, key: job.message.id,
                                                                     part: job.item.id, maximumBytes: limit)
                             try Task.checkCancellation()
@@ -469,8 +471,7 @@ final class NativeMailViewModel: ObservableObject {
                     var items: [MailOutgoingAttachment] = [], remaining = available
                     for item in attachments {
                         try Task.checkCancellation()
-                        guard (item.size ?? 0) <= remaining else { throw NativeMailError.tooLarge }
-                        let data = try await service.attachment(credentials: credentials, key: key, part: item.id)
+                        let data = try await service.attachment(credentials: credentials, key: key, part: item.id, maximumBytes: remaining)
                         guard data.count <= remaining else { throw NativeMailError.tooLarge }
                         remaining -= data.count
                         let mime = UTType(filenameExtension: (item.name as NSString).pathExtension)?.preferredMIMEType ?? "application/octet-stream"
