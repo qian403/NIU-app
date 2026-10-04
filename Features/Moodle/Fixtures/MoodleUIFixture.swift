@@ -288,7 +288,8 @@ struct MoodleUIFixtureRoot: View {
             } else {
                 MoodleView(repository: repository, detailRepositories: repository.details,
                            initialSemester: screen == "empty" ? "113-2" : nil,
-                           upcomingRepository: upcomingRepository, clock: { MoodleUIFixtureUpcomingClient.referenceDate })
+                           upcomingRepository: upcomingRepository, clock: { MoodleUIFixtureUpcomingClient.referenceDate },
+                           initiallyExpandUpcoming: !screen.hasSuffix("-collapsed"))
             }
         }
     }

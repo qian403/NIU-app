@@ -5,13 +5,15 @@ struct MoodleView: View {
     @State private var reloadRequest = 0
     @State private var semesterRequest = 0
     @State private var upcomingNavigationOwner = UUID()
+    @State private var upcomingExpanded: Bool
     @StateObject private var upcoming: MoodleUpcomingViewModel
     private let detailRepositories: MoodleDetailRepositories?
 
     init(repository: (any MoodleCourseRepositoryProtocol)? = nil,
          detailRepositories: MoodleDetailRepositories? = nil, initialSemester: String? = nil,
          upcomingRepository: (any MoodleUpcomingRepositoryProtocol)? = nil,
-         clock: @escaping () -> Date = Date.init) {
+         clock: @escaping () -> Date = Date.init, initiallyExpandUpcoming: Bool = true) {
+        _upcomingExpanded = State(initialValue: initiallyExpandUpcoming)
         _upcoming = StateObject(wrappedValue: MoodleUpcomingViewModel(repository: upcomingRepository, clock: clock))
         _viewModel = StateObject(wrappedValue: MoodleViewModel(repository: repository, initialSemester: initialSemester))
         self.detailRepositories = detailRepositories
@@ -22,7 +24,8 @@ struct MoodleView: View {
             LazyVStack(spacing: Theme.Spacing.medium) {
                 if !viewModel.allSemesters.isEmpty {
                     semesterSection
-                    MoodleUpcomingSection(model: upcoming, submissionRepository: detailRepositories?.submission, navigationOwner: upcomingNavigationOwner)
+                    MoodleUpcomingSection(model: upcoming, submissionRepository: detailRepositories?.submission,
+                                          isExpanded: $upcomingExpanded, navigationOwner: upcomingNavigationOwner)
                 }
                 if viewModel.isRefreshing && !viewModel.coursesBySemester.isEmpty {
                     Label("正在更新，顯示上次載入的資料", systemImage: "arrow.triangle.2.circlepath")
