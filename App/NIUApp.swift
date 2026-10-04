@@ -20,7 +20,17 @@ struct NIUApp: App {
             if MoodleUIFixtureRoot.isEnabled {
                 MoodleUIFixtureRoot()
             } else if EventFavoritesUIFixture.requested {
-                EventFavoritesUIFixtureRoot()
+                if EventFavoritesUIFixture.scenario == "batch" {
+                    EventBatchRegistrationView(events: EventBatchPreviewFixtures.events, service: EventBatchPreviewFixtures.Service())
+                } else if EventFavoritesUIFixture.scenario == "reminders" {
+                    EventReminderSettingsPreview()
+                } else if EventFavoritesUIFixture.scenario == "reminders-denied" {
+                    EventReminderSettingsPreview(status: "系統通知尚未允許，未安排活動提醒；請至 iOS 設定開啟通知。")
+                } else if EventFavoritesUIFixture.scenario == "integrated" {
+                    EventIntegratedUIFixtureRoot()
+                } else {
+                    EventFavoritesUIFixtureRoot()
+                }
             } else if ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") || NativeMailUIFixtureScreen.launchScreen() != nil {
                 NativeMailUIFixtureRoot()
             } else {
