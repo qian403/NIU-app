@@ -4,35 +4,117 @@ struct MoodleUpcomingSection: View {
     @ObservedObject var model: MoodleUpcomingViewModel
     let submissionRepository: (any MoodleSubmissionRepositoryProtocol)?
     @State private var retry = 0
+    @Binding var isExpanded: Bool
     let navigationOwner: UUID
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            Text("即將截止").font(.title3.weight(.semibold))
-            MoodleUpcomingContent(model: model, retry: { retry += 1 }) {
-                ForEach(model.preview(limit: 5)) { item in
-                    MoodleUpcomingRow(item: item, now: model.now, opening: model.openingID == item.id) { model.open(item, owner: navigationOwner) }
-                    if item.id != model.preview(limit: 5).last?.id { Divider() }
-                }
-                if model.items.count > 5 {
-                    NavigationLink {
-                        MoodleUpcomingListView(model: model, submissionRepository: submissionRepository)
-                    } label: {
-                        HStack {
-                            Text("查看全部（\(model.items.count)）")
-                            Spacer()
-                            Image(systemName: "chevron.right").accessibilityHidden(true)
+            DisclosureGroup(isExpanded: $isExpanded) {
+                MoodleUpcomingContent(model: model, retry: { retry += 1 }) {
+                    ForEach(model.preview(limit: 5)) { item in
+                        MoodleUpcomingRow(item: item, now: model.now, opening: model.openingID == item.id) { model.open(item, owner: navigationOwner) }
+                        if item.id != model.preview(limit: 5).last?.id { Divider() }
+                    }
+                    if model.items.count > 5 {
+                        NavigationLink {
+                            MoodleUpcomingListView(model: model, submissionRepository: submissionRepository)
+                        } label: {
+                            HStack {
+                                Text("查看全部（\(model.items.count)）")
+                                Spacer()
+                                Image(systemName: "chevron.right").accessibilityHidden(true)
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .frame(minHeight: 44)
                         }
-                        .font(.subheadline.weight(.medium))
-                        .frame(minHeight: 44)
                     }
                 }
+            } label: {
+                HStack(spacing: Theme.Spacing.small) {
+                    Text("即將截止").font(.title3.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if case .loaded = model.state {
+                        Text("\(model.items.count)")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                            .fixedSize()
+                    }
+                }
+            }
+            .disclosureGroupStyle(MoodleUpcomingDisclosureStyle(status: accessibilityStatus))
+            if !isExpanded, let collapsedStatus {
+                Text(collapsedStatus)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(Theme.Spacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
         .task(id: retry) { if retry > 0 { await model.reload() } }
+    }
+
+    private var collapsedStatus: String? {
+        switch model.state {
+        case .loading: "正在載入待繳作業…"
+        case .empty: "近兩週沒有待繳作業"
+        case .failed: "載入失敗，展開後可重試"
+        case .loaded: model.refreshError == nil ? nil : "更新失敗，保留上次資料；展開後可重試"
+        }
+    }
+
+    private var accessibilityStatus: String {
+        switch model.state {
+        case .loading: "正在載入待繳作業"
+        case .empty: "近兩週沒有待繳作業"
+        case .failed: "載入失敗"
+        case .loaded:
+            model.refreshError == nil ? "\(model.items.count) 份待繳作業"
+                : "更新失敗，保留上次的 \(model.items.count) 份待繳作業"
+        }
+    }
+}
+
+private struct MoodleUpcomingDisclosureStyle: DisclosureGroupStyle {
+    let status: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            Button {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.36, dampingFraction: 0.88)) {
+                    configuration.isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: Theme.Spacing.small) {
+                    configuration.label
+                    Spacer(minLength: Theme.Spacing.small)
+                    Image(systemName: "chevron.down")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(configuration.isExpanded ? 0 : -90))
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: configuration.isExpanded)
+                }
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("即將截止")
+            .accessibilityValue("\(configuration.isExpanded ? "已展開" : "已收合")，\(status)")
+            .accessibilityHint(configuration.isExpanded ? "收合待繳作業清單" : "展開待繳作業清單")
+
+            if configuration.isExpanded {
+                configuration.content
+                    .transition(.opacity)
+            }
+        }
     }
 }
 
