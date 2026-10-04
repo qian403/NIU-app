@@ -16,6 +16,7 @@ final class MoodleService {
     private let popupNotificationCacheTTL: TimeInterval = 3600
     private let sessionStore = MoodleSessionKeychainStore()
     private var authenticationGeneration = 0
+    let calendarCapability = MoodleCalendarCapability()
     
     private init() {
         restorePersistedSession()
@@ -36,6 +37,8 @@ final class MoodleService {
     
     func authenticate(username: String, password: String) async throws {
         authenticationGeneration &+= 1
+        calendarCapability.reset()
+        NotificationCenter.default.post(name: .moodleSessionDidChange, object: self)
         let generation = authenticationGeneration
 
         guard let url = URL(string: "\(baseURL)/login/token.php") else {
@@ -97,6 +100,8 @@ final class MoodleService {
 
     func logout() {
         authenticationGeneration &+= 1
+        calendarCapability.reset()
+        NotificationCenter.default.post(name: .moodleSessionDidChange, object: self)
         clearSession(clearPersisted: true)
     }
 
@@ -170,12 +175,17 @@ final class MoodleService {
     }
     
     func fetchForumDiscussions(forumId: Int) async throws -> MoodleDiscussionsResponse {
+        try await fetchForumDiscussions(forumId: forumId, page: 0)
+    }
+
+    func fetchForumDiscussions(forumId: Int, page: Int) async throws -> MoodleDiscussionsResponse {
         try await callAPI(
             function: "mod_forum_get_forum_discussions",
             params: [
                 "forumid": "\(forumId)",
                 "sortorder": "3",  // newest first
-                "perpage": "20"
+                "perpage": "20",
+                "page": String(page)
             ]
         )
     }
@@ -188,13 +198,26 @@ final class MoodleService {
     }
     
     func fetchAssignments(courseId: Int) async throws -> [MoodleAssignment] {
-        let response: MoodleAssignmentsResponse = try await callAPI(
+        let response: MoodleUpcomingAssignmentsResponse = try await callAPI(
             function: "mod_assign_get_assignments",
             params: ["courseids[0]": "\(courseId)"]
         )
-        return response.courses.first?.assignments ?? []
+        return try response.assignments(courseIDs: [courseId])
     }
     
+    func fetchActionEvents(from: Int, to: Int, after: Int, limit: Int) async throws -> MoodleCalendarActionEvents {
+        try await callAPI(function: "core_calendar_get_action_events_by_timesort", params: [
+            "timesortfrom": "\(from)", "timesortto": "\(to)", "aftereventid": "\(after)", "limitnum": "\(limit)"
+        ])
+    }
+
+    func fetchUpcomingAssignments(courseIDs: [Int]) async throws -> [MoodleAssignment] {
+        guard !courseIDs.isEmpty else { return [] }
+        let params = Dictionary(uniqueKeysWithValues: courseIDs.enumerated().map { ("courseids[\($0.offset)]", "\($0.element)") })
+        let response: MoodleUpcomingAssignmentsResponse = try await callAPI(function: "mod_assign_get_assignments", params: params)
+        return try response.assignments(courseIDs: courseIDs)
+    }
+
     func fetchSubmissionStatus(assignId: Int) async throws -> MoodleSubmissionStatus {
         try await callAPI(
             function: "mod_assign_get_submission_status",
@@ -759,6 +782,11 @@ final class MoodleService {
             throw MoodleError.serverError
         }
         
+        if function == "core_calendar_get_action_events_by_timesort",
+           let error = try? JSONDecoder().decode(MoodleUpcomingAPIError.self, from: data),
+           error.exception != nil || error.errorcode != nil {
+            throw error
+        }
         // Check for Moodle error response
         if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let exception = errorDict["exception"] as? String {

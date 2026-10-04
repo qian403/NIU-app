@@ -83,13 +83,21 @@ func assignment(_ id: Int, due: Int) -> MoodleAssignment {
         let refresh = Task { await model.load(courseId: 1, force: true) }
         while repository.pending == nil { await Task.yield() }
         model.setSortOrder(.dueSoonestFirst)
+        model.updateSubmission(assignmentID: 4, submitted: true)
         repository.pending?.resume(returning: MoodleAssignmentsSnapshot(
             assignments: Array(items.reversed()), submittedStatus: [2: true]))
         repository.pending = nil
         await refresh.value
         precondition(model.assignments.map(\.id) == soonest)
         precondition(!model.isLoading && model.errorMessage == nil)
-        print("PASS: soonest-first default, switching, saved non-default selection before load, selection during refresh")
+        precondition(model.submittedStatus[4] == true)
+        model.updateSubmission(assignmentID: 4, submitted: false)
+        precondition(model.submittedStatus[4] == false)
+        model.updateSubmission(assignmentID: 4, submitted: true)
+        repository.hold = false
+        await model.load(courseId: 1, force: true)
+        precondition(model.submittedStatus[4] == nil) // A later server snapshot replaces older local updates.
+        print("PASS: soonest-first default, switching, saved non-default selection before load, selection during refresh; newer submission status survives stale refresh")
     }
 }
 '''

@@ -157,9 +157,9 @@ private struct AttendanceRefreshErrorBanner: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(AttendancePalette.warning)
-                .frame(width: 36, height: 36)
+                .padding(8)
                 .background(AttendancePalette.warning.opacity(0.12), in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
@@ -168,7 +168,7 @@ private struct AttendanceRefreshErrorBanner: View {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 8)
@@ -209,7 +209,7 @@ private struct AttendanceSectionPicker: View {
                         } label: {
                             Text(section.moduleName)
                                 .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
                                 .foregroundStyle(isSelected ? Color.white : Color.primary)
@@ -478,7 +478,7 @@ private struct AttendanceRecordBook: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: option.icon)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.caption.weight(.bold))
                             Text(option.title)
                             if option != .all {
                                 Text("\(count)")
@@ -508,7 +508,7 @@ private struct AttendanceRecordBook: View {
     private var emptyFilterState: some View {
         VStack(spacing: 10) {
             Image(systemName: filter.emptyIcon)
-                .font(.system(size: 25, weight: .medium))
+                .font(.title2.weight(.medium))
                 .foregroundStyle(filter.tint)
             Text(filter.emptyMessage)
                 .font(.subheadline.weight(.semibold))
@@ -544,7 +544,7 @@ private struct AttendanceRecordBook: View {
                 let date = calendar.date(from: DateComponents(year: year, month: month))
                 return AttendanceMonthGroup(
                     id: key,
-                    title: date?.formatted(.dateTime.year().month(.wide)) ?? "\(year) 年 \(month) 月",
+                    title: date.map(MoodlePresentation.month) ?? "\(year) 年 \(month) 月",
                     records: records.sorted { $0.date > $1.date }
                 )
             }
@@ -724,7 +724,7 @@ private struct AttendanceRecordRow: View {
             Text("\(Calendar.autoupdatingCurrent.component(.day, from: record.date))")
                 .font(.title2.weight(.black))
                 .monospacedDigit()
-            Text(record.date.formatted(.dateTime.weekday(.abbreviated)))
+            Text(MoodlePresentation.weekday(record.date))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.secondary)
         }
@@ -739,7 +739,7 @@ private struct AttendanceRecordRow: View {
 
     private var accessibilitySummary: String {
         var parts = [
-            record.date.formatted(date: .complete, time: .omitted),
+            MoodlePresentation.fullDate(record.date),
             record.timeText,
             record.description?.nilIfBlank ?? "課堂點名",
             record.statusLabel

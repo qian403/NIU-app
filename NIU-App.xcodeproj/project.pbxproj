@@ -156,6 +156,11 @@
 		CA4A2201000000000000000B /* MailHTMLPolicy in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000B; };
 		CA4A2201000000000000000C /* MailHTMLView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000C; };
 		C0DEA071C0DEA071C0DEA071 /* MoodleSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA072C0DEA072C0DEA072; };
+		C0DEAF010000000000000001 /* MoodleUIFixture in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000001; };
+		C0DEAF010000000000000002 /* MoodleUpcomingModels in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000002; };
+		C0DEAF010000000000000003 /* MoodleUpcomingRepository in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000003; };
+		C0DEAF010000000000000004 /* MoodleUpcomingViewModel in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000004; };
+		C0DEAF010000000000000005 /* MoodleUpcomingViews in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000005; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -349,6 +354,11 @@
 		CA4A2202000000000000000B /* MailHTMLPolicy */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLPolicy.swift; sourceTree = SOURCE_ROOT; };
 		CA4A2202000000000000000C /* MailHTMLView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLView.swift; sourceTree = SOURCE_ROOT; };
 		C0DEA072C0DEA072C0DEA072 /* MoodleSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Models/MoodleSearch.swift; sourceTree = "<group>"; };
+		C0DEAF020000000000000001 /* MoodleUIFixture */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Fixtures/MoodleUIFixture.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000002 /* MoodleUpcomingModels */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingModels.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000003 /* MoodleUpcomingRepository */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingRepository.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000004 /* MoodleUpcomingViewModel */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000005 /* MoodleUpcomingViews */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViews.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -785,6 +795,11 @@
 				CA4A2202000000000000000B /* MailHTMLPolicy */,
 				CA4A2202000000000000000C /* MailHTMLView */,
 				CA4A2202000000000000000A /* NativeMailUIFixtureService */,
+				C0DEAF020000000000000002 /* MoodleUpcomingModels */,
+				C0DEAF020000000000000003 /* MoodleUpcomingRepository */,
+				C0DEAF020000000000000004 /* MoodleUpcomingViewModel */,
+				C0DEAF020000000000000005 /* MoodleUpcomingViews */,
+				C0DEAF020000000000000001 /* MoodleUIFixture */,
 				CA4A22020000000000000008 /* ComposeView */,
 				CA4A22020000000000000007 /* MessageDetailView */,
 				CA4A22020000000000000006 /* MessageListView */,
@@ -1034,6 +1049,11 @@
 				CA4A2201000000000000000B /* MailHTMLPolicy in Sources */,
 				CA4A2201000000000000000C /* MailHTMLView in Sources */,
 				CA4A2201000000000000000A /* NativeMailUIFixtureService in Sources */,
+				C0DEAF010000000000000002 /* MoodleUpcomingModels in Sources */,
+				C0DEAF010000000000000003 /* MoodleUpcomingRepository in Sources */,
+				C0DEAF010000000000000004 /* MoodleUpcomingViewModel in Sources */,
+				C0DEAF010000000000000005 /* MoodleUpcomingViews in Sources */,
+				C0DEAF010000000000000001 /* MoodleUIFixture in Sources */,
 				CA4A22010000000000000008 /* ComposeView in Sources */,
 				CA4A22010000000000000007 /* MessageDetailView in Sources */,
 				CA4A22010000000000000006 /* MessageListView in Sources */,

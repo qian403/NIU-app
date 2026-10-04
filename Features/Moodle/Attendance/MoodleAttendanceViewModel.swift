@@ -16,9 +16,9 @@ final class MoodleAttendanceViewModel: ObservableObject {
             // Session IDs may repeat between attendance modules, so index per section.
             searchIndexes = sections.reduce(into: [:]) { indexes, section in
                 indexes[section.id] = MoodleSearchIndex(section.records) { record in
-                    [record.date.formatted(date: .complete, time: .omitted),
-                     record.date.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits)),
-                     record.date.formatted(Date.ISO8601FormatStyle(timeZone: .autoupdatingCurrent).year().month().day().dateSeparator(.dash)),
+                    [MoodlePresentation.fullDate(record.date),
+                     MoodlePresentation.numericDate(record.date),
+                     MoodlePresentation.isoDate(record.date),
                      record.timeText, record.description ?? "課堂點名", record.statusLabel]
                         .map(MoodleSearch.plainText)
                 }
@@ -46,7 +46,9 @@ final class MoodleAttendanceViewModel: ObservableObject {
     @Published private(set) var lastErrorMessage: String?
 
     private let repository: any MoodleAttendanceRepositoryProtocol
-    private var hasLoaded = false
+    private(set) var hasLoaded = false
+    private let loads = MoodleCourseLoadCoordinator()
+    private var loadGeneration = 0
 
     init(repository: (any MoodleAttendanceRepositoryProtocol)? = nil) {
         self.repository = repository ?? MoodleAttendanceRepository()
@@ -54,7 +56,7 @@ final class MoodleAttendanceViewModel: ObservableObject {
 
     func loadCourse(_ courseId: Int, force: Bool = false) async {
         await load(force: force) {
-            try await repository.fetchCourseAttendance(courseId: courseId)
+            try await self.repository.fetchCourseAttendance(courseId: courseId)
         }
     }
 
@@ -65,7 +67,7 @@ final class MoodleAttendanceViewModel: ObservableObject {
         force: Bool = false
     ) async {
         await load(force: force) {
-            let section = try await repository.fetchAttendance(
+            let section = try await self.repository.fetchAttendance(
                 module: module,
                 sectionName: "",
                 attendanceId: attendanceId,
@@ -77,20 +79,34 @@ final class MoodleAttendanceViewModel: ObservableObject {
 
     private func load(
         force: Bool,
-        operation: () async throws -> [MoodleAttendanceSection]
+        operation: @escaping @MainActor () async throws -> [MoodleAttendanceSection]
     ) async {
+        await loads.run(force: force) { [self] in
+            await performLoad(force: force, operation: operation)
+        }
+    }
+
+    private func performLoad(force: Bool, operation: () async throws -> [MoodleAttendanceSection]) async {
         guard force || !hasLoaded else { return }
 
+        loadGeneration &+= 1
+        let generation = loadGeneration
         state = .loading
         lastErrorMessage = nil
 
         do {
-            sections = try await operation()
+            let result = try await operation()
+            try Task.checkCancellation()
+            guard generation == loadGeneration else { return }
+            sections = result
             hasLoaded = true
             state = .loaded
-        } catch is CancellationError {
-            state = sections.isEmpty ? .idle : .loaded
         } catch {
+            guard generation == loadGeneration else { return }
+            if Task.isCancelled || error is CancellationError {
+                state = sections.isEmpty ? .idle : .loaded
+                return
+            }
             lastErrorMessage = error.localizedDescription
             state = sections.isEmpty ? .failed(error.localizedDescription) : .loaded
         }

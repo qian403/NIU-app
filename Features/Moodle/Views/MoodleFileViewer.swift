@@ -23,15 +23,15 @@ struct MoodleFileViewer: View {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 36, weight: .light))
+                        .font(.largeTitle.weight(.light))
                         .foregroundColor(.secondary)
                     Text(error)
-                        .font(.system(size: 14))
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                     Button("重試") { downloadAttempt += 1 }
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .padding(.top, 4)
                     Spacer()
                 }
@@ -40,7 +40,7 @@ struct MoodleFileViewer: View {
                     Spacer()
                     ProgressView()
                     Text("下載中...")
-                        .font(.system(size: 13))
+                        .font(.footnote)
                         .foregroundColor(.secondary)
                         .padding(.top, 8)
                     Spacer()

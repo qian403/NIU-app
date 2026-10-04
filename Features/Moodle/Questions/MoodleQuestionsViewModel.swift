@@ -31,7 +31,8 @@ final class MoodleQuestionsViewModel: ObservableObject {
     private let repository: any MoodleQuestionsRepositoryProtocol
     private var courseID: Int?
     private var sessionRevision: Int?
-    private var hasLoaded = false
+    private(set) var hasLoaded = false
+    private let loads = MoodleCourseLoadCoordinator()
     private var generation = 0
     private var loadingTask: Task<[MoodleQuestionSection], Error>?
 
@@ -40,6 +41,12 @@ final class MoodleQuestionsViewModel: ObservableObject {
     }
 
     func load(courseId: Int, force: Bool = false) async {
+        await loads.run(force: force, key: "\(courseId)-\(repository.sessionRevision)") { [self] in
+            await performLoad(courseId: courseId, force: force)
+        }
+    }
+
+    private func performLoad(courseId: Int, force: Bool) async {
         let revision = repository.sessionRevision
         if courseID != courseId || sessionRevision != revision {
             cancel()

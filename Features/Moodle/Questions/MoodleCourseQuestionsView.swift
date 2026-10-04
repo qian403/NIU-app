@@ -67,8 +67,10 @@ struct MoodleCourseQuestionsView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemGroupedBackground))
+        .navigationTitle("問答")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $viewModel.searchText, prompt: "搜尋問答")
         .task(id: reloadID) { await viewModel.load(courseId: courseId, force: reloadID > 0) }
-        .onDisappear { viewModel.cancel() }
     }
 
     private func questionRow(_ module: MoodleModule, available: Bool) -> some View {
@@ -76,11 +78,11 @@ struct MoodleCourseQuestionsView: View {
             Image(systemName: module.iconName)
                 .font(.title3)
                 .foregroundStyle(Color.accentColor)
-                .frame(width: 28)
+                .fixedSize()
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text(module.name)
-                    .font(.body.weight(.semibold))
+                    .font(.headline)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(module.questionActivityKind?.title ?? "問答")

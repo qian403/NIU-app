@@ -293,7 +293,32 @@ struct MoodleDiscussion: Codable, Identifiable {
 }
 
 struct MoodleDiscussionsResponse: Codable {
+    struct Warning: Codable {
+        let item: String?
+        let itemid: Int?
+        let warningcode: String?
+    }
+
     let discussions: [MoodleDiscussion]
+    let warnings: [Warning]?
+
+    init(discussions: [MoodleDiscussion], warnings: [Warning]? = nil) {
+        self.discussions = discussions
+        self.warnings = warnings
+    }
+
+    /// Moodle paginates before filtering discussions the user cannot view.
+    /// Unknown warnings cannot prove that a page is complete.
+    var consumedPageCount: Int? {
+        let warnings = warnings ?? []
+        guard warnings.allSatisfy({ $0.item == "post" && $0.itemid != nil && $0.warningcode == "1" }) else { return nil }
+        return discussions.count + Set(warnings.compactMap(\.itemid)).count
+    }
+
+    var pageFingerprint: String {
+        (discussions.map { "visible:\($0.id)" } + (warnings ?? []).compactMap { $0.itemid.map { "hidden:\($0)" } })
+            .sorted().joined(separator: ",")
+    }
 }
 
 struct MoodlePost: Codable, Identifiable {
@@ -386,11 +411,28 @@ struct MoodleAssignment: Codable, Identifiable {
     }
 }
 
+extension MoodleAssignment {
+    // Moodle omits intro while show_intro() is false (for example before opening).
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(Int.self, forKey: .id)
+        cmid = try values.decode(Int.self, forKey: .cmid)
+        course = try values.decode(Int.self, forKey: .course)
+        name = try values.decode(String.self, forKey: .name)
+        intro = try values.decodeIfPresent(String.self, forKey: .intro) ?? ""
+        duedate = try values.decode(Int.self, forKey: .duedate)
+        allowsubmissionsfromdate = try values.decode(Int.self, forKey: .allowsubmissionsfromdate)
+        grade = try values.decodeIfPresent(Double.self, forKey: .grade)
+        timemodified = try values.decode(Int.self, forKey: .timemodified)
+    }
+}
+
 struct MoodleSubmissionStatus: Codable {
     let lastattempt: MoodleLastAttempt?
 }
 
 struct MoodleLastAttempt: Codable {
+    var teamsubmission: MoodleSubmission? = nil
     let submission: MoodleSubmission?
     let graded: Bool?
 }
@@ -506,19 +548,100 @@ struct MoodlePopupNotification: Identifiable {
     }
 
     var timeText: String {
-        let pretty = timeCreatedPretty?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !pretty.isEmpty { return pretty }
-        if let timeCreated {
-            return Self.relativeFormatter.localizedString(for: timeCreated, relativeTo: Date())
-        }
-        return ""
+        guard let timeCreated else { return "" }
+        return MoodlePresentation.relativeTime(timeCreated)
     }
+}
+
+// MARK: - Shared Moodle Presentation
+
+/// Explicit Traditional Chinese output, independent of SwiftUI/environment locale.
+/// Reuse formatters on the main actor and follow device time-zone changes.
+@MainActor
+enum MoodlePresentation {
+    private static var formatterTimeZone = TimeZone.current
+    private static var dateFormatters: [String: DateFormatter] = [:]
+
+    private static func date(_ date: Date, pattern: String) -> String {
+        let timeZone = TimeZone.current
+        if formatterTimeZone != timeZone {
+            dateFormatters.removeAll()
+            formatterTimeZone = timeZone
+        }
+        let formatter: DateFormatter
+        if let cached = dateFormatters[pattern] {
+            formatter = cached
+        } else {
+            formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "zh_TW")
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.timeZone = timeZone
+            formatter.dateFormat = pattern
+            dateFormatters[pattern] = formatter
+        }
+        return formatter.string(from: date)
+    }
+
+    static func dateTime(_ value: Date) -> String { date(value, pattern: "yyyy年M月d日 ah:mm") }
+    static func time(_ value: Date) -> String { date(value, pattern: "ah:mm") }
+    static func fullDate(_ value: Date) -> String { date(value, pattern: "yyyy年M月d日 EEEE") }
+    static func month(_ value: Date) -> String { date(value, pattern: "yyyy年M月") }
+    static func weekday(_ value: Date) -> String { date(value, pattern: "EEE") }
+    static func numericDate(_ value: Date) -> String { date(value, pattern: "yyyy/MM/dd") }
+    static func isoDate(_ value: Date) -> String { date(value, pattern: "yyyy-MM-dd") }
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
+        formatter.locale = Locale(identifier: "zh_TW")
+        formatter.unitsStyle = .full
+        formatter.dateTimeStyle = .numeric
         return formatter
     }()
+
+    enum RelativeTimeContext {
+        case publication
+        case deadline
+    }
+
+    static func relativeTime(
+        _ date: Date, now: Date = Date(), context: RelativeTimeContext = .publication
+    ) -> String {
+        let interval = date.timeIntervalSince(now)
+        // Tolerate clock skew; only genuine future events should use future wording.
+        if abs(interval) <= 60 || (interval > 0 && context == .publication) {
+            return "剛剛"
+        }
+        return relativeFormatter.localizedString(for: date, relativeTo: now)
+    }
+
+    /// Trim only insignificant zeros; preserve Moodle's decimal precision and scales.
+    static func grade(_ value: String) -> String {
+        let text = value.htmlDecoded.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.range(of: #"^-?[0-9]+\.[0-9]+$"#, options: .regularExpression) != nil else { return text }
+        return text.replacingOccurrences(of: #"\.?0+$"#, with: "", options: .regularExpression)
+    }
+
+    static func assignmentGrade(_ item: MoodleGradeItem?) -> String? {
+        if let formatted = item?.gradeformatted {
+            let text = grade(formatted)
+            if !["", "-", "–", "—"].contains(text) { return text }
+        }
+        guard let raw = item?.graderaw, raw.isFinite else { return nil }
+        let score = grade(String(raw))
+        if let maximum = item?.grademax, maximum.isFinite, maximum > 0 {
+            return "\(score) / \(grade(String(maximum)))"
+        }
+        return score
+    }
+
+    static func gradingStatus(graded: Bool?, grade: String?) -> String? {
+        guard grade == nil else { return nil }
+        switch graded {
+        case true: return "已評分"
+        case false: return "尚未評分"
+        case nil: return nil
+        }
+    }
 }
 
 // MARK: - HTML Decode Helper

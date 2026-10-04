@@ -28,6 +28,10 @@ import Combine
 
 @MainActor protocol MoodleAnnouncementsRepositoryProtocol {
     func fetchAnnouncements(courseId: Int) async throws -> [MoodleDiscussion]
+    func fetchCompleteAnnouncements(courseId: Int, cached: [MoodleDiscussion]) async throws -> [MoodleDiscussion]
+}
+extension MoodleAnnouncementsRepositoryProtocol {
+    func fetchCompleteAnnouncements(courseId: Int, cached: [MoodleDiscussion]) async throws -> [MoodleDiscussion] { cached }
 }
 @MainActor final class MoodleAnnouncementsRepository: MoodleAnnouncementsRepositoryProtocol {
     var result: [MoodleDiscussion] = []
@@ -83,6 +87,25 @@ struct MoodleAssignmentsSnapshot {
 
 func decode<T: Decodable>(_ json: String) throws -> T {
     try JSONDecoder().decode(T.self, from: Data(json.utf8))
+}
+
+@MainActor final class PendingAnnouncements: MoodleAnnouncementsRepositoryProtocol {
+    var pending: [CheckedContinuation<[MoodleDiscussion], Error>] = []
+    func fetchAnnouncements(courseId: Int) async throws -> [MoodleDiscussion] {
+        try await withCheckedThrowingContinuation { pending.append($0) }
+    }
+    func waitFor(_ count: Int) async { while pending.count < count { await Task.yield() } }
+}
+@MainActor final class PendingAttendance: MoodleAttendanceRepositoryProtocol {
+    var pending: [CheckedContinuation<[MoodleAttendanceSection], Error>] = []
+    func fetchCourseAttendance(courseId: Int) async throws -> [MoodleAttendanceSection] {
+        try await withCheckedThrowingContinuation { pending.append($0) }
+    }
+    func fetchAttendance(module: MoodleModule, sectionName: String,
+                         attendanceId: Int?, courseModuleId: Int?) async throws -> MoodleAttendanceSection {
+        fatalError("Unexpected module load")
+    }
+    func waitFor(_ count: Int) async { while pending.count < count { await Task.yield() } }
 }
 
 @main struct Checks {
@@ -215,6 +238,40 @@ func decode<T: Decodable>(_ json: String) throws -> T {
         attendance.searchText = "　"
         precondition(attendance.filteredSections.count == 2)
         print("PASS: all six ViewModels, query before load, refresh/session replacement, sort retention, attendance ID scoping")
+
+        let pendingAnnouncements = PendingAnnouncements()
+        let switchingAnnouncements = MoodleAnnouncementsViewModel(repository: pendingAnnouncements)
+        let old = Task { await switchingAnnouncements.load(courseId: 1) }
+        await pendingAnnouncements.waitFor(1)
+        old.cancel()
+        let current = Task { await switchingAnnouncements.load(courseId: 1, force: true) }
+        await pendingAnnouncements.waitFor(2)
+        pendingAnnouncements.pending[0].resume(returning: [])
+        await old.value
+        precondition(switchingAnnouncements.isLoading) // Old cancellation cannot hide the new spinner.
+        pendingAnnouncements.pending[1].resume(returning: announcements.discussions)
+        await current.value
+        precondition(!switchingAnnouncements.discussions.isEmpty && !switchingAnnouncements.isLoading)
+        let cancelledRefresh = Task { await switchingAnnouncements.load(courseId: 1, force: true) }
+        await pendingAnnouncements.waitFor(3)
+        cancelledRefresh.cancel()
+        pendingAnnouncements.pending[2].resume(returning: [])
+        await cancelledRefresh.value
+        precondition(!switchingAnnouncements.discussions.isEmpty && !switchingAnnouncements.isLoading)
+
+        let pendingAttendance = PendingAttendance()
+        let switchingAttendance = MoodleAttendanceViewModel(repository: pendingAttendance)
+        let previousVisit = Task { await switchingAttendance.loadCourse(1) }
+        await pendingAttendance.waitFor(1)
+        let latestVisit = Task { await switchingAttendance.loadCourse(1, force: true) }
+        await pendingAttendance.waitFor(2)
+        pendingAttendance.pending[1].resume(returning: attendanceRepo.result)
+        await latestVisit.value
+        pendingAttendance.pending[0].resume(throwing: URLError(.timedOut))
+        await previousVisit.value
+        precondition(switchingAttendance.sections.count == 2 && switchingAttendance.lastErrorMessage == nil)
+        print("PASS: refresh/navigation cancels stale work, preserves cached results and keeps the latest loading/error state")
+
     }
 }
 '''

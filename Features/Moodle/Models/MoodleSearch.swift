@@ -85,3 +85,61 @@ struct MoodleResourceSearchIndex {
         }
     }
 }
+
+/// Coalesce overlapping consumers (overview/search/detail). Cancel transport only
+/// when its last consumer leaves, or an explicit refresh replaces the request.
+@MainActor
+final class MoodleCourseLoadCoordinator {
+    enum Phase { case content, completeAnnouncements }
+    private struct Request {
+        let id: UUID
+        let phase: Phase
+        let key: String
+        let task: Task<Void, Never>
+        var consumers: Set<UUID>
+    }
+    private var request: Request?
+
+    func run(force: Bool, key: String = "", phase: Phase = .content, operation: @escaping @MainActor () async -> Void) async {
+        guard !Task.isCancelled else { return }
+        let consumer = UUID()
+        if force || (request != nil && request?.key != key) {
+            request?.task.cancel()
+            request = nil
+        }
+        if request == nil {
+            request = Request(id: UUID(), phase: phase, key: key, task: Task {
+                guard !Task.isCancelled else { return }
+                await operation()
+            }, consumers: [])
+        }
+        guard let current = request else { return }
+        request?.consumers.insert(consumer)
+        defer { release(consumer, requestID: current.id) }
+        await withTaskCancellationHandler {
+            await current.task.value
+            // A completed request must not swallow a follow-up operation (for
+            // example, announcement pagination after its shared preview).
+            if request?.id == current.id { request = nil }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.release(consumer, requestID: current.id)
+            }
+        }
+        // Waiting on a preview is not equivalent to completing pagination.
+        // Resume the requested phase even if a refresh replaced its predecessor.
+        if !Task.isCancelled,
+           current.phase != phase || (!force && current.task.isCancelled && request?.key == key && request?.id != current.id) {
+            await run(force: false, key: key, phase: phase, operation: operation)
+        }
+    }
+
+    private func release(_ consumer: UUID, requestID: UUID) {
+        guard request?.id == requestID else { return }
+        request?.consumers.remove(consumer)
+        if request?.consumers.isEmpty == true {
+            request?.task.cancel()
+            request = nil
+        }
+    }
+}
