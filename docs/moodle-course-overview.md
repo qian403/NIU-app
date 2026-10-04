@@ -27,4 +27,4 @@ xcrun simctl launch --terminate-running-process booted dev.chienniuapp -NIUMoodl
 
 `-NIUMoodleUIFixtureScreen` 可替換為 `course-search`、`course-assignments`、`course-resources`、`course-attendance`、`course-partial-error`、`home`、`upcoming`、`home-upcoming-empty` 或 `home-upcoming-error`。`-NIUMoodleUIFixtureCalendarUnavailable` 可驗證行事曆介面不可用時的備案。入口與合成資料皆由 `#if DEBUG` 限制。
 
-2026-10-04 已重新通過 12 個 Moodle 檢查（含實際 WebKit fixture）、生命週期檢查，以及公告權限分頁新增回歸；Debug 模擬器編譯與上述六種課程畫面檢視完成，另檢視深色模式及最大輔助字級的總覽／搜尋／部分錯誤畫面。這些結果不代表已使用真實帳號確認校方 API 或在真機完成作業操作。
+2026-10-04 已重新通過 12 個 Moodle 檢查（含實際 WebKit fixture）、生命週期檢查，以及公告權限分頁新增回歸；Debug／Release 模擬器編譯與上述六種課程畫面檢視完成，另檢視深色模式及最大輔助字級的總覽／搜尋／部分錯誤畫面。這些結果不代表已使用真實帳號確認校方 API 或在真機完成作業操作。
