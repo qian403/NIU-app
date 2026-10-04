@@ -490,46 +490,12 @@ private final class NotificationScheduler {
     }
 
     private func scheduleAcademicCalendarEvents() async throws -> [ManagedNotification] {
-        var resultRequests: [ManagedNotification] = []
-        let now = Date()
-        let year = CampusCalendarDate.academicYear(at: now)
-        let result = await AcademicCalendarStore.shared.refresh(year: year, now: now)
+        let pending = await SystemReminderNotificationCenter(center: center).pending()
         try Task.checkCancellation()
-        guard let document = result.document else { throw URLError(.cannotParseResponse) }
-        var events = document.events.map { CalendarEvent($0, document: document) }
-        let upperBound = CampusCalendarDate.calendar.date(byAdding: .day, value: 30, to: now) ?? now
-        let upperYear = CampusCalendarDate.academicYear(at: upperBound)
-        if upperYear != year {
-            let next = await AcademicCalendarStore.shared.refresh(year: upperYear, now: now)
-            try Task.checkCancellation()
-            guard let nextDocument = next.document else { throw URLError(.cannotParseResponse) }
-            events += nextDocument.events.map { CalendarEvent($0, document: nextDocument) }
-        }
-
-        let candidates = events
-            .filter { event in
-                let type = event.inferredType
-                guard type == .important || type == .deadline else { return false }
-                guard let start = event.start else { return false }
-                return start >= now && start <= upperBound
+        return try await CalendarNotificationSource.load(now: Date(), existing: pending,
+            owner: UserDefaults.standard.string(forKey: StorageKeys.authSessionID)) { year, now in
+                await AcademicCalendarStore.shared.refresh(year: year, now: now).document
             }
-            .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
-            .prefix(20)
-
-        for event in candidates {
-            try Task.checkCancellation()
-            guard let start = event.start else { continue }
-            let previousDay = CampusCalendarDate.calendar.date(byAdding: .day, value: -1, to: start) ?? start
-            let fireDate = CampusCalendarDate.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: previousDay) ?? previousDay
-            guard fireDate > now else { continue }
-            resultRequests.append(ManagedNotification(
-                id: "\(calendarPrefix)\(event.id)", category: .calendar,
-                title: "重要日期提醒",
-                body: "\(event.title)（\(event.dateString)）即將到來",
-                fireDate: fireDate
-            ))
-        }
-        return resultRequests
     }
 
     private func scheduleClassReminders() throws -> [ManagedNotification] {
@@ -588,6 +554,61 @@ private final class NotificationScheduler {
     }
 
 
+}
+
+/// Successful academic years replace only their own reminders; unavailable years retain valid same-session requests.
+@MainActor
+enum CalendarNotificationSource {
+    static func load(now: Date, existing: [PendingManagedNotification], owner: String?,
+                     document: (Int, Date) async -> CampusCalendarDocument?) async throws -> [ManagedNotification] {
+        let year = CampusCalendarDate.academicYear(at: now)
+        let upperBound = CampusCalendarDate.calendar.date(byAdding: .day, value: 30, to: now) ?? now
+        let upperYear = CampusCalendarDate.academicYear(at: upperBound)
+        var events: [CalendarEvent] = []
+        var resultRequests: [ManagedNotification] = []
+        var loadedAny = false
+        for requestedYear in Set([year, upperYear]).sorted() {
+            let value = await document(requestedYear, now)
+            try Task.checkCancellation()
+            if let value {
+                loadedAny = true
+                events += value.events.map { CalendarEvent($0, document: value) }
+            } else if let owner {
+                resultRequests += existing.compactMap { request in
+                    guard request.session == owner, let value = request.value,
+                          value.category == .calendar, value.fireDate > now,
+                          let eventDay = CampusCalendarDate.calendar.date(byAdding: .day, value: 1, to: value.fireDate),
+                          CampusCalendarDate.academicYear(at: eventDay) == requestedYear else { return nil }
+                    return value
+                }
+            }
+        }
+        guard loadedAny else { throw URLError(.cannotParseResponse) }
+        let candidates = events
+            .filter { event in
+                let type = event.inferredType
+                guard type == .important || type == .deadline else { return false }
+                guard let start = event.start else { return false }
+                return start >= now && start <= upperBound
+            }
+            .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
+            .prefix(20)
+
+        for event in candidates {
+            try Task.checkCancellation()
+            guard let start = event.start else { continue }
+            let previousDay = CampusCalendarDate.calendar.date(byAdding: .day, value: -1, to: start) ?? start
+            let fireDate = CampusCalendarDate.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: previousDay) ?? previousDay
+            guard fireDate > now else { continue }
+            resultRequests.append(ManagedNotification(
+                id: "notify.calendar.\(event.id)", category: .calendar,
+                title: "重要日期提醒",
+                body: "\(event.title)（\(event.dateString)）即將到來",
+                fireDate: fireDate
+            ))
+        }
+        return resultRequests
+    }
 }
 
 public extension String {

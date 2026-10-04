@@ -13,8 +13,12 @@ struct EventReminderSettingsSection: View {
                     .font(.body)
             }
             .tint(.green)
-            Picker("活動開始前", selection: $leadTime) {
-                ForEach(EventReminderLeadTime.allCases) { lead in Text(lead.label).tag(lead) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("活動開始前").font(.subheadline)
+                Picker("活動開始前", selection: $leadTime) {
+                    ForEach(EventReminderLeadTime.allCases) { lead in Text(lead.label).tag(lead) }
+                }
+                .labelsHidden()
             }
             .disabled(!enabled)
             Text("只提醒已確認報名的活動；候補、待審核與未知狀態不安排。依校方活動時間（臺北時間）在此裝置提醒，不上傳提醒設定。")

@@ -150,6 +150,7 @@ with tempfile.TemporaryDirectory(prefix="niu-event-ui-") as directory:
     sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
     files = [feature / "Models/EventRegistrationModels.swift", feature / "Services/EventRegistrationClient.swift",
              feature / "Stores/EventFavoritesStore.swift",
+             *sorted((feature / "Batch").glob("*.swift")),
              *sorted((feature / "ViewModels").glob("*.swift")),
              *[f for f in sorted((feature / "Views").glob("*.swift")) if f.name != "EventRegistrationView.swift"],
              view, root / "Shared/Theme/Theme.swift"]
