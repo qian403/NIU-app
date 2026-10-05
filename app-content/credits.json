@@ -1,16 +1,17 @@
 {
   "schemaVersion": 1,
-  "revision": 2,
+  "revision": 3,
   "introduction": "感謝下列開源專案與開發者提供靈感與參考：",
-  "entries": [
+  "maintainers": [
     {
-      "id": "kennyyang0726-niu-app-ios",
-      "name": "KennyYang0726",
-      "description": "NIU_APP_IOS 開發者",
-      "projectName": "NIU_APP_IOS",
-      "url": "https://github.com/KennyYang0726/NIU_APP_IOS",
+      "id": "chien",
+      "name": "CHIEN",
+      "url": "https://www.chien.dev",
+      "avatarURL": "https://avatars.githubusercontent.com/u/89014784?v=4",
       "order": 10
-    },
+    }
+  ],
+  "entries": [
     {
       "id": "windlessme-niu-app-android",
       "name": "windless",
@@ -18,6 +19,14 @@
       "projectName": "niu-app-android",
       "url": "https://github.com/windlessme/niu-app-android",
       "avatarURL": "https://avatars.githubusercontent.com/u/83590234?v=4",
+      "order": 10
+    },
+    {
+      "id": "kennyyang0726-niu-app-ios",
+      "name": "KennyYang0726",
+      "description": "NIU_APP_IOS 開發者",
+      "projectName": "NIU_APP_IOS",
+      "url": "https://github.com/KennyYang0726/NIU_APP_IOS",
       "order": 20
     }
   ]

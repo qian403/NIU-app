@@ -163,10 +163,12 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
 
-                NavigationLink(destination: PrivacyPolicyView()) {
+                Link(destination: PrivacyPolicy.url) {
                     SettingsNavigationRow(icon: "shield.lefthalf.filled", title: "隱私權聲明", subtitle: "查看資料處理說明")
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityHint("開啟 NIU-Life 隱私權政策網頁")
 
                 if let projectURL = URL(string: "https://github.com/qian403/NIU-app") {
                     Link(destination: projectURL) {
@@ -182,7 +184,7 @@ struct SettingsView: View {
                 }
 
                 NavigationLink(destination: SpecialThanksView()) {
-                    SettingsNavigationRow(icon: "heart.text.square.fill", title: "特別感謝", subtitle: "致謝開源專案開發者")
+                    SettingsNavigationRow(icon: "heart.text.square.fill", title: "特別感謝", subtitle: "維護者與開源專案致謝")
                 }
                 .buttonStyle(.plain)
             }

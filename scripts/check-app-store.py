@@ -48,8 +48,11 @@ assert state.count('pushType: LiveActivityRemoteClient.enabled ? .token : nil') 
 remote_activity = (root / 'Core/Services/LiveActivityRemoteClient.swift').read_text()
 assert 'static let consentKey' in remote_activity
 assert 'UserDefaults.standard.bool(forKey: consentKey)' in remote_activity
-policy_definitions = sum(p.read_text().count('struct PrivacyPolicyView:') for p in (root / 'Features').rglob('*.swift'))
-assert policy_definitions == 1
+sources = [p.read_text() for p in (root / 'Features').rglob('*.swift')]
+assert sum(s.count('URL(string: "https://niu-life.app/privacy")') for s in sources) == 1
+assert not any('PrivacyPolicyView' in s for s in sources), 'Privacy policy is the public page only'
+for path in ['Features/Home/Views/SettingsView.swift', 'Features/Authentication/Views/LoginView.swift']:
+    assert 'Link(destination: PrivacyPolicy.url)' in (root / path).read_text(), path
 print('PASS: app metadata, opaque icons, privacy manifests, consent-gated activities and shared policy')
 
 if args.archive:
