@@ -28,7 +28,7 @@ struct ClassScheduleExportView: View {
                         // Header description
                         Text("將課表匯出為每週重複的行事曆事件，方便在 iOS 行事曆中查看。")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(.black.opacity(0.55))
+                            .foregroundColor(Theme.Colors.secondaryLabel)
                             .fixedSize(horizontal: false, vertical: true)
 
                         // Semester start date
@@ -116,7 +116,7 @@ struct ClassScheduleExportView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(Theme.Colors.secondaryLabel)
 
             content()
                 .padding(Theme.Spacing.small)
@@ -134,7 +134,7 @@ struct ClassScheduleExportView: View {
         return VStack(alignment: .leading, spacing: 8) {
             Text("預覽")
                 .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(Theme.Colors.secondaryLabel)
 
             HStack(spacing: 20) {
                 infoChip(icon: "calendar.badge.clock",
@@ -151,10 +151,10 @@ struct ClassScheduleExportView: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 12))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(Theme.Colors.secondaryLabel)
             Text(text)
                 .font(.system(size: 13, weight: .light))
-                .foregroundColor(.black.opacity(0.6))
+                .foregroundColor(Theme.Colors.secondaryLabel)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
