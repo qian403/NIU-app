@@ -68,6 +68,9 @@ print("PASS: \(checks) attendance response cases; only real forms open automatic
 # Exercise the production DOM extractor in WebKit without account/network access.
 script = re.search(r'let script = """\n(.*?)\n\s*"""',
                    source[source.index("    private func inspectAttendancePage"):], re.S).group(1)
+# The script is a Swift string literal; run the JavaScript WebKit receives in the app.
+assert set(re.findall(r'\\.', script)) <= {'\\\\'}, "unsupported Swift escape in extraction script"
+script = script.replace('\\\\', '\\')
 encoded = base64.b64encode(script.encode()).decode()
 fixture += '\nimport AppKit\nimport WebKit\nlet extractionScript = String(data: Data(base64Encoded: "' + encoded + '")!, encoding: .utf8)!\n'
 fixture += r'''
@@ -82,7 +85,30 @@ fixture += r'''
         ("real status form", "<form action='/mod/attendance/attendance.php'><input name='sessid' value='123'><input type='radio' name='status' value='1'><button type='submit'>Submit</button></form>", .requiresAction),
         ("correctable password", "<div class='alert'>Incorrect password, attendance not recorded.</div><form action='/mod/attendance/attendance.php'><input name='sessid' value='123'><input name='studentpassword'><input type='submit'></form>", .requiresAction),
         ("unknown redirect", "<main id='region-main'>Dashboard</main>", .unknown),
+        ("recorded with hidden Moodle chrome", "<div id='user-notifications'><div class='alert alert-success' role='alert'>您在此上課時段的出席已被記錄。<button type='button' class='close' data-dismiss='alert'><span aria-hidden='true'>&times;</span><span class='sr-only'>取消此通知</span></button></div></div><div data-region='message-drawer'><div data-region='confirm-dialogue' role='alert' hidden><label>為我和其他人刪除</label>\n\n\n<button>封鎖</button></div></div><div class='alert' style='display:none'>封鎖</div><main id='region-main'>出缺席</main>", .recorded),
+        ("recorded whitespace collapses", "<div class='alert alert-success'>Your attendance\n\n\tin this   session has been recorded.</div>", .recorded),
+        ("hidden error inside recorded alert", "<div class='alert alert-success'>您在此上課時段的出席已被記錄。<span style='display:none'>Incorrect password</span><span style='visibility:hidden'>密碼錯誤</span></div><main id='region-main'>出缺席</main>", .recorded),
+        ("drawers layout keeps main alert", "<div id='page' class='drawers'><div class='drawer drawer-left'><div class='alert'>封鎖</div></div><div id='region-main'><div class='alert alert-success'>您在此上課時段的出席已被記錄。</div></div></div>", .recorded),
+        ("br separates words", "<div class='alert alert-success'>Your attendance<br>in this session has been recorded.</div>", .recorded),
+        ("blocks separate words", "<div class='alert alert-success'><p>Your attendance in this</p><p>session has been recorded.</p></div>", .recorded),
+        ("hidden br stays joined", "<div class='alert alert-success'>您在此上課時段的出席已被<span hidden><br></span><span style='display:none'><br></span><br hidden><br style='display:none'><br aria-hidden='true'><br style='visibility:hidden'>記錄。</div>", .recorded),
+        ("inline tags stay joined", "<div class='alert alert-success'>您在此<strong>上課</strong>時段的出席已被<span>記錄</span>。</div>", .recorded),
+        ("expired notification outside main", "<div id='user-notifications'><div class='alert alert-danger'>QR Code 已過期</div></div><main id='region-main'>出缺席</main>", .expired),
+        ("password notification outside main", "<div id='user-notifications'><div class='alert alert-danger'>密碼錯誤</div></div><main id='region-main'>出缺席</main>", .failed),
+        ("already recorded outside main", "<div id='user-notifications'><div class='alert alert-info'>您的出缺席已經設置好了。</div></div><main id='region-main'>出缺席</main>", .alreadyRecorded),
     ]
+    let expectedMessages = [
+        "recorded with hidden Moodle chrome": "您在此上課時段的出席已被記錄。",
+        "recorded whitespace collapses": "Your attendance in this session has been recorded.",
+        "hidden error inside recorded alert": "您在此上課時段的出席已被記錄。",
+        "drawers layout keeps main alert": "您在此上課時段的出席已被記錄。",
+        "br separates words": "Your attendance in this session has been recorded.",
+        "blocks separate words": "Your attendance in this session has been recorded.",
+        "inline tags stay joined": "您在此上課時段的出席已被記錄。",
+        "hidden br stays joined": "您在此上課時段的出席已被記錄。",
+        "already recorded outside main": "您的出缺席已經設置好了。",
+    ]
+    let recordedURL = "https://euni.niu.edu.tw/mod/attendance/view.php?id=8"
     func next() {
         guard index < cases.count else {
             print("PASS: \(cases.count) WebKit HTML fixtures using production extraction and parser")
@@ -95,11 +121,15 @@ fixture += r'''
             precondition(error == nil, "DOM extraction failed")
             let data = (value as! String).data(using: .utf8)!
             let snapshot = try! JSONDecoder().decode(Parser.AttendancePageSnapshot.self, from: data)
-            let response = Parser.AttendancePageSnapshot(url: original, body: snapshot.body,
+            let response = Parser.AttendancePageSnapshot(url: cases[index].2 == .recorded ? recordedURL : original, body: snapshot.body,
                 hasAttendanceForm: snapshot.hasAttendanceForm, notifications: snapshot.notifications,
                 errorCodes: snapshot.errorCodes)
             let result = parser.makeAttendanceOutcome(from: response)
             precondition(result.kind == cases[index].2, "DOM fixture failed: \(cases[index].0)")
+            if let expected = expectedMessages[cases[index].0] {
+                precondition(result.message == expected,
+                    "hidden or duplicated page text leaked in \(cases[index].0): \(result.message)")
+            }
             index += 1
             next()
         }
