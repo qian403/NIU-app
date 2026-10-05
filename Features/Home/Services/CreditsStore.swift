@@ -11,13 +11,27 @@ nonisolated struct CreditsDocument: Codable, Equatable, Sendable {
         let order: Int
     }
 
+    struct Maintainer: Codable, Equatable, Identifiable, Sendable {
+        let id: String
+        let name: String
+        let url: URL
+        let avatarURL: URL?
+        let order: Int
+    }
+
     let schemaVersion: Int
     let revision: Int
     let introduction: String
     let entries: [Entry]
+    /// Optional so documents without maintainers stay valid under schema 1.
+    let maintainers: [Maintainer]?
 
     var sortedEntries: [Entry] {
         entries.sorted { $0.order == $1.order ? $0.id < $1.id : $0.order < $1.order }
+    }
+
+    var sortedMaintainers: [Maintainer] {
+        (maintainers ?? []).sorted { $0.order == $1.order ? $0.id < $1.id : $0.order < $1.order }
     }
 
     static func decode(_ data: Data) throws -> Self {
@@ -27,6 +41,16 @@ nonisolated struct CreditsDocument: Codable, Equatable, Sendable {
               validText(document.introduction, limit: 2_000), document.entries.count <= 100,
               Set(document.entries.map(\.id)).count == document.entries.count else {
             throw CreditsError.invalidDocument
+        }
+        let maintainers = document.maintainers ?? []
+        guard maintainers.count <= 20, Set(maintainers.map(\.id)).count == maintainers.count else {
+            throw CreditsError.invalidDocument
+        }
+        for maintainer in maintainers {
+            guard validText(maintainer.id, limit: 100), validText(maintainer.name, limit: 200),
+                  validURL(maintainer.url), maintainer.avatarURL.map({ validURL($0) }) ?? true else {
+                throw CreditsError.invalidDocument
+            }
         }
         for entry in document.entries {
             guard validText(entry.id, limit: 100), validText(entry.name, limit: 200),

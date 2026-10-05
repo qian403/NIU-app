@@ -7,6 +7,27 @@ struct SpecialThanksView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Spacing.medium) {
                 if let document = viewModel.snapshot?.document {
+                    if !document.sortedMaintainers.isEmpty {
+                        sectionHeader("維護者")
+                        ForEach(document.sortedMaintainers) { maintainer in
+                            Link(destination: maintainer.url) {
+                                VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                                    Label { Text(maintainer.name) } icon: { avatar(maintainer.avatarURL) }
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Label(maintainer.url.host() ?? maintainer.url.absoluteString,
+                                          systemImage: "arrow.up.right.square")
+                                        .font(.subheadline)
+                                }
+                                .modifier(CreditCardStyle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityHint("開啟 \(maintainer.name) 的網站")
+                        }
+                        sectionHeader("特別感謝")
+                            .padding(.top, Theme.Spacing.small)
+                    }
                     Text(document.introduction)
                         .font(.body)
                         .foregroundStyle(.secondary)
@@ -21,20 +42,7 @@ struct SpecialThanksView: View {
                                 Label {
                                     Text(entry.name)
                                 } icon: {
-                                    if let avatarURL = entry.avatarURL {
-                                        AsyncImage(url: avatarURL) { image in
-                                            image.resizable().scaledToFill()
-                                        } placeholder: {
-                                            Image(systemName: "person.fill")
-                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                                .background(Color(.tertiarySystemGroupedBackground))
-                                        }
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(Circle())
-                                        .accessibilityHidden(true)
-                                    } else {
-                                        Image(systemName: "person.fill")
-                                    }
+                                    avatar(entry.avatarURL)
                                 }
                                     .font(.headline)
                                     .foregroundStyle(.primary)
@@ -44,15 +52,7 @@ struct SpecialThanksView: View {
                                 Label(entry.projectName, systemImage: "arrow.up.right.square")
                                     .font(.subheadline)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(Theme.Spacing.medium)
-                            .background(Color(.secondarySystemGroupedBackground),
-                                        in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                                    .strokeBorder(Theme.Colors.separator, lineWidth: 0.5)
-                            }
-                            .contentShape(Rectangle())
+                            .modifier(CreditCardStyle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityElement(children: .combine)
@@ -83,5 +83,44 @@ struct SpecialThanksView: View {
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .onDisappear { viewModel.cancel() }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.title3.weight(.semibold))
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    @ViewBuilder
+    private func avatar(_ url: URL?) -> some View {
+        if let url {
+            AsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                Image(systemName: "person.fill")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.tertiarySystemGroupedBackground))
+            }
+            .frame(width: 32, height: 32)
+            .clipShape(Circle())
+            .accessibilityHidden(true)
+        } else {
+            Image(systemName: "person.fill")
+        }
+    }
+}
+
+private struct CreditCardStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.medium)
+            .background(Color(.secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                    .strokeBorder(Theme.Colors.separator, lineWidth: 0.5)
+            }
+            .contentShape(Rectangle())
     }
 }

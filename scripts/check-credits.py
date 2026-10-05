@@ -51,7 +51,8 @@ actor Race {
         let directory = URL(fileURLWithPath: CommandLine.arguments[2])
         let bundle = root.appendingPathComponent("app-content/credits.json")
         let published = try Data(contentsOf: bundle)
-        _ = try CreditsDocument.decode(published)
+        let publishedDocument = try CreditsDocument.decode(published)
+        require(!publishedDocument.sortedMaintainers.isEmpty, "published maintainers decoded")
         // Keep behavioral fixtures independent of the maintained contributor list.
         let fixture: [String: Any] = [
             "schemaVersion": 1, "revision": 1, "introduction": "合成測試名單",
@@ -102,7 +103,9 @@ actor Race {
             { j in j["revision"] = 0 },
             { j in let e = j["entries"] as! [[String: Any]]; j["entries"] = e + e },
             { j in var e = j["entries"] as! [[String: Any]]; e[0]["url"] = "javascript:alert(1)"; j["entries"] = e },
-            { j in var e = j["entries"] as! [[String: Any]]; e[0]["url"] = "https://user:secret@example.com"; j["entries"] = e }
+            { j in var e = j["entries"] as! [[String: Any]]; e[0]["url"] = "https://user:secret@example.com"; j["entries"] = e },
+            { j in j["maintainers"] = [["id": "m", "name": "維護者", "url": "http://example.com", "order": 1]] },
+            { j in let m: [String: Any] = ["id": "m", "name": "維護者", "url": "https://example.com", "order": 1]; j["maintainers"] = [m, m] }
         ] {
             var invalid = try JSONSerialization.jsonObject(with: data) as! [String: Any]
             transform(&invalid)
@@ -110,6 +113,12 @@ actor Race {
             require(decoded == nil, "invalid schema, ID or URL rejected")
         }
         require((try? CreditsDocument.decode(Data(repeating: 32, count: 131_073))) == nil, "size limit")
+        var withMaintainers = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        withMaintainers["maintainers"] = [["id": "b", "name": "乙", "url": "https://example.com/b", "order": 20],
+                                          ["id": "a", "name": "甲", "url": "https://example.com/a", "order": 20],
+                                          ["id": "c", "name": "丙", "url": "https://example.com/c", "order": 10]]
+        let maintained = try CreditsDocument.decode(JSONSerialization.data(withJSONObject: withMaintainers))
+        require(maintained.sortedMaintainers.map(\.id) == ["c", "a", "b"] && doc.sortedMaintainers.isEmpty, "optional maintainers order")
 
         // A request that ignores cancellation must still not overwrite a newer response.
         let race = Race(old: data, new: next)
@@ -134,7 +143,7 @@ actor Race {
         await load.value
         require(!vm.isLoading && vm.snapshot?.document == doc, "cancelled screen retains original data")
         require(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("cancelled.json").path), "cancelled request not persisted")
-        print("PASS: credits validation, offline fallback, refresh interval, persistence, replacement, revision conflicts, races and cancellation")
+        print("PASS: credits validation, optional maintainers, offline fallback, refresh interval, persistence, replacement, revision conflicts, races and cancellation")
     }
 }
 '''

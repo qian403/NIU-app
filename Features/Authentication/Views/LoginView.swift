@@ -4,7 +4,6 @@ struct LoginView: View {
     @StateObject private var viewModel = LoginViewModel()
     @EnvironmentObject private var appState: AppState
     @FocusState private var focusedField: Field?
-    @State private var showPrivacySheet = false
     @State private var animateIn = true
 
     enum Field: Hashable {
@@ -113,11 +112,6 @@ struct LoginView: View {
         .alert(item: $viewModel.activeAlert) { alert in
             makeAlert(for: alert)
         }
-        .sheet(isPresented: $showPrivacySheet) {
-            NavigationStack {
-                PrivacyPolicyView()
-            }
-        }
     }
 
     // MARK: - Logo Section
@@ -210,13 +204,12 @@ struct LoginView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Color(.tertiaryLabel))
 
-            Button {
-                showPrivacySheet = true
-            } label: {
+            Link(destination: PrivacyPolicy.url) {
                 Text("隱私權聲明")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.accentColor.opacity(0.7))
             }
+            .accessibilityHint("開啟 NIU-Life 隱私權政策網頁")
         }
     }
 
@@ -286,42 +279,8 @@ struct LoginView: View {
         .environmentObject(AppState())
 }
 
-// MARK: - Privacy Policy View
+// MARK: - Privacy Policy
 
-struct PrivacyPolicyView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    private let sections: [(String, String)] = [
-        ("非官方校務工具", "本 App 為個人開發的第三方校務輔助工具，與國立宜蘭大學並無隸屬、合作或授權關係。校務資訊與服務狀態請以學校官方系統為準。"),
-        ("登入與校務資料", "本 App 使用您既有的學校帳號，不建立新帳號。帳號、密碼及登入憑證只用於連線至學校的校務、M 園區與圖書館服務，不傳送至開發者伺服器。登入憑證儲存在裝置 Keychain；姓名、課表、成績與畢業門檻等資料會在裝置上暫存，供查詢與重新整理使用。學校服務對連線與帳號資料的處理，依各服務的隱私政策辦理。"),
-        ("小工具、通知與即時動態", "課表與 Widget 預設使用本機資料，通知由裝置排程。只有在服務已設定、且您另行同意啟用「背景即時動態更新」後，才會傳送本次活動期間所需的課程名稱、教師、教室、時間與即時動態推播識別碼至開發者服務，經 Apple 推播更新鎖定畫面。資料經加密傳輸與儲存，不包含學號、密碼或校務登入憑證。活動資料於結束後清理，憑證最長有效 24 小時；服務中斷時於恢復後清理到期資料。關閉或登出會結束本機活動並請求刪除遠端資料；離線時待恢復連線重試。後端故障不影響本機課表與 Widget。請依您的隱私需求選擇是否啟用鎖定畫面顯示。"),
-        ("裝置權限", "相機用於掃描課堂點名 QR Code，或由您主動拍攝郵件附件；掃碼影像不儲存或上傳。拍攝含聲音的影片附件時會使用麥克風。您選取或拍攝的郵件附件可在裝置上暫存，並依您的操作上傳至校方郵件服務，不經開發者伺服器轉送。匯出課表時會要求行事曆寫入權限；啟用提醒時會要求通知權限。您可拒絕或在系統設定中撤回權限。圖書館通行碼只在記憶體顯示，離頁或進入背景時隱藏。"),
-        ("登出與資料清除", "在設定中登出，會移除本機登入憑證、校務快取、Widget 課表、網站登入資料、下載預覽暫存及已排程的通知，並結束課表即時動態。您自行匯出至行事曆、檔案或分享給其他 App 的副本須在目的 App 中刪除。登出不會刪除您的學校帳號或校方保存的資料；如需處理校方帳號，請聯絡學校。"),
-		("匿名使用統計與第三方服務", "登入成功或已登入的 App 回到前景時，App 會以隨機產生且不含帳號資訊的安裝 UUID 回報當日活躍。此識別碼只用於計算每日活躍、新增與累計安裝數，不含學號、姓名、帳密、校務憑證、課表、廣告識別碼或精確位置，也不會用於跨 App 或跨網站追蹤。每日明細保留 90 天，超過兩年未出現的安裝 UUID 會刪除。統計服務無法連線時不影響登入與其他功能。您透過問題回報主動寄出的內容，會用於回覆與處理該問題；寄送前可自行編輯。系統診斷與分享設定依 Apple 的政策辦理。開啟外部網站時，請另行參閱該網站的隱私政策。"),
-        ("Firebase 使用分析", "App 另使用 Google 的 Firebase Analytics，計算首次啟動、工作階段與使用時長。SDK 會以隨機產生的 App 執行個體識別碼處理使用事件，並處理 App 版本、裝置／作業系統資訊、SDK 診斷資訊及由網路連線推估的大略地區。這些資料傳送至 Google，用於改善 App；保存期間依 Firebase／Google Analytics 專案設定辦理，不沿用上述自有活躍統計的 90 天規則。\n\n本 App 使用不含 IDFA 的 Analytics 套件，停用 IDFV 收集、自動畫面紀錄及廣告儲存、廣告使用者資料與個人化廣告。App 不設定 Analytics User ID，不傳送學號、姓名、帳密、校務憑證、課表、成績或郵件內容，不將事件與學校帳號連結，也不將資料用於跨 App 或跨網站廣告追蹤。Analytics 連線失敗不影響登入及其他功能。"),
-        ("聯絡與更新", "若對資料處理有疑問，請寄信至 hi@chien.dev。政策更新會同步至 App 與公開政策頁面。更新日期：2026-10-05。")
-    ]
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-                ForEach(sections, id: \.0) { title, text in
-                    Text(title).font(.headline).foregroundStyle(.primary)
-                    Text(text).font(.body).foregroundStyle(.secondary)
-                }
-                Link("聯絡開發者", destination: URL(string: "mailto:hi@chien.dev")!)
-                Link("專案與支援", destination: URL(string: "https://github.com/qian403/NIU-app")!)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.large)
-        }
-        .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle("隱私權聲明")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("關閉") { dismiss() }
-            }
-        }
-    }
+enum PrivacyPolicy {
+    static let url = URL(string: "https://niu-life.app/privacy")!
 }
