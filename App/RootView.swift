@@ -77,7 +77,7 @@ struct RootView: View {
         .environmentObject(appState)
         .environmentObject(router)
         .onOpenURL { url in
-            guard let destination = CampusDestination(url: url) else { return }
+            guard let destination = CampusDestination(url: url) ?? CampusDestination(universalLink: url) else { return }
             router.open(destination)
         }
         .preferredColorScheme(currentAppearanceMode.colorScheme)

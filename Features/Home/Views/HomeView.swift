@@ -11,6 +11,8 @@ private enum HomeDestination: Hashable {
         case .academicCalendar: self = .academicCalendar
         case .attendance: self = .attendance
         case .library: self = .library
+        case .mail: self = .mail
+        case .moodle: self = .moodle
         }
     }
 }
