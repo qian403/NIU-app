@@ -29,12 +29,12 @@ struct MessageDetailView: View {
             MailAddress(name: message.senderName, address: message.senderAddress)]
     }
     private var recipients: [MailAddress] {
-        if let to = model.content?.toRecipients, !to.isEmpty { return to }
-        return (model.content?.to ?? message.to).map { MailAddress(displayString: $0) }
+        MailHeaderPresentation.addresses(structured: model.content?.toRecipients,
+            detail: model.content?.to, summary: message.to)
     }
     private var copies: [MailAddress] {
-        if let cc = model.content?.ccRecipients, !cc.isEmpty { return cc }
-        return (model.content?.cc ?? message.cc).map { MailAddress(displayString: $0) }
+        MailHeaderPresentation.addresses(structured: model.content?.ccRecipients,
+            detail: model.content?.cc, summary: message.cc)
     }
     private var avatarInitials: String {
         let name = message.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
