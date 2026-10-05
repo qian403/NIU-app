@@ -197,6 +197,14 @@ nonisolated struct MailAddress: Sendable, Equatable {
 }
 
 nonisolated enum MailHeaderPresentation {
+    static func addresses(structured: [MailAddress]?, detail: [String]?, summary: [String]) -> [MailAddress] {
+        let structured = (structured ?? []).filter { !$0.displayName.isEmpty }
+        if !structured.isEmpty { return structured }
+        let detail = (detail ?? []).map { MailAddress(displayString: $0) }.filter { !$0.displayName.isEmpty }
+        if !detail.isEmpty { return detail }
+        return summary.map { MailAddress(displayString: $0) }.filter { !$0.displayName.isEmpty }
+    }
+
     static func recipientSummary(_ recipients: [MailAddress]) -> String {
         recipientLabel(recipients) + (recipientCountLabel(recipients).map { " " + $0 } ?? "")
     }

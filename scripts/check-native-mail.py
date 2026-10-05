@@ -51,6 +51,11 @@ assert "NSAppTransportSecurity" not in app_info, "Mail must not introduce app-wi
 service_source = (root / "Features/Mail/Native/NativeMailService.swift").read_text()
 components_source = (root / "Features/Mail/Native/MailComponents.swift").read_text()
 assert "offset: 0, count: 1024" in service_source and "count - 8" not in service_source
+assert 'headerFields: ["To", "Cc"]' in service_source
+assert 'headerFields: ["From", "To", "Cc", "Reply-To", "Date", "Message-ID", "References"]' in service_source
+detail_source = (root / "Features/Mail/Native/MessageDetailView.swift").read_text()
+assert 'detail: model.content?.to, summary: message.to' in detail_source
+assert 'detail: model.content?.cc, summary: message.cc' in detail_source
 for role in ("inbox", "sent", "drafts", "trash", "junk"):
     assert f"folder.attributes.contains(.{role})" in service_source
 assert "Self.folderRole($0) == .trash" in service_source
@@ -709,6 +714,23 @@ func summary(_ uid: UInt32, folder: String = "INBOX") -> MailSummary {
 
         let namedRecipient = MailAddress(name: "王小明", address: "student@example.com")
         let unnamedRecipient = MailAddress(address: "peer@example.com")
+        precondition(MailHeaderPresentation.addresses(structured: nil, detail: nil,
+            summary: ["\"王小明\" <student@example.com>"]) == [namedRecipient],
+            "summary recipients remain visible while detail loads")
+        precondition(MailHeaderPresentation.addresses(structured: [], detail: [],
+            summary: ["peer@example.com"]) == [unnamedRecipient],
+            "empty detail must not erase known summary recipients or copies")
+        precondition(MailHeaderPresentation.addresses(structured: [MailAddress(address: " ")], detail: [" \n "],
+            summary: ["peer@example.com"]) == [unnamedRecipient],
+            "blank parsed addresses must not mask known recipients")
+        precondition(MailHeaderPresentation.addresses(structured: [], detail: ["\"王小明\" <student@example.com>"],
+            summary: ["peer@example.com"]) == [namedRecipient],
+            "raw detail addresses take precedence over summary")
+        precondition(MailHeaderPresentation.addresses(structured: [namedRecipient], detail: ["peer@example.com"],
+            summary: ["other@example.com"]) == [namedRecipient],
+            "structured detail names and addresses take precedence")
+        precondition(MailHeaderPresentation.addresses(structured: [], detail: [], summary: []).isEmpty,
+            "undisclosed recipients stay unknown without inventing the account address")
         precondition(MailHeaderPresentation.recipientSummary([]) == "收件人：未提供")
         precondition(MailHeaderPresentation.recipientSummary([namedRecipient]) == "收件人：王小明")
         precondition(MailHeaderPresentation.recipientSummary([unnamedRecipient]) == "收件人：peer@example.com")

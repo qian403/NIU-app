@@ -64,7 +64,8 @@ nonisolated struct NativeMailService: NativeMailServing {
                 try Task.checkCancellation()
                 let headers = try await server.fetchMessageInfos(
                     sequenceRange: SequenceNumber(UInt32(lower))...SequenceNumber(UInt32(min(count, lower + 49))),
-                    options: [.envelope, .internalDate, .flags, .bodyStructure])
+                    options: [.envelope, .internalDate, .flags, .bodyStructure],
+                    headerFields: ["To", "Cc"])
                 for header in headers where !header.flags.contains(.deleted) {
                     guard let uid = header.uid, uid.value > 0 else { throw NativeMailError.invalidResponse }
                     let structure = Message(header: header, parts: header.parts)
@@ -111,7 +112,9 @@ nonisolated struct NativeMailService: NativeMailServing {
         let selected = try await server.examineMailbox(key.folder)
         guard selected.uidValidity.value == key.validity else { throw NativeMailError.changedMailbox }
         try Task.checkCancellation()
-        guard let header = try await server.fetchMessageInfo(for: UID(key.uid), options: [.envelope, .bodyStructure], headerFields: ["References"]) else {
+        // Requested headers fill fields omitted by the server's ENVELOPE.
+        guard let header = try await server.fetchMessageInfo(for: UID(key.uid), options: [.envelope, .bodyStructure],
+            headerFields: ["From", "To", "Cc", "Reply-To", "Date", "Message-ID", "References"]) else {
             throw NativeMailError.missingMessage
         }
         return header
