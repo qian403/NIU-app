@@ -1089,13 +1089,59 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             var nodes = document.querySelectorAll(
                 '[data-region="notification"], .alert, .notification, [role="alert"], .errorbox, .errormessage, [data-rel="fatalerror"]'
             );
-            var notifications = Array.prototype.map.call(nodes, function(node) {
+            // Moodle keeps hidden message-drawer dialogues with role="alert" and
+            // screen-reader-only dismiss labels inside alerts; neither is the response.
+            var visibleNodes = Array.prototype.filter.call(nodes, function(node) {
+                return node.getClientRects().length > 0
+                    && !node.closest('[hidden], [aria-hidden="true"], [data-region="message-drawer"], .drawer');
+            });
+            var skipped = 'button, .close, .btn-close, [data-dismiss], [data-bs-dismiss], .sr-only, '
+                + '.visually-hidden, .accesshide, [hidden], [aria-hidden="true"]';
+            // Read only rendered text so CSS-hidden children cannot change the outcome.
+            function visibleText(node) {
+                var parts = [];
+                var lastBlock = null;
+                // Separate <br> and block boundaries without splitting inline elements.
+                function blockOf(element) {
+                    while (element && element !== node
+                        && getComputedStyle(element).display.indexOf('inline') === 0) {
+                        element = element.parentElement;
+                    }
+                    return element || node;
+                }
+                function isRendered(element) {
+                    var hiddenAncestor = element && element.closest(skipped);
+                    return !!element && !(hiddenAncestor && node.contains(hiddenAncestor))
+                        && element.getClientRects().length > 0
+                        && getComputedStyle(element).visibility === 'visible';
+                }
+                var walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+                while (walker.nextNode()) {
+                    // Elements are checked themselves; text nodes through their parent.
+                    if (walker.currentNode.nodeType === Node.ELEMENT_NODE) {
+                        if (walker.currentNode.tagName === 'BR' && isRendered(walker.currentNode)) { parts.push(' '); }
+                        continue;
+                    }
+                    var parent = walker.currentNode.parentElement;
+                    if (!isRendered(parent)) { continue; }
+                    var block = blockOf(parent);
+                    if (lastBlock && block !== lastBlock) { parts.push(' '); }
+                    lastBlock = block;
+                    parts.push(walker.currentNode.nodeValue);
+                }
+                return parts.join('').replace(/\\s+/g, ' ').trim();
+            }
+            var notifications = visibleNodes.map(function(node) {
                 return {
-                    text: (node.innerText || node.textContent || '').trim(),
-                    className: node.className || '',
+                    text: visibleText(node),
+                    className: typeof node.className === 'string' ? node.className : '',
                     type: node.getAttribute('data-type') || node.getAttribute('role') || ''
                 };
-            }).filter(function(item) { return item.text.length > 0; });
+            }).filter(function(item, index, items) {
+                return item.text.length > 0 && items.findIndex(function(other) {
+                    return other.text === item.text;
+                }) === index;
+            });
 
             var main = document.querySelector('#region-main') || document.body;
             var errorCodes = Array.prototype.map.call(document.querySelectorAll('a[href]'), function(link) {
