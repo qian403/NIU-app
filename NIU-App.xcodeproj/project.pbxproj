@@ -7,18 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F1BA01000000000000000001 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1BA02000000000000000001 /* GoogleService-Info.plist */; };
-		F1BA01000000000000000002 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1BA04000000000000000001 /* FirebaseCore */; };
-		F1BA01000000000000000003 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1BA04000000000000000002 /* FirebaseAnalyticsCore */; };
-		EBBA01000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift */; };
-		EBBA01000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */; };
-		EBBA01000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */; };
-		EBBA01000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */; };
-		FC680BB00000000000000002 /* EventReminderSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000002 /* EventReminderSettingsSection.swift */; };
-		FC680BB00000000000000001 /* SystemReminderNotificationCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000001 /* SystemReminderNotificationCenter.swift */; };
-		FC680BB00000000000000000 /* EventReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000000 /* EventReminderScheduler.swift */; };
 		0582D0EB51C8CB4ADCE9A96C /* Features/EventRegistration/Views/AppliedEventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */; };
 		07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */; };
+		0CA8802A7377A2C1B84807B5 /* Features/LeaveApplication/LeaveRecordsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */; };
 		0E182345FA814B44AC09A920 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */; };
 		0E182346FA814B44AC09A921 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */; };
 		10A32DB12F431F630009BB45 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 10A32DA52F431F630009BB45 /* Assets.xcassets */; };
@@ -53,6 +44,7 @@
 		5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */; };
 		5CCC1D48EA2F687ABDFA40C4 /* Features/EventRegistration/Views/ModifyRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */; };
 		62AD37F2E5383849FA2B6E5D /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */; };
+		6837A9CFB155D3637C4AEF0C /* Features/LeaveApplication/LeaveApplicationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */; };
 		6E8CC309E88345BB93EF517E /* Shared/Components/ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427CCA3AAC41141DAB4616E5 /* Shared/Components/ToastView.swift */; };
 		79E15ABF1868BE5DC2DB8453 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF54E564E0F41D38F6569A8 /* Features/EventRegistration/ViewModels/EventRegistration_Tab2_ViewModel.swift */; };
 		79E5A654058A1E7F384DB426 /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */; };
@@ -60,6 +52,7 @@
 		9E289C2BD2E28A6F0671725A /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */; };
 		A1B2C3D4E5F60718293A4B5D /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LICENSE */; };
 		A1F235FAF2EF434A85F33837 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */; };
+		A3F92B69AB62F31CCEAE8CA7 /* Features/LeaveApplication/LeaveApplicationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */; };
 		A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A9F0C1D2E3F4A5B6C7D8E9E0 /* PrivacyInfo.xcprivacy */; };
 		AA01BC01AA01BC01AA01BC01 /* NIU-LiveActivities/ClassScheduleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */; };
 		AA01BC02AA01BC02AA01BC02 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */; };
@@ -71,8 +64,11 @@
 		AA01BC08AA01BC08AA01BC08 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC18AA01BC18AA01BC18 /* Features/GradeHistory/ViewModels/GradeHistoryViewModel.swift */; };
 		AA01BC09AA01BC09AA01BC09 /* Features/GradeHistory/Views/GradeHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01BC19AA01BC19AA01BC19 /* Features/GradeHistory/Views/GradeHistoryView.swift */; };
 		AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02BC11AA02BC11AA02BC11 /* SettingsView.swift */; };
+		AB7B640F8AE70F5F30711662 /* Features/LeaveApplication/LeaveApplicationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFFEF15665AE96A8536333A9 /* Features/LeaveApplication/LeaveApplicationModels.swift */; };
 		ABCD01000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift */; };
 		ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD02000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift */; };
+		B06CE59EEC4F785ABF96EB5D /* Features/LeaveApplication/LeaveRecordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */; };
+		B1B43B8ED8D2514D57CF99CD /* Features/LeaveApplication/LeaveApplicationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37B60B3B17FBC7147D8005B /* Features/LeaveApplication/LeaveApplicationService.swift */; };
 		B3FE21C2F45E4762945AE2BC /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */; };
 		BB01MD01BB01MD01BB01MD01 /* Features/Moodle/Models/MoodleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */; };
 		BB01MD02BB01MD02BB01MD02 /* Features/Moodle/Services/MoodleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF02BB01MF02BB01MF02 /* Features/Moodle/Services/MoodleService.swift */; };
@@ -88,9 +84,9 @@
 		BB01MD12BB01MD12BB01MD12 /* Features/Moodle/Views/MoodleFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */; };
 		C01100010000000000000001 /* Core/Services/ConnectionStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000001 /* Core/Services/ConnectionStatusService.swift */; };
 		C01100010000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01100020000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift */; };
-		C0DE11010000000000000001 /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE11020000000000000001 /* AppUpdateChecker.swift */; };
 		C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE10020000000000000001 /* UsageHeartbeatClient.swift */; };
 		C0DE1100C0DE1100C0DE1100 /* LibraryEquipmentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1200C0DE1200C0DE1200 /* LibraryEquipmentModels.swift */; };
+		C0DE11010000000000000001 /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE11020000000000000001 /* AppUpdateChecker.swift */; };
 		C0DE1101C0DE1101C0DE1101 /* LibraryEquipmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1201C0DE1201C0DE1201 /* LibraryEquipmentService.swift */; };
 		C0DE1102C0DE1102C0DE1102 /* LibraryEquipmentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1202C0DE1202C0DE1202 /* LibraryEquipmentViewModel.swift */; };
 		C0DE1103C0DE1103C0DE1103 /* LibraryEquipmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE1203C0DE1203C0DE1203 /* LibraryEquipmentView.swift */; };
@@ -110,6 +106,12 @@
 		C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */; };
 		C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */; };
 		C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */; };
+		C0DEA071C0DEA071C0DEA071 /* Features/Moodle/Models/MoodleSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA072C0DEA072C0DEA072 /* Features/Moodle/Models/MoodleSearch.swift */; };
+		C0DEAF010000000000000001 /* Features/Moodle/Fixtures/MoodleUIFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000001 /* Features/Moodle/Fixtures/MoodleUIFixture.swift */; };
+		C0DEAF010000000000000002 /* Features/Moodle/Upcoming/MoodleUpcomingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000002 /* Features/Moodle/Upcoming/MoodleUpcomingModels.swift */; };
+		C0DEAF010000000000000003 /* Features/Moodle/Upcoming/MoodleUpcomingRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000003 /* Features/Moodle/Upcoming/MoodleUpcomingRepository.swift */; };
+		C0DEAF010000000000000004 /* Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000004 /* Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift */; };
+		C0DEAF010000000000000005 /* Features/Moodle/Upcoming/MoodleUpcomingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000005 /* Features/Moodle/Upcoming/MoodleUpcomingViews.swift */; };
 		C0DEB001C0DEB001C0DEB001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC001C0DEC001C0DEC001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift */; };
 		C0DEB002C0DEB002C0DEB002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC002C0DEC002C0DEC002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift */; };
 		C0DEB003C0DEB003C0DEB003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC003C0DEC003C0DEC003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift */; };
@@ -132,6 +134,22 @@
 		CA4A11010000000000000004 /* Features/Mail/Views/MailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000004 /* Features/Mail/Views/MailView.swift */; };
 		CA4A11010000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */; };
 		CA4A11010000000000000006 /* Features/Mail/Services/MailBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */; };
+		CA4A22010000000000000001 /* Features/Mail/Native/NativeMailModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000001 /* Features/Mail/Native/NativeMailModels.swift */; };
+		CA4A22010000000000000002 /* Features/Mail/Native/NativeMailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000002 /* Features/Mail/Native/NativeMailService.swift */; };
+		CA4A22010000000000000003 /* Features/Mail/Native/NativeMailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000003 /* Features/Mail/Native/NativeMailViewModel.swift */; };
+		CA4A22010000000000000004 /* Features/Mail/Native/NativeMailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000004 /* Features/Mail/Native/NativeMailView.swift */; };
+		CA4A22010000000000000005 /* Features/Mail/Native/MailboxListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000005 /* Features/Mail/Native/MailboxListView.swift */; };
+		CA4A22010000000000000006 /* Features/Mail/Native/MessageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000006 /* Features/Mail/Native/MessageListView.swift */; };
+		CA4A22010000000000000007 /* Features/Mail/Native/MessageDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000007 /* Features/Mail/Native/MessageDetailView.swift */; };
+		CA4A22010000000000000008 /* Features/Mail/Native/ComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000008 /* Features/Mail/Native/ComposeView.swift */; };
+		CA4A22010000000000000009 /* Features/Mail/Native/MailComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000009 /* Features/Mail/Native/MailComponents.swift */; };
+		CA4A2201000000000000000A /* Features/Mail/Native/NativeMailUIFixtureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000A /* Features/Mail/Native/NativeMailUIFixtureService.swift */; };
+		CA4A2201000000000000000B /* Features/Mail/Native/MailHTMLPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000B /* Features/Mail/Native/MailHTMLPolicy.swift */; };
+		CA4A2201000000000000000C /* Features/Mail/Native/MailHTMLView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000C /* Features/Mail/Native/MailHTMLView.swift */; };
+		CA4A22050000000000000001 /* SwiftMail in Frameworks */ = {isa = PBXBuildFile; productRef = CA4A22040000000000000001 /* SwiftMail */; };
+		CA4A22050000000000000002 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = CA4A22040000000000000002 /* SwiftSoup */; };
+		CA4A22050000000000000003 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = CA4A22040000000000000003 /* Logging */; };
+		CCFC6B361A9912347758BB9F /* Features/LeaveApplication/LeaveApplicationScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B8AB1F968DF451911034C /* Features/LeaveApplication/LeaveApplicationScript.swift */; };
 		D031C001D031C001D031C001 /* LibraryCodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C002D031C002D031C002 /* LibraryCodeService.swift */; };
 		D031C003D031C003D031C003 /* LibraryCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D031C004D031C004D031C004 /* LibraryCodeView.swift */; };
 		D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */; };
@@ -141,38 +159,23 @@
 		E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E96602F196B61E6AF082552 /* SSOLoginWebView.swift */; };
 		E82C05FDB268A0B09DCA82FB /* Features/EventRegistration/Views/EventRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99CB51CCF338C6F80F84C2B4 /* Features/EventRegistration/Views/EventRegistrationView.swift */; };
 		E880B97A27A0F77D4C7CFF25 /* Features/EventRegistration/Views/EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */; };
-		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
-		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
-		AB7B640F8AE70F5F30711662 /* Features/LeaveApplication/LeaveApplicationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFFEF15665AE96A8536333A9 /* Features/LeaveApplication/LeaveApplicationModels.swift */; };
-		CCFC6B361A9912347758BB9F /* Features/LeaveApplication/LeaveApplicationScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9B8AB1F968DF451911034C /* Features/LeaveApplication/LeaveApplicationScript.swift */; };
-		B1B43B8ED8D2514D57CF99CD /* Features/LeaveApplication/LeaveApplicationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37B60B3B17FBC7147D8005B /* Features/LeaveApplication/LeaveApplicationService.swift */; };
-		6837A9CFB155D3637C4AEF0C /* Features/LeaveApplication/LeaveApplicationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */; };
-		A3F92B69AB62F31CCEAE8CA7 /* Features/LeaveApplication/LeaveApplicationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */; };
-		B06CE59EEC4F785ABF96EB5D /* Features/LeaveApplication/LeaveRecordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */; };
-		0CA8802A7377A2C1B84807B5 /* Features/LeaveApplication/LeaveRecordsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */; };
-		CA4A22010000000000000001 /* NativeMailModels in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000001; };
-		CA4A22010000000000000002 /* NativeMailService in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000002; };
-		CA4A22010000000000000003 /* NativeMailViewModel in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000003; };
-		CA4A22010000000000000004 /* NativeMailView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000004; };
-		CA4A22050000000000000001 = {isa = PBXBuildFile; productRef = CA4A22040000000000000001; };
-		CA4A22050000000000000002 = {isa = PBXBuildFile; productRef = CA4A22040000000000000002; };
-		CA4A22050000000000000003 = {isa = PBXBuildFile; productRef = CA4A22040000000000000003; };
-		CA4A22010000000000000005 /* MailboxListView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000005; };
-		CA4A22010000000000000006 /* MessageListView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000006; };
-		CA4A22010000000000000007 /* MessageDetailView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000007; };
-		CA4A22010000000000000008 /* ComposeView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000008; };
-		CA4A22010000000000000009 /* MailComponents in Sources */ = {isa = PBXBuildFile; fileRef = CA4A22020000000000000009; };
-		CA4A2201000000000000000A /* NativeMailUIFixtureService in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000A; };
-		CA4A2201000000000000000B /* MailHTMLPolicy in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000B; };
-		CA4A2201000000000000000C /* MailHTMLView in Sources */ = {isa = PBXBuildFile; fileRef = CA4A2202000000000000000C; };
-		C0DEA071C0DEA071C0DEA071 /* MoodleSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA072C0DEA072C0DEA072; };
-		C0DEAF010000000000000001 /* MoodleUIFixture in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000001; };
-		C0DEAF010000000000000002 /* MoodleUpcomingModels in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000002; };
-		C0DEAF010000000000000003 /* MoodleUpcomingRepository in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000003; };
-		C0DEAF010000000000000004 /* MoodleUpcomingViewModel in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000004; };
-		C0DEAF010000000000000005 /* MoodleUpcomingViews in Sources */ = {isa = PBXBuildFile; fileRef = C0DEAF020000000000000005; };
 		EAFA00000000000000000A11 /* Features/EventRegistration/Stores/EventFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAFA00000000000000000A12 /* Features/EventRegistration/Stores/EventFavoritesStore.swift */; };
 		EAFA00000000000000000A21 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAFA00000000000000000A22 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift */; };
+		EBBA01000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */; };
+		EBBA01000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */; };
+		EBBA01000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */; };
+		EBBA01000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift */; };
+		EBED7335AE977895DAC8CFF7 /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */; };
+		F1BA01000000000000000001 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1BA02000000000000000001 /* GoogleService-Info.plist */; };
+		F1BA01000000000000000002 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1BA04000000000000000001 /* FirebaseCore */; };
+		F1BA01000000000000000003 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1BA04000000000000000002 /* FirebaseAnalyticsCore */; };
+		FC680BB00000000000000000 /* Features/EventRegistration/Reminders/EventReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000000 /* Features/EventRegistration/Reminders/EventReminderScheduler.swift */; };
+		FC680BB00000000000000001 /* Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000001 /* Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift */; };
+		FC680BB00000000000000002 /* Features/EventRegistration/Reminders/EventReminderSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC680CC00000000000000002 /* Features/EventRegistration/Reminders/EventReminderSettingsSection.swift */; };
+		FF2A4234B8932D33F9F0BDFA /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B1E986C68E2086B874E7E /* Features/EventRegistration/Views/EventRegistration_Tab1_View.swift */; };
+		C1A550010000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift */; };
+		C1A550010000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift */; };
+		C1A550010000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -200,14 +203,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		F1BA02000000000000000001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
-		EBBA02000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift; sourceTree = "<group>"; };
-		EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationView.swift; sourceTree = "<group>"; };
-		EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift; sourceTree = "<group>"; };
-		EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchEligibility.swift; sourceTree = "<group>"; };
-		FC680CC00000000000000002 /* EventReminderSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/EventReminderSettingsSection.swift; sourceTree = "<group>"; };
-		FC680CC00000000000000001 /* SystemReminderNotificationCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift; sourceTree = "<group>"; };
-		FC680CC00000000000000000 /* EventReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/EventReminderScheduler.swift; sourceTree = "<group>"; };
 		0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
 		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		10A32D662F431B8B0009BB45 /* NIU-APP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NIU-APP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -251,6 +246,7 @@
 		10D1F8772F80C57900034946 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/GraduationThresholdView.swift; sourceTree = "<group>"; };
 		164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Models/EventRegistrationModels.swift; sourceTree = "<group>"; };
+		192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsViewModel.swift; sourceTree = "<group>"; };
 		1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = academic_calendar.json; sourceTree = "<group>"; };
 		1CDAAAD8C4C04A3CAD92AF02 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
 		261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/ModifyRegistrationView.swift; sourceTree = "<group>"; };
@@ -264,6 +260,7 @@
 		6523DFB1FB5DD6E31208B5E8 /* Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/ViewModels/EnrollmentCertificateViewModel.swift; sourceTree = "<group>"; };
 		7887A6F400EF545D630B2778 /* Features/EventRegistration/Views/EventRegistration_Tab2_View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventRegistration_Tab2_View.swift; sourceTree = "<group>"; };
 		79B37637674AD03D73D42CB6 /* Features/EventRegistration/Views/EventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/EventDetailView.swift; sourceTree = "<group>"; };
+		8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsView.swift; sourceTree = "<group>"; };
 		87D75D58F4E44C2F2422C7DE /* Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistrationViewModel.swift; sourceTree = "<group>"; };
 		8CD1DDFD813A4DAA8FC29C83 /* Features/GraduationThreshold/Models/GraduationThresholdModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Models/GraduationThresholdModels.swift; sourceTree = "<group>"; };
 		8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift; sourceTree = "<group>"; };
@@ -298,10 +295,12 @@
 		BB01MF10BB01MF10BB01MF10 /* Features/Moodle/Views/MoodleWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleWebView.swift; sourceTree = "<group>"; };
 		BB01MF11BB01MF11BB01MF11 /* Features/Moodle/Services/MoodleSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Services/MoodleSessionManager.swift; sourceTree = "<group>"; };
 		BB01MF12BB01MF12BB01MF12 /* Features/Moodle/Views/MoodleFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleFileViewer.swift; sourceTree = "<group>"; };
+		BC9B8AB1F968DF451911034C /* Features/LeaveApplication/LeaveApplicationScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationScript.swift; sourceTree = "<group>"; };
+		BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationView.swift; sourceTree = "<group>"; };
 		C01100020000000000000001 /* Core/Services/ConnectionStatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Services/ConnectionStatusService.swift; sourceTree = SOURCE_ROOT; };
 		C01100020000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/ViewModels/SettingsConnectionViewModel.swift; sourceTree = SOURCE_ROOT; };
-		C0DE11020000000000000001 /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
 		C0DE10020000000000000001 /* UsageHeartbeatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageHeartbeatClient.swift; sourceTree = "<group>"; };
+		C0DE11020000000000000001 /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
 		C0DE1200C0DE1200C0DE1200 /* LibraryEquipmentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentModels.swift; sourceTree = "<group>"; };
 		C0DE1201C0DE1201C0DE1201 /* LibraryEquipmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentService.swift; sourceTree = "<group>"; };
 		C0DE1202C0DE1202C0DE1202 /* LibraryEquipmentViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryEquipmentViewModel.swift; sourceTree = "<group>"; };
@@ -322,6 +321,12 @@
 		C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift; sourceTree = "<group>"; };
 		C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseTabViews.swift; sourceTree = "<group>"; };
 		C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift; sourceTree = "<group>"; };
+		C0DEA072C0DEA072C0DEA072 /* Features/Moodle/Models/MoodleSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Models/MoodleSearch.swift; sourceTree = "<group>"; };
+		C0DEAF020000000000000001 /* Features/Moodle/Fixtures/MoodleUIFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Fixtures/MoodleUIFixture.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000002 /* Features/Moodle/Upcoming/MoodleUpcomingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingModels.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000003 /* Features/Moodle/Upcoming/MoodleUpcomingRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingRepository.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000004 /* Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift; sourceTree = SOURCE_ROOT; };
+		C0DEAF020000000000000005 /* Features/Moodle/Upcoming/MoodleUpcomingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViews.swift; sourceTree = SOURCE_ROOT; };
 		C0DEC001C0DEC001C0DEC001 /* Features/Moodle/Questions/MoodleQuestionActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionActivity.swift; sourceTree = "<group>"; };
 		C0DEC002C0DEC002C0DEC002 /* Features/Moodle/Questions/MoodleQuestionsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionsRepository.swift; sourceTree = "<group>"; };
 		C0DEC003C0DEC003C0DEC003 /* Features/Moodle/Questions/MoodleQuestionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Questions/MoodleQuestionsViewModel.swift; sourceTree = "<group>"; };
@@ -342,45 +347,46 @@
 		CA4A11020000000000000004 /* Features/Mail/Views/MailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Views/MailView.swift; sourceTree = SOURCE_ROOT; };
 		CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailCaptchaRecognizer.swift; sourceTree = SOURCE_ROOT; };
 		CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailBrowser.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000001 /* Features/Mail/Native/NativeMailModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailModels.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000002 /* Features/Mail/Native/NativeMailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailService.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000003 /* Features/Mail/Native/NativeMailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailViewModel.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000004 /* Features/Mail/Native/NativeMailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000005 /* Features/Mail/Native/MailboxListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailboxListView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000006 /* Features/Mail/Native/MessageListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MessageListView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000007 /* Features/Mail/Native/MessageDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MessageDetailView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000008 /* Features/Mail/Native/ComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/ComposeView.swift; sourceTree = SOURCE_ROOT; };
+		CA4A22020000000000000009 /* Features/Mail/Native/MailComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailComponents.swift; sourceTree = SOURCE_ROOT; };
+		CA4A2202000000000000000A /* Features/Mail/Native/NativeMailUIFixtureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailUIFixtureService.swift; sourceTree = SOURCE_ROOT; };
+		CA4A2202000000000000000B /* Features/Mail/Native/MailHTMLPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLPolicy.swift; sourceTree = SOURCE_ROOT; };
+		CA4A2202000000000000000C /* Features/Mail/Native/MailHTMLView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLView.swift; sourceTree = SOURCE_ROOT; };
 		D031C002D031C002D031C002 /* LibraryCodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeService.swift; sourceTree = "<group>"; };
 		D031C004D031C004D031C004 /* LibraryCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCodeView.swift; sourceTree = "<group>"; };
 		D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/CampusNavigation.swift"; sourceTree = SOURCE_ROOT; };
 		D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Models/AcademicCalendarModels.swift; sourceTree = "<group>"; };
 		DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift; sourceTree = "<group>"; };
+		DFFEF15665AE96A8536333A9 /* Features/LeaveApplication/LeaveApplicationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationModels.swift; sourceTree = "<group>"; };
 		E244B8906CF482139A4AF67C /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
 		E47C1BE5D7630F9FAED7C949 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift; sourceTree = "<group>"; };
 		E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift; sourceTree = "<group>"; };
 		E8DE8196BC5D860754676DD3 /* Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/ViewModels/EventRegistration_Tab1_ViewModel.swift; sourceTree = "<group>"; };
-		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
-		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
-		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
-		DFFEF15665AE96A8536333A9 /* Features/LeaveApplication/LeaveApplicationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationModels.swift; sourceTree = "<group>"; };
-		BC9B8AB1F968DF451911034C /* Features/LeaveApplication/LeaveApplicationScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationScript.swift; sourceTree = "<group>"; };
-		F37B60B3B17FBC7147D8005B /* Features/LeaveApplication/LeaveApplicationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationService.swift; sourceTree = "<group>"; };
-		BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationView.swift; sourceTree = "<group>"; };
 		EA547CE8B6C2DBE9F469EB56 /* Features/LeaveApplication/LeaveApplicationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationViewModel.swift; sourceTree = "<group>"; };
-		8548113A278EFEE2095A2F11 /* Features/LeaveApplication/LeaveRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsView.swift; sourceTree = "<group>"; };
-		192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsViewModel.swift; sourceTree = "<group>"; };
-		CA4A22020000000000000001 /* NativeMailModels */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailModels.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000002 /* NativeMailService */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailService.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000003 /* NativeMailViewModel */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailViewModel.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000004 /* NativeMailView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailView.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000005 /* MailboxListView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailboxListView.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000006 /* MessageListView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MessageListView.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000007 /* MessageDetailView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MessageDetailView.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000008 /* ComposeView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/ComposeView.swift; sourceTree = SOURCE_ROOT; };
-		CA4A22020000000000000009 /* MailComponents */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailComponents.swift; sourceTree = SOURCE_ROOT; };
-		CA4A2202000000000000000A /* NativeMailUIFixtureService */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/NativeMailUIFixtureService.swift; sourceTree = SOURCE_ROOT; };
-		CA4A2202000000000000000B /* MailHTMLPolicy */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLPolicy.swift; sourceTree = SOURCE_ROOT; };
-		CA4A2202000000000000000C /* MailHTMLView */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Native/MailHTMLView.swift; sourceTree = SOURCE_ROOT; };
-		C0DEA072C0DEA072C0DEA072 /* MoodleSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Models/MoodleSearch.swift; sourceTree = "<group>"; };
-		C0DEAF020000000000000001 /* MoodleUIFixture */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Fixtures/MoodleUIFixture.swift; sourceTree = SOURCE_ROOT; };
-		C0DEAF020000000000000002 /* MoodleUpcomingModels */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingModels.swift; sourceTree = SOURCE_ROOT; };
-		C0DEAF020000000000000003 /* MoodleUpcomingRepository */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingRepository.swift; sourceTree = SOURCE_ROOT; };
-		C0DEAF020000000000000004 /* MoodleUpcomingViewModel */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift; sourceTree = SOURCE_ROOT; };
-		C0DEAF020000000000000005 /* MoodleUpcomingViews */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Upcoming/MoodleUpcomingViews.swift; sourceTree = SOURCE_ROOT; };
 		EAFA00000000000000000A12 /* Features/EventRegistration/Stores/EventFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Stores/EventFavoritesStore.swift; sourceTree = "<group>"; };
 		EAFA00000000000000000A22 /* Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Fixtures/EventFavoritesUIFixture.swift; sourceTree = "<group>"; };
+		EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchEligibility.swift; sourceTree = "<group>"; };
+		EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift; sourceTree = "<group>"; };
+		EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationView.swift; sourceTree = "<group>"; };
+		EBBA02000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift; sourceTree = "<group>"; };
+		F1BA02000000000000000001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Views/AppliedEventDetailView.swift; sourceTree = "<group>"; };
+		F37B60B3B17FBC7147D8005B /* Features/LeaveApplication/LeaveApplicationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveApplicationService.swift; sourceTree = "<group>"; };
+		F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift; sourceTree = "<group>"; };
+		FC680CC00000000000000000 /* Features/EventRegistration/Reminders/EventReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/EventReminderScheduler.swift; sourceTree = "<group>"; };
+		FC680CC00000000000000001 /* Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift; sourceTree = "<group>"; };
+		FC680CC00000000000000002 /* Features/EventRegistration/Reminders/EventReminderSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Reminders/EventReminderSettingsSection.swift; sourceTree = "<group>"; };
+		FF5FA8CC8B061BC31BC1FE86 /* SSOLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOLoginWebView.swift; sourceTree = "<group>"; };
+		C1A550020000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift; sourceTree = "<group>"; };
+		C1A550020000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleWeekView.swift; sourceTree = "<group>"; };
+		C1A550020000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -411,9 +417,9 @@
 			files = (
 				F1BA01000000000000000002 /* FirebaseCore in Frameworks */,
 				F1BA01000000000000000003 /* FirebaseAnalyticsCore in Frameworks */,
-				CA4A22050000000000000001,
-				CA4A22050000000000000002,
-				CA4A22050000000000000003,
+				CA4A22050000000000000001 /* SwiftMail in Frameworks */,
+				CA4A22050000000000000002 /* SwiftSoup in Frameworks */,
+				CA4A22050000000000000003 /* Logging in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -774,14 +780,17 @@
 				EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */,
 				EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */,
 				EBBA02000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift */,
-				FC680CC00000000000000000 /* EventReminderScheduler.swift */,
-				FC680CC00000000000000001 /* SystemReminderNotificationCenter.swift */,
-				FC680CC00000000000000002 /* EventReminderSettingsSection.swift */,
+				FC680CC00000000000000000 /* Features/EventRegistration/Reminders/EventReminderScheduler.swift */,
+				FC680CC00000000000000001 /* Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift */,
+				FC680CC00000000000000002 /* Features/EventRegistration/Reminders/EventReminderSettingsSection.swift */,
 				164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */,
 				AA01BC11AA01BC11AA01BC11 /* NIU-LiveActivities/ClassScheduleModels.swift */,
 				AA01BC12AA01BC12AA01BC12 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift */,
 				AA01BC13AA01BC13AA01BC13 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift */,
 				AA01BC14AA01BC14AA01BC14 /* Features/ClassSchedule/Views/ClassScheduleView.swift */,
+				C1A550020000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift */,
+				C1A550020000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift */,
+				C1A550020000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift */,
 				AA01BC15AA01BC15AA01BC15 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift */,
 				AA01BC16AA01BC16AA01BC16 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift */,
 				BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */,
@@ -803,7 +812,7 @@
 				C0DEA018C0DEA018C0DEA018 /* Features/Moodle/Attendance/MoodleAttendanceView.swift */,
 				C0DEA01AC0DEA01AC0DEA01A /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift */,
 				C0DEA01CC0DEA01CC0DEA01C /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift */,
-				C0DEA072C0DEA072C0DEA072 /* MoodleSearch.swift */,
+				C0DEA072C0DEA072C0DEA072 /* Features/Moodle/Models/MoodleSearch.swift */,
 				C0DEA022C0DEA022C0DEA022 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift */,
 				C0DEA024C0DEA024C0DEA024 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift */,
 				C0DEC005C0DEC005C0DEC005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift */,
@@ -821,23 +830,23 @@
 				DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */,
 				CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */,
 				CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */,
-				CA4A22020000000000000001 /* NativeMailModels */,
-				CA4A22020000000000000002 /* NativeMailService */,
-				CA4A22020000000000000003 /* NativeMailViewModel */,
-				CA4A22020000000000000004 /* NativeMailView */,
-				CA4A22020000000000000009 /* MailComponents */,
-				CA4A2202000000000000000B /* MailHTMLPolicy */,
-				CA4A2202000000000000000C /* MailHTMLView */,
-				CA4A2202000000000000000A /* NativeMailUIFixtureService */,
-				C0DEAF020000000000000002 /* MoodleUpcomingModels */,
-				C0DEAF020000000000000003 /* MoodleUpcomingRepository */,
-				C0DEAF020000000000000004 /* MoodleUpcomingViewModel */,
-				C0DEAF020000000000000005 /* MoodleUpcomingViews */,
-				C0DEAF020000000000000001 /* MoodleUIFixture */,
-				CA4A22020000000000000008 /* ComposeView */,
-				CA4A22020000000000000007 /* MessageDetailView */,
-				CA4A22020000000000000006 /* MessageListView */,
-				CA4A22020000000000000005 /* MailboxListView */,
+				CA4A22020000000000000001 /* Features/Mail/Native/NativeMailModels.swift */,
+				CA4A22020000000000000002 /* Features/Mail/Native/NativeMailService.swift */,
+				CA4A22020000000000000003 /* Features/Mail/Native/NativeMailViewModel.swift */,
+				CA4A22020000000000000004 /* Features/Mail/Native/NativeMailView.swift */,
+				CA4A22020000000000000009 /* Features/Mail/Native/MailComponents.swift */,
+				CA4A2202000000000000000B /* Features/Mail/Native/MailHTMLPolicy.swift */,
+				CA4A2202000000000000000C /* Features/Mail/Native/MailHTMLView.swift */,
+				CA4A2202000000000000000A /* Features/Mail/Native/NativeMailUIFixtureService.swift */,
+				C0DEAF020000000000000002 /* Features/Moodle/Upcoming/MoodleUpcomingModels.swift */,
+				C0DEAF020000000000000003 /* Features/Moodle/Upcoming/MoodleUpcomingRepository.swift */,
+				C0DEAF020000000000000004 /* Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift */,
+				C0DEAF020000000000000005 /* Features/Moodle/Upcoming/MoodleUpcomingViews.swift */,
+				C0DEAF020000000000000001 /* Features/Moodle/Fixtures/MoodleUIFixture.swift */,
+				CA4A22020000000000000008 /* Features/Mail/Native/ComposeView.swift */,
+				CA4A22020000000000000007 /* Features/Mail/Native/MessageDetailView.swift */,
+				CA4A22020000000000000006 /* Features/Mail/Native/MessageListView.swift */,
+				CA4A22020000000000000005 /* Features/Mail/Native/MailboxListView.swift */,
 				CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */,
 				CA4A11020000000000000002 /* Features/Mail/Services/MailService.swift */,
 				CA4A11020000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift */,
@@ -971,9 +980,9 @@
 			packageProductDependencies = (
 				F1BA04000000000000000001 /* FirebaseCore */,
 				F1BA04000000000000000002 /* FirebaseAnalyticsCore */,
-				CA4A22040000000000000001,
-				CA4A22040000000000000002,
-				CA4A22040000000000000003,
+				CA4A22040000000000000001 /* SwiftMail */,
+				CA4A22040000000000000002 /* SwiftSoup */,
+				CA4A22040000000000000003 /* Logging */,
 			);
 			productName = "NIU-APP";
 			productReference = 10A32D662F431B8B0009BB45 /* NIU-APP.app */;
@@ -1028,7 +1037,12 @@
 			);
 			mainGroup = 10A32D5D2F431B8B0009BB45;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (CA4A22030000000000000001, CA4A22030000000000000002, CA4A22030000000000000003, F1BA03000000000000000001);
+			packageReferences = (
+				CA4A22030000000000000001 /* XCRemoteSwiftPackageReference "SwiftMail" */,
+				CA4A22030000000000000002 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+				CA4A22030000000000000003 /* XCRemoteSwiftPackageReference "swift-log" */,
+				F1BA03000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 10A32D672F431B8B0009BB45 /* Products */;
 			projectDirPath = "";
@@ -1078,23 +1092,23 @@
 			files = (
 				CA4A11010000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift in Sources */,
 				CA4A11010000000000000006 /* Features/Mail/Services/MailBrowser.swift in Sources */,
-				CA4A22010000000000000001 /* NativeMailModels in Sources */,
-				CA4A22010000000000000002 /* NativeMailService in Sources */,
-				CA4A22010000000000000003 /* NativeMailViewModel in Sources */,
-				CA4A22010000000000000004 /* NativeMailView in Sources */,
-				CA4A22010000000000000009 /* MailComponents in Sources */,
-				CA4A2201000000000000000B /* MailHTMLPolicy in Sources */,
-				CA4A2201000000000000000C /* MailHTMLView in Sources */,
-				CA4A2201000000000000000A /* NativeMailUIFixtureService in Sources */,
-				C0DEAF010000000000000002 /* MoodleUpcomingModels in Sources */,
-				C0DEAF010000000000000003 /* MoodleUpcomingRepository in Sources */,
-				C0DEAF010000000000000004 /* MoodleUpcomingViewModel in Sources */,
-				C0DEAF010000000000000005 /* MoodleUpcomingViews in Sources */,
-				C0DEAF010000000000000001 /* MoodleUIFixture in Sources */,
-				CA4A22010000000000000008 /* ComposeView in Sources */,
-				CA4A22010000000000000007 /* MessageDetailView in Sources */,
-				CA4A22010000000000000006 /* MessageListView in Sources */,
-				CA4A22010000000000000005 /* MailboxListView in Sources */,
+				CA4A22010000000000000001 /* Features/Mail/Native/NativeMailModels.swift in Sources */,
+				CA4A22010000000000000002 /* Features/Mail/Native/NativeMailService.swift in Sources */,
+				CA4A22010000000000000003 /* Features/Mail/Native/NativeMailViewModel.swift in Sources */,
+				CA4A22010000000000000004 /* Features/Mail/Native/NativeMailView.swift in Sources */,
+				CA4A22010000000000000009 /* Features/Mail/Native/MailComponents.swift in Sources */,
+				CA4A2201000000000000000B /* Features/Mail/Native/MailHTMLPolicy.swift in Sources */,
+				CA4A2201000000000000000C /* Features/Mail/Native/MailHTMLView.swift in Sources */,
+				CA4A2201000000000000000A /* Features/Mail/Native/NativeMailUIFixtureService.swift in Sources */,
+				C0DEAF010000000000000002 /* Features/Moodle/Upcoming/MoodleUpcomingModels.swift in Sources */,
+				C0DEAF010000000000000003 /* Features/Moodle/Upcoming/MoodleUpcomingRepository.swift in Sources */,
+				C0DEAF010000000000000004 /* Features/Moodle/Upcoming/MoodleUpcomingViewModel.swift in Sources */,
+				C0DEAF010000000000000005 /* Features/Moodle/Upcoming/MoodleUpcomingViews.swift in Sources */,
+				C0DEAF010000000000000001 /* Features/Moodle/Fixtures/MoodleUIFixture.swift in Sources */,
+				CA4A22010000000000000008 /* Features/Mail/Native/ComposeView.swift in Sources */,
+				CA4A22010000000000000007 /* Features/Mail/Native/MessageDetailView.swift in Sources */,
+				CA4A22010000000000000006 /* Features/Mail/Native/MessageListView.swift in Sources */,
+				CA4A22010000000000000005 /* Features/Mail/Native/MailboxListView.swift in Sources */,
 				CA4A11010000000000000001 /* Features/Mail/Models/MailModels.swift in Sources */,
 				CA4A11010000000000000002 /* Features/Mail/Services/MailService.swift in Sources */,
 				CA4A11010000000000000003 /* Features/Mail/ViewModels/MailViewModel.swift in Sources */,
@@ -1122,9 +1136,9 @@
 				EBBA01000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift in Sources */,
 				EBBA01000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift in Sources */,
 				EBBA01000000000000000001 /* Features/EventRegistration/Batch/EventBatchEligibility.swift in Sources */,
-				FC680BB00000000000000000 /* EventReminderScheduler.swift in Sources */,
-				FC680BB00000000000000001 /* SystemReminderNotificationCenter.swift in Sources */,
-				FC680BB00000000000000002 /* EventReminderSettingsSection.swift in Sources */,
+				FC680BB00000000000000000 /* Features/EventRegistration/Reminders/EventReminderScheduler.swift in Sources */,
+				FC680BB00000000000000001 /* Features/EventRegistration/Reminders/SystemReminderNotificationCenter.swift in Sources */,
+				FC680BB00000000000000002 /* Features/EventRegistration/Reminders/EventReminderSettingsSection.swift in Sources */,
 				19478269EF566FF3F3639DDE /* Features/EventRegistration/Models/EventRegistrationModels.swift in Sources */,
 				E778712A574350C34D27E52E /* SSOLoginWebView.swift in Sources */,
 				10A32DB22F431F630009BB45 /* View+Extensions.swift in Sources */,
@@ -1157,6 +1171,9 @@
 				AA01BC02AA01BC02AA01BC02 /* Features/ClassSchedule/Services/ClassScheduleWebView.swift in Sources */,
 				AA01BC03AA01BC03AA01BC03 /* Features/ClassSchedule/ViewModels/ClassScheduleViewModel.swift in Sources */,
 				AA01BC04AA01BC04AA01BC04 /* Features/ClassSchedule/Views/ClassScheduleView.swift in Sources */,
+				C1A550010000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift in Sources */,
+				C1A550010000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift in Sources */,
+				C1A550010000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift in Sources */,
 				AA01BC05AA01BC05AA01BC05 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift in Sources */,
 				AA01BC06AA01BC06AA01BC06 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift in Sources */,
 				AA01BC07AA01BC07AA01BC07 /* Features/GradeHistory/Models/GradeHistoryModels.swift in Sources */,
@@ -1181,7 +1198,7 @@
 				C0DEA017C0DEA017C0DEA017 /* Features/Moodle/Attendance/MoodleAttendanceView.swift in Sources */,
 				C0DEA019C0DEA019C0DEA019 /* Features/Moodle/Attendance/MoodleAttendanceViewModel.swift in Sources */,
 				C0DEA01BC0DEA01BC0DEA01B /* Features/Moodle/Attendance/MoodleAttendanceRecordViews.swift in Sources */,
-				C0DEA071C0DEA071C0DEA071 /* MoodleSearch.swift in Sources */,
+				C0DEA071C0DEA071C0DEA071 /* Features/Moodle/Models/MoodleSearch.swift in Sources */,
 				C0DEA021C0DEA021C0DEA021 /* Features/Moodle/CourseDetail/MoodleCourseTabViews.swift in Sources */,
 				C0DEA023C0DEA023C0DEA023 /* Features/Moodle/CourseDetail/MoodleCourseResourcesView.swift in Sources */,
 				C0DEB005C0DEB005C0DEB005 /* Features/Moodle/Questions/MoodleQuestionWebUIDelegate.swift in Sources */,
@@ -1245,16 +1262,6 @@
 			targetProxy = 10D1F8872F80C57A00034946 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-		CA4A22030000000000000001 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/Cocoanetics/SwiftMail.git"; requirement = {kind = revision; revision = b45ab8cbb08d989ec7dcad139b8bfbc0f1f080cc; }; };
-		CA4A22040000000000000001 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000001; productName = SwiftMail; };
-		CA4A22030000000000000002 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/scinfu/SwiftSoup.git"; requirement = {kind = exactVersion; version = 2.9.6; }; };
-		CA4A22040000000000000002 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000002; productName = SwiftSoup; };
-		CA4A22030000000000000003 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/apple/swift-log.git"; requirement = {kind = exactVersion; version = 1.6.4; }; };
-		CA4A22040000000000000003 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000003; productName = Logging; };
-		F1BA03000000000000000001 /* Firebase */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git"; requirement = {kind = exactVersion; version = 12.19.2; }; };
-		F1BA04000000000000000001 /* FirebaseCore */ = {isa = XCSwiftPackageProductDependency; package = F1BA03000000000000000001 /* Firebase */; productName = FirebaseCore; };
-		F1BA04000000000000000002 /* FirebaseAnalyticsCore */ = {isa = XCSwiftPackageProductDependency; package = F1BA03000000000000000001 /* Firebase */; productName = FirebaseAnalyticsCore; };
 
 /* Begin XCBuildConfiguration section */
 		10A32D6F2F431B8C0009BB45 /* Debug */ = {
@@ -1408,7 +1415,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.2.0;
@@ -1464,7 +1471,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.2.0;
@@ -1502,7 +1509,7 @@
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "NIU-LiveActivities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1535,7 +1542,7 @@
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "NIU-LiveActivities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1587,6 +1594,69 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CA4A22030000000000000001 /* XCRemoteSwiftPackageReference "SwiftMail" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Cocoanetics/SwiftMail.git";
+			requirement = {
+				kind = revision;
+				revision = b45ab8cbb08d989ec7dcad139b8bfbc0f1f080cc;
+			};
+		};
+		CA4A22030000000000000002 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/scinfu/SwiftSoup.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.6;
+			};
+		};
+		CA4A22030000000000000003 /* XCRemoteSwiftPackageReference "swift-log" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-log.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.6.4;
+			};
+		};
+		F1BA03000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 12.19.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CA4A22040000000000000001 /* SwiftMail */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CA4A22030000000000000001 /* XCRemoteSwiftPackageReference "SwiftMail" */;
+			productName = SwiftMail;
+		};
+		CA4A22040000000000000002 /* SwiftSoup */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CA4A22030000000000000002 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
+			productName = SwiftSoup;
+		};
+		CA4A22040000000000000003 /* Logging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CA4A22030000000000000003 /* XCRemoteSwiftPackageReference "swift-log" */;
+			productName = Logging;
+		};
+		F1BA04000000000000000001 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1BA03000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		F1BA04000000000000000002 /* FirebaseAnalyticsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1BA03000000000000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalyticsCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 10A32D5E2F431B8B0009BB45 /* Project object */;
 }

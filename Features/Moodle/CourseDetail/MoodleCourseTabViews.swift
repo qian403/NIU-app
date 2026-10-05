@@ -440,7 +440,7 @@ struct MoodleDiscussionRow: View {
         }
         .padding(Theme.Spacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .adaptiveGlass(interactive: true, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -477,7 +477,7 @@ private struct MoodleAssignmentRow: View {
         }
         .padding(Theme.Spacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .adaptiveGlass(interactive: true, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     @ViewBuilder

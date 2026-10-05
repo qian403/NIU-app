@@ -77,7 +77,10 @@ enum CampusQuickAction: String, AppEnum {
 /// Target membership must include the app so the foreground intent uses its router.
 struct OpenCampusIntent: OpenIntent {
     static var title: LocalizedStringResource { "開啟校園功能" }
+    @available(iOS 26.0, *)
     static var supportedModes: IntentModes { .foreground }
+    /// iOS 18–25 have no supportedModes; iOS 26 reads supportedModes instead.
+    static var openAppWhenRun: Bool { true }
     static var authenticationPolicy: IntentAuthenticationPolicy { .requiresAuthentication }
 
     @Parameter(title: "功能") var target: CampusQuickAction
