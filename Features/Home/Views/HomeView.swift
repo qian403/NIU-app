@@ -46,7 +46,9 @@ struct HomeView: View {
         guard isNameMasked else { return appState.currentUser?.name ?? "User" }
         let name = appState.currentUser?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !name.isEmpty else { return "同學" }
-        let surname = Self.compoundSurnames.first { name.hasPrefix($0) } ?? String(name.prefix(1))
+        let surname = Self.compoundSurnames.first {
+            name.hasPrefix($0) && name.count > $0.count
+        } ?? String(name.prefix(1))
         return "\(surname)同學"
     }
 
@@ -275,8 +277,7 @@ struct HomeView: View {
         // The resolved name reserves space and is the only name exposed to VoiceOver.
         Text(homeDisplayName)
             .font(font)
-            .foregroundStyle(Theme.Colors.label)
-            .opacity(scrambledName == nil ? 1 : 0)
+            .foregroundStyle(scrambledName == nil ? Theme.Colors.label : Color.clear)
             .overlay(alignment: .leading) {
                 if let scrambledName {
                     Text(scrambledName)
