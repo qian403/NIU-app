@@ -106,8 +106,24 @@ import Foundation
 
 @main struct CheckNavigation {
     @MainActor static func main() async throws {
-        for destination in [CampusDestination.classSchedule, .academicCalendar, .attendance, .library] {
+        for destination in [CampusDestination.classSchedule, .academicCalendar, .attendance, .library, .mail, .moodle] {
             precondition(CampusDestination(url: destination.url) == destination)
+        }
+        let links: [(String, CampusDestination)] = [("schedule", .classSchedule), ("calendar", .academicCalendar),
+            ("attendance", .attendance), ("library", .library), ("mail", .mail), ("moodle", .moodle)]
+        for (path, destination) in links {
+            for value in ["https://niu-life.app/open/\(path)", "https://NIU-LIFE.app/open/\(path)/",
+                          "https://niu-life.app/open/\(path)?fbclid=ignored"] {
+                precondition(CampusDestination(universalLink: URL(string: value)!) == destination, value)
+            }
+        }
+        for value in ["https://niu-life.app/download", "https://niu-life.app/", "https://niu-life.app/open/unknown",
+                      "https://niu-life.app/open/library/extra", "https://niu-life.app/open", "https://niu-life.app/Open/library",
+                      "http://niu-life.app/open/library", "https://www.niu-life.app/open/library",
+                      "https://evil.example/open/library", "https://niu-life.app.evil.example/open/library",
+                      "https://user:secret@niu-life.app/open/library", "https://niu-life.app:8443/open/library",
+                      "niuapp://library"] {
+            precondition(CampusDestination(universalLink: URL(string: value)!) == nil, value)
         }
         for value in ["https://example.org/attendance", "niuapp://attendance?qrpass=bad", "niuapp://library/anything", "niuapp://unknown", "niuapp://user:password@library", "niuapp://library:99", "niuapp://attendance#scan"] {
             precondition(CampusDestination(url: URL(string: value)!) == nil)
@@ -125,7 +141,7 @@ import Foundation
         precondition(router.pendingRequest?.destination == .attendance)
         _ = try await OpenCampusIntent(.library).perform()
         precondition(router.pendingRequest?.destination == .library)
-        print("PASS: destination allowlist, repeat requests, pending navigation, and both foreground intents")
+        print("PASS: destination allowlist, niu-life.app universal links, repeat requests, pending navigation, and both foreground intents")
     }
 }
 '''

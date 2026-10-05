@@ -8,8 +8,30 @@ enum CampusDestination: String, Hashable {
     case academicCalendar = "academic-calendar"
     case attendance
     case library
+    case mail
+    case moodle
 
     var url: URL { URL(string: "niuapp://\(rawValue)")! }
+
+    /// Public links shared with the Android app (`https://niu-life.app/open/<feature>`).
+    /// `/download` and unknown paths only open the app. Query items added by social apps
+    /// are ignored, never read.
+    init?(universalLink url: URL) {
+        guard url.scheme?.lowercased() == "https", url.host?.lowercased() == "niu-life.app",
+              url.user == nil, url.password == nil, url.port == nil else { return nil }
+        let parts = url.path.split(separator: "/", omittingEmptySubsequences: false).dropFirst()
+        let segments = parts.last == "" ? Array(parts.dropLast()) : Array(parts)
+        guard segments.count == 2, segments[0] == "open" else { return nil }
+        switch segments[1] {
+        case "schedule": self = .classSchedule
+        case "calendar": self = .academicCalendar
+        case "attendance": self = .attendance
+        case "library": self = .library
+        case "mail": self = .mail
+        case "moodle": self = .moodle
+        default: return nil
+        }
+    }
 
     init?(url: URL) {
         guard url.scheme?.lowercased() == "niuapp",
