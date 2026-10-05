@@ -296,6 +296,7 @@ private struct EventSelectionCheckmark: Shape {
 
 /// Keeps loading, offline failure, an empty school list and no search matches visibly distinct.
 struct EventListScaffold<Item: Identifiable, Row: View>: View {
+    @State private var showsSlowLoadingHint = false
     let items: [Item]
     let totalCount: Int
     let phase: EventLoadPhase
@@ -336,14 +337,26 @@ struct EventListScaffold<Item: Identifiable, Row: View>: View {
             }
         }
         .background(Color(.systemGroupedBackground))
+        .task(id: phase == .loading) {
+            showsSlowLoadingHint = false
+            guard phase == .loading else { return }
+            do { try await Task.sleep(for: .seconds(8)) }
+            catch { return }
+            guard !Task.isCancelled else { return }
+            showsSlowLoadingHint = true
+        }
     }
 
     @ViewBuilder
     private var emptyContent: some View {
         switch phase {
         case .idle, .loading:
-            ProgressView("正在載入活動…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: Theme.Spacing.small) {
+                ProgressView("正在載入活動…")
+                EventSlowLoadingHint(isVisible: phase == .loading && showsSlowLoadingHint)
+            }
+            .padding(.horizontal)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let message):
             EventLoadFailureView(message: message, retry: reload)
         case .loaded:
@@ -359,7 +372,10 @@ struct EventListScaffold<Item: Identifiable, Row: View>: View {
 
     private var listContents: some View {
         LazyVStack(spacing: Theme.Spacing.small) {
-            EventListStatus(phase: phase, updatedAt: updatedAt, retry: reload)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
+                EventListStatus(phase: phase, updatedAt: updatedAt, retry: reload)
+                EventSlowLoadingHint(isVisible: phase == .loading && showsSlowLoadingHint)
+            }
             if items.isEmpty {
                 if let filteredEmptyTitle {
                     ContentUnavailableView(filteredEmptyTitle, systemImage: "heart",
@@ -374,6 +390,20 @@ struct EventListScaffold<Item: Identifiable, Row: View>: View {
         }
         .padding(.horizontal)
         .padding(.bottom)
+    }
+}
+
+/// Reserve the hint's space before revealing it, including at accessibility text sizes.
+private struct EventSlowLoadingHint: View {
+    let isVisible: Bool
+
+    var body: some View {
+        Text("活動系統可能正在啟動，首次載入需要較久，請稍候…")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .opacity(isVisible ? 1 : 0)
+            .accessibilityHidden(!isVisible)
     }
 }
 

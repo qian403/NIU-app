@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Drive the production EventRegistrationClient in a real WKWebView against a local synthetic
 activity system: sign-in retries, shared sign-in, session expiry, and verified outcomes for
-registration, cancellation and edits. No school servers, Keychain or real accounts are used."""
+registration, cancellation and edits. No school servers, Keychain or real accounts are used.
+Use --policy-only to check timeout/retry/session policies without starting the local server."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -9,6 +10,7 @@ import html
 import json
 import secrets
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -248,6 +250,8 @@ import WebKit
     }
 
     static func run() async throws {
+        try await client().checkReadPolicy()
+        if ProcessInfo.processInfo.environment["POLICY_ONLY"] == "1" { return }
         let shared = client()
         _ = try await control("empty=1")
         async let available = shared.availableEvents()
@@ -407,8 +411,10 @@ import WebKit
 }
 '''
 
-server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-threading.Thread(target=server.serve_forever, daemon=True).start()
+policy_only = "--policy-only" in sys.argv
+server = None if policy_only else ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+if server:
+    threading.Thread(target=server.serve_forever, daemon=True).start()
 try:
     with tempfile.TemporaryDirectory(prefix="niu-event-registration-") as directory:
         folder = Path(directory)
@@ -418,6 +424,103 @@ try:
         client_source.write_text((root / "Features/EventRegistration/Services/EventRegistrationClient.swift").read_text() + r'''
 
 extension EventRegistrationClient {
+    func checkReadPolicy() async throws {
+        let now = Date()
+        precondition(navigationTimeout(now: now) == 90 && navigationTimeout(warm: 20, now: now) == 90)
+        lastServerResponseAt = now.addingTimeInterval(-599)
+        precondition(navigationTimeout(now: now) == 30 && navigationTimeout(warm: 20, now: now) == 20)
+        lastServerResponseAt = now.addingTimeInterval(-600)
+        precondition(navigationTimeout(now: now) == 90 && navigationTimeout(warm: 20, now: now) == 90)
+        prepareNavigation(acceptDocumentReady: true)
+        record(.success(Checks.origin), documentReady: true)
+        precondition(navigationTimeout() == 30)
+        let successfulResponse = lastServerResponseAt
+        prepareNavigation(acceptDocumentReady: true)
+        record(.failure(EventRegistrationError.unavailable))
+        precondition(lastServerResponseAt == successfulResponse, "failures cannot warm the server")
+        reset()
+        record(.success(Checks.origin))
+        precondition(lastServerResponseAt == nil && navigationTimeout() == 90,
+                     "reset clears warmth and late completions cannot restore it")
+        print("PASS: cold/warm/600-second timeout boundary, successful response tracking, reset fencing")
+
+        for failure: Error in [EventRegistrationError.timedOut, EventRegistrationError.unavailable,
+                               URLError(.timedOut), URLError(.cannotConnectToHost)] {
+            var attempts = 0
+            let result: Int = try await serializedRead {
+                attempts += 1
+                if attempts == 1 { throw failure }
+                return 42
+            }
+            precondition(result == 42 && attempts == 2, "transient reads retry once")
+            attempts = 0
+            do {
+                let _: Int = try await serializedRead { attempts += 1; throw failure }
+                preconditionFailure("two failures must propagate")
+            } catch {
+                precondition(attempts == 2 && error as? EventRegistrationError == Self.normalized(failure) as? EventRegistrationError)
+            }
+        }
+        struct UnknownFailure: Error {}
+        for failure: Error in [EventRegistrationError.invalidCredentials, EventRegistrationError.credentialsMissing,
+                               EventRegistrationError.loginFailed, EventRegistrationError.invalidResponse,
+                               EventRegistrationError.offline, CancellationError(), URLError(.cancelled),
+                               URLError(.notConnectedToInternet), UnknownFailure()] {
+            var attempts = 0
+            do {
+                let _: Int = try await serializedRead { attempts += 1; throw failure }
+                preconditionFailure("nonretryable error must propagate")
+            } catch { precondition(attempts == 1, "nonretryable errors are never replayed") }
+        }
+
+        var order: [String] = []
+        var attempts = 0
+        let reading = Task {
+            try await self.serializedRead {
+                attempts += 1
+                order.append("read")
+                if attempts == 1 {
+                    try await Task.sleep(for: .milliseconds(30))
+                    throw EventRegistrationError.timedOut
+                }
+            }
+        }
+        while attempts == 0 { await Task.yield() }
+        let queued = Task { try await self.serialized { order.append("next") } }
+        try await reading.value
+        try await queued.value
+        precondition(order == ["read", "read", "next"], "retry must retain its queue slot")
+
+        attempts = 0
+        let cancelled = Task {
+            try await self.serializedRead {
+                attempts += 1
+                // Simulate a transport returning a timeout even after its caller cancelled.
+                do { try await Task.sleep(for: .seconds(10)) } catch { throw EventRegistrationError.timedOut }
+            }
+        }
+        while attempts == 0 { await Task.yield() }
+        cancelled.cancel()
+        do { try await cancelled.value; preconditionFailure("cancelled read must fail") }
+        catch { precondition(error is CancellationError && attempts == 1) }
+
+        for replaceSession in [false, true] {
+            var password = "synthetic"
+            let fenced = EventRegistrationClient(origin: Checks.origin, credentials: { ("synthetic", password) })
+            attempts = 0
+            do {
+                let _: Int = try await fenced.serializedRead {
+                    attempts += 1
+                    if replaceSession { fenced.reset() } else { password = "changed" }
+                    throw EventRegistrationError.unavailable
+                }
+                preconditionFailure("stale operation must fail")
+            } catch { precondition(error is CancellationError && attempts == 1) }
+            fenced.reset()
+        }
+        print("PASS: read retry limit, URL error mapping, exclusions, queue serialization, cancellation/session/credential fences")
+    }
+
     func checkLateUnknownNavigation() async throws {
         let oldView = try page()
         let tokens = WKWebView(frame: .zero)
@@ -494,6 +597,8 @@ extension EventRegistrationClient {
             str(source), "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True, timeout=180,
-                       env={"PORT": str(server.server_address[1]), "PATH": "/usr/bin:/bin"})
+                       env={"PORT": str(server.server_address[1] if server else 9),
+                            "POLICY_ONLY": "1" if policy_only else "0", "PATH": "/usr/bin:/bin"})
 finally:
-    server.shutdown()
+    if server:
+        server.shutdown()

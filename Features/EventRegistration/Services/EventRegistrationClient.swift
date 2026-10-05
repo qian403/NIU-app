@@ -186,6 +186,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     private var documentReadyTask: Task<Void, Never>?
     private var navigationStartedAt = ContinuousClock.now
     private var lastNavigation: Result<URL, Error> = .failure(EventRegistrationError.unavailable)
+    private var lastServerResponseAt: Date?
     private var waiters: [UUID: CheckedContinuation<URL, Error>] = [:]
     private var dialogs: [String] = []
     private var acceptsConfirmation = false
@@ -208,19 +209,19 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     // MARK: Reads
 
     func availableEvents() async throws -> [EventData] {
-        try await serialized { [self] in
+        try await serializedRead { [self] in
             try await open(endpoint("/MvcTeam/Act"))
             return try await scrape(Scripts.available)
         }
     }
 
     func appliedEvents() async throws -> [EventData_Apply] {
-        try await serialized { [self] in try await loadApplied() }
+        try await serializedRead { [self] in try await loadApplied() }
     }
 
     func registrationForm(eventID: String) async throws -> EventRegistrationForm {
         let url = try endpoint("/MvcTeam/Act/RegData/\(try Self.validated(eventID))")
-        return try await serialized { [self] in
+        return try await serializedRead { [self] in
             try await open(url)
             return try await readForm().form
         }
@@ -351,6 +352,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         documentReadyTask = nil
         currentNavigation = nil
         sessionRevision = UUID()
+        lastServerResponseAt = nil
         let pending = operations.values
         operations.removeAll()
         pending.forEach { $0() }
@@ -372,10 +374,10 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     @discardableResult
     private func open(_ url: URL) async throws -> URL {
-        var landed = try await load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30), acceptDocumentReady: true)
+        var landed = try await load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData), acceptDocumentReady: true)
         if Self.isLoginPage(landed) {
             landed = try await signIn()
-            if !Self.samePage(landed, url) { landed = try await load(URLRequest(url: url, timeoutInterval: 30), acceptDocumentReady: true) }
+            if !Self.samePage(landed, url) { landed = try await load(URLRequest(url: url), acceptDocumentReady: true) }
             if Self.isLoginPage(landed) { throw EventRegistrationError.loginFailed }
         }
         guard Self.samePage(landed, url) else {
@@ -398,10 +400,11 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
                 // A login page that keeps rendering empty is usually a stuck web content process.
                 if attempt == Self.loginAttempts - 1 { discardWebView() }
                 let landed = try await load(URLRequest(url: try endpoint("/MvcTeam/Account/Login"),
-                                                       cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30), acceptDocumentReady: true)
+                                                       cachePolicy: .reloadIgnoringLocalCacheData), acceptDocumentReady: true)
                 if !Self.isLoginPage(landed) { return landed }
             }
             let mark = navigationCount
+            let timeout = navigationTimeout(warm: 20)
             prepareNavigation(acceptDocumentReady: true)
             let state = try await evaluate(Scripts.login, [
                 "account": credentials.username, "password": credentials.password
@@ -417,7 +420,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
                 continue
             }
             do {
-                let page = try await waitForNavigation(after: mark, timeout: .seconds(20))
+                let page = try await waitForNavigation(after: mark, timeout: .seconds(timeout))
                 if !Self.isLoginPage(page) { return page }
             } catch EventRegistrationError.timedOut {
                 if let url = webView?.url, !Self.isLoginPage(url) { return url }
@@ -553,9 +556,20 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         navigationStartedAt = .now
     }
 
+    /// IIS may need a cold start after an idle period. Successful navigation warms this session.
+    private func navigationTimeout(warm: TimeInterval = 30, now: Date = Date()) -> TimeInterval {
+        guard let lastServerResponseAt, now.timeIntervalSince(lastServerResponseAt) < 600 else { return 90 }
+        return warm
+    }
+
     private func load(_ request: URLRequest, acceptDocumentReady: Bool = false) async throws -> URL {
         try Task.checkCancellation()
         try validateOperationSession()
+        var request = request
+        // Snapshot once so the request and its waiter have the same deadline. POSTs stay at 30s.
+        if request.httpMethod == nil || request.httpMethod == "GET" {
+            request.timeoutInterval = navigationTimeout()
+        }
         // A page's delayed JS navigation has no WKNavigation identity until its first
         // callback. Isolate explicit loads by view identity; keep the same data store
         // so school cookies survive. In-page login/cancel submits still use their page.
@@ -566,7 +580,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         prepareNavigation(acceptDocumentReady: acceptDocumentReady)
         currentNavigation = view.load(request)
         if let currentNavigation { navigationRevisions.setObject(navigationRevision as NSUUID, forKey: currentNavigation) }
-        return try await waitForNavigation(after: mark, timeout: .seconds(30))
+        return try await waitForNavigation(after: mark, timeout: .seconds(request.timeoutInterval))
     }
 
     private func evaluate(_ body: String, _ arguments: [String: Any] = [:]) async throws -> String {
@@ -619,6 +633,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
 
     private func record(_ result: Result<URL, Error>, documentReady: Bool = false) {
         guard !navigationCompleted else { return }
+        if case .success = result { lastServerResponseAt = Date() }
         navigationCompleted = true
         documentReadyTask?.cancel()
         documentReadyTask = nil
@@ -635,6 +650,26 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         let waiting = waiters.values
         waiters.removeAll()
         waiting.forEach { $0.resume(with: result) }
+    }
+
+    /// Retry only public reads, inside one queue slot and the original operation session.
+    /// Mutation preflight/verification reads deliberately bypass this wrapper.
+    private func serializedRead<T: Sendable>(_ body: @escaping @MainActor () async throws -> T) async throws -> T {
+        try await serialized { [self] in
+            do { return try await body() }
+            catch {
+                try Task.checkCancellation()
+                try validateOperationSession()
+                // Unknown errors must not become retryable merely because normalization has a fallback.
+                guard error is EventRegistrationError || error is URLError else { throw error }
+                let normalized = Self.normalized(error)
+                guard let failure = normalized as? EventRegistrationError,
+                      failure == .timedOut || failure == .unavailable else { throw normalized }
+            }
+            try Task.checkCancellation()
+            try validateOperationSession()
+            return try await body()
+        }
     }
 
     private func serialized<T: Sendable>(_ body: @escaping @MainActor () async throws -> T) async throws -> T {
