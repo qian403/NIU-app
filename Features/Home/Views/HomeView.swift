@@ -433,8 +433,8 @@ struct HomeView: View {
                     .foregroundStyle(Color(.tertiaryLabel))
             }
             .padding(Theme.Spacing.medium)
-            .glassEffect(
-                .regular.interactive(),
+            .adaptiveGlass(
+                interactive: true,
                 in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
             )
         }

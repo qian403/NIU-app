@@ -78,12 +78,14 @@ import UIKit
     }
 }
 struct FixtureUser {
+    let username = "synthetic-student"
     let name = "Synthetic Student"
     let department: String? = "Synthetic Department"
     let grade: String? = "3"
 }
 @MainActor final class AppState: ObservableObject {
     var currentUser: FixtureUser? = FixtureUser()
+    var isAuthenticated = true
     func refreshProfileIfNeeded() async {}
 }
 @MainActor final class ClassScheduleViewModel: ObservableObject {
@@ -157,9 +159,14 @@ struct MoodleAttendanceScannerView: View {
 }
 '''
 for name in ["Settings", "Moodle", "ClassSchedule", "LibraryCode", "LibraryEquipment", "AcademicCalendar",
-             "EventRegistration", "GraduationThreshold", "Mail", "EnrollmentCertificate", "PostalQuery", "LeaveRecords"]:
+             "EventRegistration", "GraduationThreshold", "EnrollmentCertificate", "PostalQuery", "LeaveRecords"]:
     source += f'struct {name}View: View {{ var body: some View {{ FixtureScreen(name: "{name}") }} }}\n'
 source += r'''
+struct NativeMailView: View {
+    let account: String
+    let isAuthenticated: Bool
+    var body: some View { FixtureScreen(name: "Mail") }
+}
 struct CheckFailure: Error { let reason: String }
 @main struct ChecksApp: App {
     var body: some Scene {
@@ -323,7 +330,8 @@ with tempfile.TemporaryDirectory(prefix="niu-home-navigation-") as directory:
     files += [root / "NIU-LiveActivities/CampusNavigation.swift",
               root / "NIU-LiveActivities/ClassScheduleModels.swift",
               root / "Features/GradeHistory/Models/GradeHistoryModels.swift",
-              root / "Shared/Theme/Theme.swift", root / "Shared/Components/NIUComponents.swift"]
+              root / "Shared/Theme/Theme.swift", root / "Shared/Components/NIUComponents.swift",
+              root / "Shared/Extensions/View+Extensions.swift"]
     plist = dict(CFBundleIdentifier=bundle, CFBundleName="HomeNavigationChecks",
                  CFBundleExecutable="HomeNavigationChecks", CFBundlePackageType="APPL",
                  CFBundleVersion="1", CFBundleShortVersionString="1.0", MinimumOSVersion="26.0",

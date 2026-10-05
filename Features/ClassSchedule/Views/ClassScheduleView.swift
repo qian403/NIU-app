@@ -4,6 +4,30 @@ struct ClassScheduleView: View {
     @StateObject private var vm = ClassScheduleViewModel()
     @State private var showExportSheet = false
     @State private var pagerSelection: Int = 1
+    @AppStorage("classSchedule.displayMode") private var displayMode = "day"
+
+    init() {}
+
+    #if DEBUG
+    init(fixtureSchedule: ClassSchedule, defaults: UserDefaults) {
+        let model = ClassScheduleViewModel()
+        model.schedule = fixtureSchedule
+        model.loadState = .fresh
+        model.selectedDayIndex = model.todayDayIndex
+        _vm = StateObject(wrappedValue: model)
+        _pagerSelection = State(initialValue: model.selectedDayIndex + 1)
+        _displayMode = AppStorage(wrappedValue: "day", "classSchedule.displayMode", store: defaults)
+    }
+    #endif
+
+    private var showsWeek: Bool { displayMode == "week" }
+
+    private func refreshSchedule() async {
+        #if DEBUG
+        if ClassScheduleUIFixture.requested { return }
+        #endif
+        await vm.refreshAndWait()
+    }
 
     var body: some View {
         ZStack {
@@ -44,6 +68,21 @@ struct ClassScheduleView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if vm.schedule != nil {
                     Button {
+                        #if DEBUG
+                        if ClassScheduleUIFixture.requested { return }
+                        #endif
+                        vm.refresh()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .disabled(vm.isRefreshing)
+                    .accessibilityLabel("更新課表")
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if vm.schedule != nil {
+                    Button {
                         showExportSheet = true
                     } label: {
                         Image(systemName: "calendar.badge.plus")
@@ -53,7 +92,7 @@ struct ClassScheduleView: View {
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                if vm.schedule != nil, let today = vm.actualTodayDayIndex,
+                if !showsWeek, vm.schedule != nil, let today = vm.actualTodayDayIndex,
                    vm.selectedDayIndex != today {
                     Button {
                         vm.selectedDayIndex = today
@@ -146,9 +185,35 @@ struct ClassScheduleView: View {
 
     private func scheduleContent(schedule: ClassSchedule) -> some View {
         VStack(spacing: 0) {
-            dayOverview(schedule: schedule)
-            dayTabBar
-            dayPager(schedule: schedule)
+            Picker("課表顯示方式", selection: $displayMode) {
+                Text("單日").tag("day")
+                Text("整週").tag("week")
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            ZStack {
+                // Keep the pager mounted so toggling modes preserves its position.
+                VStack(spacing: 0) {
+                    dayOverview(schedule: schedule)
+                    dayTabBar
+                    dayPager(schedule: schedule)
+                }
+                .opacity(showsWeek ? 0 : 1)
+                .allowsHitTesting(!showsWeek)
+                .accessibilityHidden(showsWeek)
+
+                if showsWeek {
+                    ClassScheduleWeekView(
+                        schedule: schedule,
+                        displayDayHeaders: vm.displayDayHeaders,
+                        isRefreshing: vm.isFetchingInBackground,
+                        cacheAgeText: vm.cacheAgeText,
+                        refresh: refreshSchedule
+                    )
+                }
+            }
         }
         .onAppear {
             syncPagerSelection(with: vm.selectedDayIndex, animated: false)
@@ -179,7 +244,7 @@ struct ClassScheduleView: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 96)
         }
-        .refreshable { await vm.refreshAndWait() }
+        .refreshable { await refreshSchedule() }
     }
 
     // MARK: - Day overview
@@ -349,7 +414,7 @@ struct ClassScheduleView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 20)
             }
-            .refreshable { await vm.refreshAndWait() }
+            .refreshable { await refreshSchedule() }
             .onAppear {
                 if isToday, let current = schedule.periods.first(where: {
                     $0.isCurrentPeriod && $0.course(for: scheduleColumnIndex) != nil
@@ -402,7 +467,7 @@ private struct PeriodRowView: View {
 
             if let course = course {
                 NavigationLink {
-                    MoodleScheduleCourseView(courseName: course.name)
+                    ClassScheduleCourseDestination(courseName: course.name)
                 } label: {
                     CourseCard(
                         course: course,
@@ -460,10 +525,8 @@ private struct CourseCard: View {
         .labelStyle(.titleAndIcon)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(
-            isCurrent
-                ? .regular.tint(Color.accentColor.opacity(0.12))
-                : .regular,
+        .adaptiveGlass(
+            tint: isCurrent ? Color.accentColor.opacity(0.12) : nil,
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))

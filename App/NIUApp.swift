@@ -9,7 +9,7 @@ struct NIUApp: App {
 
     fileprivate static var isRunningUIFixture: Bool {
         #if DEBUG
-        return MoodleUIFixtureRoot.isEnabled || EventFavoritesUIFixture.requested ||
+        return ClassScheduleUIFixture.requested || MoodleUIFixtureRoot.isEnabled || EventFavoritesUIFixture.requested ||
             ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") ||
             NativeMailUIFixtureScreen.launchScreen() != nil
         #else
@@ -29,7 +29,9 @@ struct NIUApp: App {
     var body: some Scene {
         WindowGroup {
             #if DEBUG
-            if MoodleUIFixtureRoot.isEnabled {
+            if ClassScheduleUIFixture.requested {
+                ClassScheduleUIFixtureRoot()
+            } else if MoodleUIFixtureRoot.isEnabled {
                 MoodleUIFixtureRoot()
             } else if EventFavoritesUIFixture.requested {
                 if EventFavoritesUIFixture.scenario == "batch" {
@@ -78,9 +80,21 @@ struct NIUApp: App {
             .font: UIFont.systemFont(ofSize: 18, weight: .medium)
         ]
         
-        UINavigationBar.appearance().standardAppearance = navBarAppearance
+        // iOS 26 separates scrolled content with its own scroll-edge effect. Earlier systems
+        // need a material once content scrolls under the bar; at the top it stays transparent.
+        let scrolledAppearance: UINavigationBarAppearance
+        if #available(iOS 26.0, *) {
+            scrolledAppearance = navBarAppearance
+        } else {
+            scrolledAppearance = navBarAppearance.copy()
+            scrolledAppearance.configureWithDefaultBackground()
+            scrolledAppearance.shadowColor = .clear
+            scrolledAppearance.titleTextAttributes = navBarAppearance.titleTextAttributes
+        }
+
+        UINavigationBar.appearance().standardAppearance = scrolledAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navBarAppearance
-        UINavigationBar.appearance().compactAppearance = navBarAppearance
+        UINavigationBar.appearance().compactAppearance = scrolledAppearance
         UINavigationBar.appearance().tintColor = .label
         
         let tabBarAppearance = UITabBarAppearance()

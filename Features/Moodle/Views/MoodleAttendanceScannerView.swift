@@ -655,7 +655,7 @@ private struct MoodleAttendanceSubmissionView: View {
                     .foregroundStyle(color)
                     .padding(Theme.Spacing.large)
                     .background(color.opacity(0.12), in: Circle())
-                .glassEffect(.regular, in: Circle())
+                .adaptiveGlass(in: Circle())
                 .padding(.top, Theme.Spacing.xlarge)
 
                 VStack(spacing: Theme.Spacing.small) {
@@ -773,8 +773,7 @@ private struct MoodleAttendanceSubmissionView: View {
             verificationStatus
         }
         .padding(Theme.Spacing.medium)
-        .glassEffect(
-            .regular,
+        .adaptiveGlass(
             in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
         )
     }
