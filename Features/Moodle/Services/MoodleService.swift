@@ -215,7 +215,7 @@ final class MoodleService {
         guard !courseIDs.isEmpty else { return [] }
         let params = Dictionary(uniqueKeysWithValues: courseIDs.enumerated().map { ("courseids[\($0.offset)]", "\($0.element)") })
         let response: MoodleUpcomingAssignmentsResponse = try await callAPI(function: "mod_assign_get_assignments", params: params)
-        return try response.assignments(courseIDs: courseIDs)
+        return try response.assignments(courseIDs: courseIDs, skippingInaccessibleCourses: true)
     }
 
     func fetchSubmissionStatus(assignId: Int) async throws -> MoodleSubmissionStatus {

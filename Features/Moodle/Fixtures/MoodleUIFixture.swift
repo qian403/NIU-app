@@ -224,7 +224,7 @@ final class MoodleUIFixtureUpcomingClient: MoodleUpcomingAPIClientProtocol {
     }
     func fetchUpcomingAssignments(courseIDs: [Int]) async throws -> [MoodleAssignment] {
         try check()
-        return try assignmentResponse(courseIDs: courseIDs).assignments(courseIDs: courseIDs)
+        return try assignmentResponse(courseIDs: courseIDs).assignments(courseIDs: courseIDs, skippingInaccessibleCourses: true)
     }
     func fetchAssignments(courseId: Int) async throws -> [MoodleAssignment] {
         try check()

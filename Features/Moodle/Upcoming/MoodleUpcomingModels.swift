@@ -162,14 +162,22 @@ extension MoodlePresentation {
 }
 
 struct MoodleUpcomingAssignmentsResponse: Codable {
-    struct Warning: Codable { let warningcode: String }
+    struct Warning: Codable {
+        let warningcode: String
+        var item: String? = nil
+        var itemid: Int? = nil
+    }
     let courses: [MoodleAssignmentCourse]
     let warnings: [Warning]?
 
-    func assignments(courseIDs: [Int]) throws -> [MoodleAssignment] {
+    /// `skippingInaccessibleCourses` accepts a missing course only when Moodle names it in a
+    /// course warning (hidden or no longer enrolled); an unexplained omission stays an error.
+    func assignments(courseIDs: [Int], skippingInaccessibleCourses: Bool = false) throws -> [MoodleAssignment] {
         let requested = Set(courseIDs)
         let matching = courses.filter { requested.contains($0.id) }
-        let courseIDPresent = requested.isSubset(of: Set(matching.map(\.id)))
+        let inaccessible = skippingInaccessibleCourses
+            ? Set((warnings ?? []).compactMap { $0.item == "course" ? $0.itemid : nil }) : []
+        let courseIDPresent = requested.subtracting(inaccessible).isSubset(of: Set(matching.map(\.id)))
         guard courseIDPresent,
               Set(matching.map(\.id)).count == matching.count,
               matching.allSatisfy({ course in course.assignments.allSatisfy { $0.course == course.id } }) else {
