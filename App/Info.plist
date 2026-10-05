@@ -2,6 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>FirebaseDataCollectionDefaultEnabled</key>
+	<false/>
+	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_STORAGE</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_USER_DATA</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED</key>
+	<false/>
+	<key>FirebaseAutomaticScreenReportingEnabled</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -99,6 +99,10 @@ xcodebuild \
 
 這些服務的後端不在本版本庫內。自行部署或測試相關功能時，請使用自己的服務設定，不要將正式服務當作自動化測試環境；也不要把伺服器密鑰或 Apple 推播金鑰放進 App。
 
+Firebase 透過 Swift Package Manager 固定使用 `12.19.2`，主 App 連結 `FirebaseCore` 與不含 IDFA 的 `FirebaseAnalyticsCore`，並由 SwiftUI 的 AppDelegate 在一般啟動時初始化及啟用 Analytics。設定檔位於 `App/GoogleService-Info.plist`，僅打包到主 App；自行部署時請從自己的 Firebase 專案下載對應 Bundle ID 的設定檔。Analytics 計算首次啟動、工作階段與使用時長；廣告儲存、廣告使用者資料、個人化廣告、IDFV 與自動畫面紀錄均停用，不設定 User ID 或上傳校務及郵件內容。其餘 Firebase 預設資料收集與 AppDelegate 代理仍關閉。Debug 的合成資料 UI 測試會停用 Analytics，且不初始化 Firebase。
+
+`NIU-APP` scheme 的 Debug Run 已加入 `-FIRDebugEnabled`，執行一般 App 後，可於 Firebase Console 的 Analytics → DebugView 查看 `first_open`、`session_start` 與 `user_engagement` 等事件。若需關閉 Debug 模式，先停用該引數，改用 `-FIRDebugDisabled` 執行一次，再移除停用引數；Release Archive 不使用 Run 引數。Debug 模式會縮短事件上傳延遲，但測試流量不會自動從所有報表或 BigQuery 匯出排除，需於 Google Analytics 資源設定開發者流量資料篩選器。離線檢查執行 `python3 scripts/check-firebase-analytics.py`。
+
 ## 專案結構
 
 ```text
