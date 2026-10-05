@@ -25,9 +25,30 @@ private struct HomeRoute: Hashable {
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var router: CampusRouter
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var scheduleViewModel = ClassScheduleViewModel()
     @State private var navigationPath = NavigationPath()
     @State private var animateIn = true
+    @AppStorage("home.isNameMasked") private var isNameMasked = false
+    @State private var nameScrambleRequest: UUID?
+    @State private var scrambledName: String?
+    @State private var nameGlitchOffset: CGFloat = 0
+
+    private static let scrambleCharacters = Array("０１２３４５６７８９ＡＢＣＤＥＦ＃＊＋／＝")
+
+    private static let compoundSurnames = [
+        "歐陽", "司馬", "上官", "諸葛", "司徒", "司空", "夏侯", "皇甫",
+        "尉遲", "公孫", "慕容", "令狐", "宇文", "長孫", "獨孤", "東方", "南宮"
+    ]
+
+    private var homeDisplayName: String {
+        guard isNameMasked else { return appState.currentUser?.name ?? "User" }
+        let name = appState.currentUser?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty else { return "同學" }
+        let surname = Self.compoundSurnames.first { name.hasPrefix($0) } ?? String(name.prefix(1))
+        return "\(surname)同學"
+    }
 
     // Today's courses state
     @State private var relevantPeriods: [(period: ClassPeriod, course: CourseInfo)] = []
@@ -88,6 +109,18 @@ struct HomeView: View {
             .navigationDestination(for: HomeRoute.self) { route in
                 destinationView(for: route.destination)
                     .id(route)
+            }
+            .task(id: nameScrambleRequest) { [request = nameScrambleRequest] in
+                await animateNameScramble(request: request)
+            }
+            .onDisappear {
+                stopNameScramble()
+            }
+            .onChange(of: appState.currentUser) { _, _ in
+                stopNameScramble()
+            }
+            .onChange(of: reduceMotion) { _, enabled in
+                if enabled { stopNameScramble() }
             }
         }
         .task(id: router.pendingRequest?.id) {
@@ -191,15 +224,85 @@ struct HomeView: View {
 
     // MARK: - Header Section
 
+    private func toggleNameMask() {
+        isNameMasked.toggle()
+        guard !reduceMotion else {
+            stopNameScramble()
+            return
+        }
+        scrambledName = scramble(homeDisplayName, revealedCount: 0)
+        nameGlitchOffset = 0
+        nameScrambleRequest = UUID()
+    }
+
+    @MainActor
+    private func animateNameScramble(request: UUID?) async {
+        guard let request, nameScrambleRequest == request else { return }
+        let targetName = homeDisplayName
+        do {
+            for frame in 0..<12 {
+                try Task.checkCancellation()
+                guard nameScrambleRequest == request else { return }
+                guard !reduceMotion, homeDisplayName == targetName else {
+                    stopNameScramble()
+                    return
+                }
+                let revealedCount = max(0, (frame - 3) * targetName.count / 8)
+                scrambledName = scramble(targetName, revealedCount: revealedCount)
+                nameGlitchOffset = frame < 8 ? CGFloat(frame % 3 - 1) : 0
+                try await Task.sleep(for: .milliseconds(45))
+            }
+            if nameScrambleRequest == request { stopNameScramble() }
+        } catch {
+            // A cancelled transition must not clear a newer button press.
+            if nameScrambleRequest == request { stopNameScramble() }
+        }
+    }
+
+    private func stopNameScramble() {
+        nameScrambleRequest = nil
+        scrambledName = nil
+        nameGlitchOffset = 0
+    }
+
+    private func scramble(_ name: String, revealedCount: Int) -> String {
+        String(name.enumerated().map { index, character in
+            index < revealedCount ? character : (Self.scrambleCharacters.randomElement() ?? "＃")
+        })
+    }
+
+    private func animatedHomeName(font: Font) -> some View {
+        // The resolved name reserves space and is the only name exposed to VoiceOver.
+        Text(homeDisplayName)
+            .font(font)
+            .foregroundStyle(Theme.Colors.label)
+            .opacity(scrambledName == nil ? 1 : 0)
+            .overlay(alignment: .leading) {
+                if let scrambledName {
+                    Text(scrambledName)
+                        .font(font.monospaced())
+                        .foregroundStyle(LinearGradient(
+                            colors: colorScheme == .dark ? [.cyan, .mint] : [.blue, .teal],
+                            startPoint: .leading, endPoint: .trailing
+                        ))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .shadow(color: .cyan.opacity(0.3), radius: 2)
+                        .offset(x: nameGlitchOffset)
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(homeDisplayName)
+    }
+
     private var headerSection: some View {
         HStack {
             NavigationLink(value: HomeRoute(destination: .settings)) {
                 HStack(spacing: Theme.Spacing.small) {
-                    NIUAvatar(appState.currentUser?.name ?? "U", size: .small)
+                    NIUAvatar(homeDisplayName, size: .small)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(appState.currentUser?.name ?? "User")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color(.label))
+                        animatedHomeName(font: .system(size: 14, weight: .semibold))
                         Text("國立宜蘭大學")
                             .font(.system(size: 11))
                             .foregroundStyle(Color(.tertiaryLabel))
@@ -237,11 +340,25 @@ struct HomeView: View {
                 .opacity(animateIn ? 1 : 0)
                 .animation(Theme.Animation.fast.delay(0.3), value: animateIn)
 
-            Text(appState.currentUser?.name ?? "User")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundStyle(Color(.label))
-                .opacity(animateIn ? 1 : 0)
-                .animation(Theme.Animation.fast.delay(0.4), value: animateIn)
+            HStack(spacing: Theme.Spacing.xxsmall) {
+                animatedHomeName(font: .system(size: 32, weight: .bold))
+                    .layoutPriority(1)
+
+                Button {
+                    toggleNameMask()
+                } label: {
+                    Image(systemName: isNameMasked ? "eye.slash" : "eye")
+                        .font(.callout.weight(.regular))
+                        .foregroundStyle(Theme.Colors.secondaryLabel.opacity(0.65))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isNameMasked ? "顯示完整姓名" : "隱藏完整姓名")
+                .accessibilityValue(isNameMasked ? "姓名已打碼" : "姓名完整顯示")
+            }
+            .opacity(animateIn ? 1 : 0)
+            .animation(Theme.Animation.fast.delay(0.4), value: animateIn)
 
             if let user = appState.currentUser {
                 HStack(spacing: Theme.Spacing.medium) {
