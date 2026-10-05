@@ -119,6 +119,21 @@ struct EventRegistration_Tab1_View: View {
                               lineWidth: isSelected ? 1.5 : 0.5)
                 .allowsHitTesting(false)
         }
+        .allowsHitTesting(!viewModel.isSelecting)
+        .accessibilityHidden(viewModel.isSelecting)
+        .overlay {
+            if viewModel.isSelecting {
+                // One full-card control prevents child buttons from toggling selection twice.
+                Button { viewModel.toggleSelection(event) } label: {
+                    Color.clear.contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(event.name)，\(event.department)，\(event.eventTime)，\(event.eventLocation)，\(event.event_state)")
+                .accessibilityValue(isSelected ? "已選取" : "未選取")
+                .accessibilityHint("切換活動的選取狀態")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
         .animation(selectionAnimation, value: isSelected)
     }
 
@@ -170,6 +185,8 @@ struct EventRegistration_Tab1_View: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(viewModel.isSelecting)
+        .opacity(viewModel.isSelecting ? 0.4 : 1)
         .accessibilityLabel("\(isFavorite ? "取消收藏" : "收藏")：\(event.name)")
         .accessibilityValue(isFavorite ? "已收藏" : "未收藏")
     }
