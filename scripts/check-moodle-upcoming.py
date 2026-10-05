@@ -54,6 +54,7 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
     var requestedCourses: [Int] = []
     var cursors: [Int] = []
     var submitted: Set<Int> = []
+    var unknownStatus: Set<Int> = []
     var statusIDs: [Int] = []
     var active = 0
     var peak = 0
@@ -77,6 +78,7 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
         defer { active -= 1 }
         try await Task.sleep(for: .milliseconds(10))
         if let statusError { throw statusError }
+        if unknownStatus.contains(assignId) { return .init(lastattempt: nil) }
         return .init(lastattempt: .init(submission: .init(id: assignId, status: submitted.contains(assignId) ? "submitted" : "draft", timemodified: nil, plugins: nil), graded: false))
     }
     func logout() {
@@ -157,7 +159,7 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
         client.pages = [.init(events: [try event(1)], lastid: 1), .init(events: [try event(5)], lastid: 5), .init(events: [], lastid: nil)]
         let repo = MoodleUpcomingRepository(client: client)
         let paged = try await repo.fetchUpcoming(courses: courses, now: now)
-        precondition(paged.count == 2 && client.cursors == [0, 1, 5] && client.assignmentCalls == 0)
+        precondition(paged.count == 2 && client.cursors == [0, 1, 5] && client.assignmentCalls == 1)
         client.pages = [.init(events: [try event(1)], lastid: 1), .init(events: [try event(1)], lastid: 1)]
         do { _ = try await repo.fetchUpcoming(courses: courses, now: now); fatalError("Repeated cursor accepted") } catch MoodleUpcomingError.incompleteResponse {}
         client.pages = [.init(events: [try event(10, actionable: false), try event(11, actionable: false)], lastid: 11)]
@@ -301,6 +303,40 @@ struct MoodleQuestionSection { let id: Int; let name: String; let modules: [Mood
         precondition(teamSubmitted)
         do { _ = try MoodleUpcomingRules.isSubmitted(.init(lastattempt: nil)); fatalError("Unknown status became pending") } catch MoodleUpcomingError.incompleteResponse {}
         print("PASS: unavailable fallback cached once/session, reset on logout, bulk course request, concurrency=4, individual/team submission exclusion, failures stay failures")
+
+        func assignment(_ id: Int, course: Int = 1, offset: Int = 3600) -> MoodleAssignment {
+            .init(id: id, cmid: 1000 + id, course: course, name: "作業 \(id)", intro: "",
+                  duedate: Int(now.timeIntervalSince1970) + offset, allowsubmissionsfromdate: 0, grade: nil, timemodified: 0)
+        }
+        let omittedClient = Client()
+        omittedClient.pages = [.init(events: [try event(1)], lastid: 1)]
+        // 20: completion hid it but nothing submitted; 21: submitted; 22: outside window;
+        // 23: course not in the semester; 24: no attempt for this user.
+        omittedClient.assignments = [assignment(1), assignment(20, offset: 7200), assignment(21),
+            assignment(22, offset: 15 * 86400), assignment(23, course: 11), assignment(24)]
+        omittedClient.submitted = [21]
+        omittedClient.unknownStatus = [24]
+        let recovered = try await MoodleUpcomingRepository(client: omittedClient).fetchUpcoming(courses: courses, now: now)
+        precondition(recovered.map(\.id) == [1, 20] && recovered[1].courseModuleID == 1020)
+        precondition(Set(omittedClient.statusIDs) == [20, 21, 24] && omittedClient.requestedCourses == courses.map(\.id))
+        omittedClient.pages = [.init(events: [try event(1)], lastid: 1)]
+        omittedClient.statusError = URLError(.notConnectedToInternet)
+        do { _ = try await MoodleUpcomingRepository(client: omittedClient).fetchUpcoming(courses: courses, now: now); fatalError("Status failure hidden") } catch is URLError {}
+        let unknownFallback = Client()
+        unknownFallback.calendarError = MoodleUpcomingAPIError(exception: "webservice_access_exception", errorcode: "accessexception")
+        unknownFallback.assignments = [assignment(24)]
+        unknownFallback.unknownStatus = [24]
+        do { _ = try await MoodleUpcomingRepository(client: unknownFallback).fetchUpcoming(courses: courses, now: now); fatalError("Unknown fallback status became empty") } catch MoodleUpcomingError.incompleteResponse {}
+        let hiddenCourse = MoodleUpcomingAssignmentsResponse(courses: [.init(id: 1, assignments: [assignment(1)])],
+            warnings: [.init(warningcode: "1", item: "course", itemid: 2)])
+        assignmentService.responseData = try JSONEncoder().encode(hiddenCourse)
+        let visibleOnly = try await assignmentService.fetchUpcomingAssignments(courseIDs: [1, 2])
+        precondition(visibleOnly.map(\.id) == [1])
+        do { _ = try await assignmentService.fetchUpcomingAssignments(courseIDs: [1, 3]); fatalError("Unexplained missing course accepted") }
+        catch is MoodleUpcomingAssignmentResponseError {}
+        do { _ = try hiddenCourse.assignments(courseIDs: [1, 2]); fatalError("Single-course strictness relaxed") }
+        catch is MoodleUpcomingAssignmentResponseError {}
+        print("PASS: timeline-omitted (completion-hidden) unsubmitted assignments recovered; submitted/out-of-window/other-course excluded; unknown attempt skipped only for recovery; course warnings tolerated only when named")
 
         let delayed = DelayedRepository()
         let model = MoodleUpcomingViewModel(repository: delayed, clock: { now })

@@ -63,7 +63,16 @@ struct MoodleUpcomingRepository: MoodleUpcomingRepositoryProtocol {
                             return event.instance
                         })
                         let pending = try await pendingIDs(Array(nonActionable), revision: revision)
-                        return try MoodleUpcomingRules.calendarItems(events, courses: courses, now: now, confirmedPending: pending)
+                        let listed = try MoodleUpcomingRules.calendarItems(events, courses: courses, now: now, confirmedPending: pending)
+                        // The timeline drops a deadline once activity completion is not incomplete
+                        // (for example "complete on view"), even when nothing was submitted.
+                        // Recover omitted assignments and let the submission API decide.
+                        let calendarIDs = Set(events.compactMap { event -> Int? in
+                            event.modulename == "assign" && event.eventtype == "due" ? event.instance : nil
+                        })
+                        let omitted = try await assignmentItems(courses: courses, now: now, excluding: calendarIDs,
+                                                                skippingUnknownStatus: true, revision: revision)
+                        return MoodleUpcomingRules.sorted(listed + omitted)
                     }
                     guard let next = page.lastid, cursors.insert(next).inserted else {
                         throw MoodleUpcomingError.incompleteResponse
@@ -76,17 +85,20 @@ struct MoodleUpcomingRepository: MoodleUpcomingRepositoryProtocol {
                 client.calendarCapability.unavailable = true
             }
         }
-        return try await fallback(courses: courses, now: now, revision: revision)
+        return try await assignmentItems(courses: courses, now: now, revision: revision)
     }
 
-    private func fallback(courses: [MoodleCourse], now: Date, revision: Int) async throws -> [MoodleUpcomingItem] {
+    /// `mod_assign_get_assignments` applies group/user overrides to `duedate`.
+    private func assignmentItems(courses: [MoodleCourse], now: Date, excluding excluded: Set<Int> = [],
+                                 skippingUnknownStatus: Bool = false, revision: Int) async throws -> [MoodleUpcomingItem] {
         let assignments = try await client.fetchUpcomingAssignments(courseIDs: courses.map(\.id))
         try checkSession(revision)
         let names = Dictionary(courses.map { ($0.id, $0.cleanName) }, uniquingKeysWith: { first, _ in first })
         let candidates = assignments.filter {
-            names[$0.course] != nil && $0.dueDateValue.map { MoodleUpcomingRules.window(now: now).contains($0) } == true
+            !excluded.contains($0.id) && names[$0.course] != nil
+                && $0.dueDateValue.map { MoodleUpcomingRules.window(now: now).contains($0) } == true
         }
-        let pending = try await pendingIDs(candidates.map(\.id), revision: revision)
+        let pending = try await pendingIDs(candidates.map(\.id), skippingUnknown: skippingUnknownStatus, revision: revision)
         let items = candidates.compactMap { assignment -> MoodleUpcomingItem? in
             guard pending.contains(assignment.id), let due = assignment.dueDateValue else { return nil }
             return MoodleUpcomingItem(assignmentID: assignment.id, courseID: assignment.course,
@@ -97,7 +109,9 @@ struct MoodleUpcomingRepository: MoodleUpcomingRepositoryProtocol {
         return MoodleUpcomingRules.sorted(items)
     }
 
-    private func pendingIDs(_ ids: [Int], revision: Int) async throws -> Set<Int> {
+    /// `skippingUnknown` leaves out an item whose status lacks the user's attempt (for example a
+    /// non-participant) instead of failing the list; transport and API errors still propagate.
+    private func pendingIDs(_ ids: [Int], skippingUnknown: Bool = false, revision: Int) async throws -> Set<Int> {
         var pending: Set<Int> = []
         // Structured batches bound status requests to four and propagate every error.
         for offset in stride(from: 0, to: ids.count, by: 4) {
@@ -111,7 +125,11 @@ struct MoodleUpcomingRepository: MoodleUpcomingRepositoryProtocol {
                         let status = try await client.fetchSubmissionStatus(assignId: id)
                         try Task.checkCancellation()
                         guard revision == client.sessionRevision else { throw CancellationError() }
-                        return try MoodleUpcomingRules.isSubmitted(status) ? nil : id
+                        do {
+                            return try MoodleUpcomingRules.isSubmitted(status) ? nil : id
+                        } catch MoodleUpcomingError.incompleteResponse where skippingUnknown {
+                            return nil
+                        }
                     }
                 }
                 var result: Set<Int> = []
