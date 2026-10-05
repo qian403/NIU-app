@@ -13,7 +13,11 @@ struct ClassScheduleWeekView: View {
     @ScaledMetric(relativeTo: .caption2) private var gutterWidth: CGFloat = 38
     @ScaledMetric(relativeTo: .caption) private var minimumColumnWidth: CGFloat = 100
     @ScaledMetric(relativeTo: .caption) private var statusHeight: CGFloat = 28
-    private let palette: [Color] = [.blue, .purple, .teal, .orange, .pink, .indigo, .green]
+    private let palette: [Color] = [.blue, .teal, .orange, .pink, .green, .indigo]
+
+    private var gridRule: Color {
+        Theme.Colors.separator.opacity(colorScheme == .dark ? 0.3 : 0.18)
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -28,12 +32,19 @@ struct ClassScheduleWeekView: View {
                 ScrollView(.vertical) {
                     VStack(spacing: 8) {
                         if layout.blocks.isEmpty {
-                            VStack(spacing: 12) {
+                            VStack(spacing: Theme.Spacing.small) {
                                 Image(systemName: "calendar.badge.checkmark")
                                     .font(.largeTitle.weight(.light))
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(Theme.Colors.accent)
+                                    .padding(20)
+                                    .background(Theme.Colors.accentSoft, in: RoundedRectangle(cornerRadius: 24))
                                 Text("這週沒有課").font(.headline)
+                                Text("下拉即可更新課表")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
                             }
+                            .padding(.horizontal, Theme.Spacing.medium)
                             .frame(maxWidth: .infinity)
                             .frame(height: max(0, geometry.size.height - 24 - statusHeight))
                         } else if dynamicTypeSize.isAccessibilitySize {
@@ -43,7 +54,7 @@ struct ClassScheduleWeekView: View {
                         } else {
                             timetable(layout: layout, now: now, metrics: metrics)
                         }
-                        updateStatus
+                        updateStatus(layout: layout)
                             .frame(height: statusHeight)
                     }
                     .padding(.horizontal, 8)
@@ -62,21 +73,31 @@ struct ClassScheduleWeekView: View {
         return date
     }
 
-    private var updateStatus: some View {
-        HStack(spacing: 5) {
-            if isRefreshing {
-                ProgressView().controlSize(.mini)
-                Text("更新中")
-            } else if let cacheAgeText {
-                Image(systemName: "clock.arrow.circlepath")
-                Text("更新於 \(displayCacheAgeText(cacheAgeText))")
+    private func updateStatus(layout: ClassScheduleWeekLayout) -> some View {
+        HStack(spacing: Theme.Spacing.xsmall) {
+            if let first = layout.columns.first, let last = layout.columns.last {
+                Text("\(first.dateLabel) – \(last.dateLabel)")
+                    .font(.caption2.weight(.medium).monospacedDigit())
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .accessibilityLabel("本週顯示日期，\(first.dateLabel)到\(last.dateLabel)")
             }
             Spacer(minLength: 0)
+            HStack(spacing: 4) {
+                if isRefreshing {
+                    ProgressView().controlSize(.mini)
+                    Text("更新中")
+                } else if let cacheAgeText {
+                    Image(systemName: "clock.arrow.circlepath")
+                    Text("更新於 \(displayCacheAgeText(cacheAgeText))")
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.leading, 4)
-        .accessibilityElement(children: .combine)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .padding(.horizontal, 4)
     }
 
     private func displayCacheAgeText(_ text: String) -> String {
@@ -90,20 +111,31 @@ struct ClassScheduleWeekView: View {
                            metrics: ClassScheduleWeekLayout.GridMetrics) -> some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
-                Text("節次").font(.caption2).foregroundStyle(.secondary)
+                VStack(spacing: 2) {
+                    Text("節次").font(.caption2.weight(.medium))
+                    Text("時間").font(.caption2)
+                }
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                    .frame(width: metrics.gutterWidth)
                     .frame(height: metrics.headerHeight)
+                    .overlay(alignment: .bottom) { gridRule.frame(height: 0.5) }
                 ForEach(Array(layout.visibleRows), id: \.self) { row in
                     VStack(spacing: 2) {
-                        Text(schedule.periods[row].id).font(.caption.bold())
+                        Text(schedule.periods[row].id)
+                            .font(.system(.caption, design: .rounded, weight: .semibold))
+                            .foregroundStyle(Theme.Colors.secondaryLabel)
                         Text(schedule.periods[row].startTimeLabel).font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.Colors.tertiaryLabel)
                     }
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .padding(.top, min(5, metrics.rowHeight * 0.08))
                     .frame(width: metrics.gutterWidth, height: metrics.rowHeight, alignment: .top)
+                    .clipped()
                 }
             }
             .frame(width: metrics.gutterWidth)
+            .background(Theme.Colors.groupedBackground.opacity(0.6))
             ForEach(layout.columns) { column in
                 let isToday = ScheduleClock.calendar.isDate(column.date, inSameDayAs: now)
                 VStack(spacing: 0) {
@@ -113,18 +145,35 @@ struct ClassScheduleWeekView: View {
                             ForEach(Array(layout.visibleRows), id: \.self) { _ in
                                 Rectangle().fill(Color.clear)
                                     .frame(height: metrics.rowHeight)
-                                    .overlay(alignment: .top) { Divider() }
+                                    .overlay(alignment: .top) { gridRule.frame(height: 0.5) }
                             }
                         }
+                        .background {
+                            if isToday {
+                                LinearGradient(
+                                    colors: [
+                                        Theme.Colors.accent.opacity(colorScheme == .dark ? 0.12 : 0.045),
+                                        Theme.Colors.accent.opacity(colorScheme == .dark ? 0.04 : 0.015)
+                                    ],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            }
+                        }
+                        .overlay(alignment: .leading) { gridRule.frame(width: 0.5) }
                         ForEach(layout.blocks.filter { $0.column == column.id }) { block in
-                            let height = max(0, CGFloat(block.rows.count) * metrics.rowHeight - 4)
-                            courseBlock(block, layout: layout, height: height)
-                                .frame(width: max(1, metrics.columnWidth - 4), height: height)
-                                .offset(x: 2, y: CGFloat(block.rows.lowerBound - layout.visibleRows.lowerBound) * metrics.rowHeight + 2)
+                            let inset: CGFloat = metrics.columnWidth < 48 ? 2 : 3
+                            let height = max(0, CGFloat(block.rows.count) * metrics.rowHeight - inset * 2)
+                            courseBlock(block, layout: layout, height: height, width: metrics.columnWidth - inset * 2)
+                                .frame(width: max(1, metrics.columnWidth - inset * 2), height: height)
+                                .offset(x: inset, y: CGFloat(block.rows.lowerBound - layout.visibleRows.lowerBound) * metrics.rowHeight + inset)
                         }
                         if isToday, let position = layout.nowLinePosition(periods: schedule.periods, at: now) {
-                            Rectangle().fill(.red).frame(height: 2)
-                                .overlay(alignment: .leading) { Circle().fill(.red).frame(width: 6, height: 6) }
+                            Rectangle().fill(Theme.Colors.error).frame(height: 1.5)
+                                .overlay(alignment: .leading) {
+                                    Circle().fill(Theme.Colors.error)
+                                        .frame(width: 6, height: 6)
+                                        .overlay { Circle().stroke(Theme.Colors.background, lineWidth: 1) }
+                                }
                                 .offset(y: CGFloat(position) * metrics.rowHeight)
                                 .allowsHitTesting(false)
                                 .accessibilityHidden(true)
@@ -133,24 +182,38 @@ struct ClassScheduleWeekView: View {
                     .frame(height: CGFloat(layout.visibleRows.count) * metrics.rowHeight)
                 }
                 .frame(width: metrics.columnWidth)
-                .background(isToday ? Color.accentColor.opacity(colorScheme == .dark ? 0.12 : 0.05) : Color.clear)
             }
         }
         .frame(height: metrics.gridHeight)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
+                .strokeBorder(gridRule, lineWidth: 0.5)
+                .allowsHitTesting(false)
+        }
     }
 
     private func header(_ column: ClassScheduleWeekLayout.Column, isToday: Bool, height: CGFloat) -> some View {
-        VStack(spacing: 3) {
-            Text(column.shortLabel).font(.caption.bold())
-            Text(column.dateLabel).font(.caption2.monospacedDigit())
+        VStack(spacing: 2) {
+            Text(column.shortLabel)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(isToday ? Theme.Colors.accent : Theme.Colors.secondaryLabel)
+            Text(column.dateLabel)
+                .font(.system(.caption, design: .rounded, weight: .semibold).monospacedDigit())
+                .foregroundStyle(isToday ? Color.white : Theme.Colors.label)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 3)
+                .background {
+                    if isToday {
+                        RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
+                            .fill(Theme.Colors.accent)
+                    }
+                }
         }
         .lineLimit(1)
         .minimumScaleFactor(0.65)
-        .foregroundStyle(isToday ? Color(.systemBackground) : Color.primary)
-        .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
-        .background(isToday ? Color.accentColor : Color.clear, in: Capsule())
         .padding(.horizontal, 2)
         .frame(height: height)
         .accessibilityElement(children: .ignore)
@@ -158,39 +221,57 @@ struct ClassScheduleWeekView: View {
     }
 
     private func courseBlock(_ block: ClassScheduleWeekLayout.Block, layout: ClassScheduleWeekLayout,
-                             height: CGFloat) -> some View {
+                             height: CGFloat, width: CGFloat) -> some View {
         let colour = palette[ClassScheduleWeekLayout.stableColourIndex(for: block.course.name, paletteCount: palette.count)]
+        let compact = width < 48
+        let showsRoom = height >= 40 && !block.classrooms.isEmpty
+        let showsTeacher = height >= 100 && !block.teachers.isEmpty
+        let titleLines = height >= 110 ? 4 : (height >= 70 ? 3 : (height >= 48 ? 2 : 1))
         return NavigationLink {
             ClassScheduleCourseDestination(courseName: block.course.name)
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(block.course.name)
-                    .font(.caption.bold())
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(height >= 60 ? 3 : (height >= 48 ? 2 : 1))
+                    .lineLimit(titleLines)
                     .minimumScaleFactor(0.8)
-                if height >= 88, !block.teachers.isEmpty {
+                    .layoutPriority(2)
+                if showsTeacher {
                     Text(block.teachers.joined(separator: "、"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                if height >= 32, !block.classrooms.isEmpty {
+                Spacer(minLength: 0)
+                if showsRoom {
                     Text(block.classrooms.joined(separator: "、"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.caption2.weight(.medium).monospacedDigit())
+                        .foregroundStyle(Theme.Colors.label)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
+                        .layoutPriority(1)
                 }
-                Spacer(minLength: 0)
             }
-            .padding(.leading, 5)
-            .padding(.trailing, 3)
-            .padding(.vertical, height >= 44 ? 5 : 2)
+            .padding(.leading, compact ? 4 : 6)
+            .padding(.trailing, compact ? 2 : 4)
+            .padding(.vertical, height >= 48 ? 6 : 3)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(colour.opacity(colorScheme == .dark ? 0.25 : 0.12))
-            .overlay(alignment: .leading) { colour.frame(width: 3) }
-            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .background {
+                LinearGradient(
+                    colors: [
+                        colour.opacity(colorScheme == .dark ? 0.26 : 0.14),
+                        colour.opacity(colorScheme == .dark ? 0.18 : 0.09)
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
+                    .strokeBorder(colour.opacity(colorScheme == .dark ? 0.3 : 0.16), lineWidth: 0.5)
+            }
+            .overlay(alignment: .leading) { colour.frame(width: 2) }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall))
             .clipped()
             .contentShape(Rectangle())
         }
