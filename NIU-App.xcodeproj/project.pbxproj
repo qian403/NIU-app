@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F1BA01000000000000000001 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F1BA02000000000000000001 /* GoogleService-Info.plist */; };
+		F1BA01000000000000000002 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1BA04000000000000000001 /* FirebaseCore */; };
+		F1BA01000000000000000003 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1BA04000000000000000002 /* FirebaseAnalyticsCore */; };
 		EBBA01000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift */; };
 		EBBA01000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */; };
 		EBBA01000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */; };
@@ -197,6 +200,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		F1BA02000000000000000001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		EBBA02000000000000000004 /* Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchPreviewFixtures.swift; sourceTree = "<group>"; };
 		EBBA02000000000000000003 /* Features/EventRegistration/Batch/EventBatchRegistrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationView.swift; sourceTree = "<group>"; };
 		EBBA02000000000000000002 /* Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Batch/EventBatchRegistrationViewModel.swift; sourceTree = "<group>"; };
@@ -405,6 +409,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F1BA01000000000000000002 /* FirebaseCore in Frameworks */,
+				F1BA01000000000000000003 /* FirebaseAnalyticsCore in Frameworks */,
 				CA4A22050000000000000001,
 				CA4A22050000000000000002,
 				CA4A22050000000000000003,
@@ -591,6 +597,7 @@
 		10A32D972F431F630009BB45 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				F1BA02000000000000000001 /* GoogleService-Info.plist */,
 				10A32D952F431F630009BB45 /* NIUApp.swift */,
 				10A32D962F431F630009BB45 /* RootView.swift */,
 			);
@@ -962,6 +969,8 @@
 			);
 			name = "NIU-APP";
 			packageProductDependencies = (
+				F1BA04000000000000000001 /* FirebaseCore */,
+				F1BA04000000000000000002 /* FirebaseAnalyticsCore */,
 				CA4A22040000000000000001,
 				CA4A22040000000000000002,
 				CA4A22040000000000000003,
@@ -1019,7 +1028,7 @@
 			);
 			mainGroup = 10A32D5D2F431B8B0009BB45;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (CA4A22030000000000000001, CA4A22030000000000000002, CA4A22030000000000000003);
+			packageReferences = (CA4A22030000000000000001, CA4A22030000000000000002, CA4A22030000000000000003, F1BA03000000000000000001);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 10A32D672F431B8B0009BB45 /* Products */;
 			projectDirPath = "";
@@ -1042,6 +1051,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F1BA01000000000000000001 /* GoogleService-Info.plist in Resources */,
 				10A32DB12F431F630009BB45 /* Assets.xcassets in Resources */,
 				CA1E00010000000000000002 /* Resources/AcademicCalendar in Resources */,
 				C0ED00010000000000000004 /* app-content/credits.json in Resources */,
@@ -1242,6 +1252,9 @@
 		CA4A22040000000000000002 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000002; productName = SwiftSoup; };
 		CA4A22030000000000000003 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/apple/swift-log.git"; requirement = {kind = exactVersion; version = 1.6.4; }; };
 		CA4A22040000000000000003 = {isa = XCSwiftPackageProductDependency; package = CA4A22030000000000000003; productName = Logging; };
+		F1BA03000000000000000001 /* Firebase */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git"; requirement = {kind = exactVersion; version = 12.19.2; }; };
+		F1BA04000000000000000001 /* FirebaseCore */ = {isa = XCSwiftPackageProductDependency; package = F1BA03000000000000000001 /* Firebase */; productName = FirebaseCore; };
+		F1BA04000000000000000002 /* FirebaseAnalyticsCore */ = {isa = XCSwiftPackageProductDependency; package = F1BA03000000000000000001 /* Firebase */; productName = FirebaseAnalyticsCore; };
 
 /* Begin XCBuildConfiguration section */
 		10A32D6F2F431B8C0009BB45 /* Debug */ = {
@@ -1401,6 +1414,10 @@
 				MARKETING_VERSION = 1.2.0;
 				NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = dev.chienniuapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1453,6 +1470,10 @@
 				MARKETING_VERSION = 1.2.0;
 				NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = dev.chienniuapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

@@ -1,16 +1,28 @@
 import SwiftUI
 import BackgroundTasks
+import FirebaseCore
+import FirebaseAnalytics
 
 @main
 struct NIUApp: App {
+    @UIApplicationDelegateAdaptor(NIUAppDelegate.self) private var appDelegate
+
+    fileprivate static var isRunningUIFixture: Bool {
+        #if DEBUG
+        return MoodleUIFixtureRoot.isEnabled || EventFavoritesUIFixture.requested ||
+            ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") ||
+            NativeMailUIFixtureScreen.launchScreen() != nil
+        #else
+        return false
+        #endif
+    }
     
     init() {
-        #if DEBUG
-        if MoodleUIFixtureRoot.isEnabled || EventFavoritesUIFixture.requested || ProcessInfo.processInfo.arguments.contains("-NIUMailUIFixture") || NativeMailUIFixtureScreen.launchScreen() != nil {
+        if Self.isRunningUIFixture {
+            Analytics.setAnalyticsCollectionEnabled(false)
             configureAppearance()
             return
         }
-        #endif
         setupApp()
     }
     
@@ -106,5 +118,27 @@ struct NIUApp: App {
         }
 
         UserDefaults.standard.register(defaults: defaults)
+    }
+}
+
+final class NIUAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Also disable any Analytics preference persisted by a previous normal launch.
+        guard !NIUApp.isRunningUIFixture else {
+            Analytics.setAnalyticsCollectionEnabled(false)
+            return true
+        }
+        FirebaseApp.configure()
+        Analytics.setConsent([
+            .analyticsStorage: .granted,
+            .adStorage: .denied,
+            .adUserData: .denied,
+            .adPersonalization: .denied
+        ])
+        Analytics.setAnalyticsCollectionEnabled(true)
+        return true
     }
 }
