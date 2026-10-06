@@ -6,6 +6,7 @@ struct ClassScheduleWeekView: View {
     let isRefreshing: Bool
     let cacheAgeText: String?
     let refresh: () async -> Void
+    let editCustomCourse: (UUID) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
@@ -220,6 +221,7 @@ struct ClassScheduleWeekView: View {
         .accessibilityLabel("\(column.dateLabel)，\(column.header)\(isToday ? "，今天" : "")")
     }
 
+    @ViewBuilder
     private func courseBlock(_ block: ClassScheduleWeekLayout.Block, layout: ClassScheduleWeekLayout,
                              height: CGFloat, width: CGFloat) -> some View {
         let colour = palette[ClassScheduleWeekLayout.stableColourIndex(for: block.course.name, paletteCount: palette.count)]
@@ -227,10 +229,7 @@ struct ClassScheduleWeekView: View {
         let showsRoom = height >= 40 && !block.classrooms.isEmpty
         let showsTeacher = height >= 100 && !block.teachers.isEmpty
         let titleLines = height >= 110 ? 4 : (height >= 70 ? 3 : (height >= 48 ? 2 : 1))
-        return NavigationLink {
-            ClassScheduleCourseDestination(courseName: block.course.name)
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
+        let label = VStack(alignment: .leading, spacing: 3) {
                 Text(block.course.name)
                     .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -267,17 +266,32 @@ struct ClassScheduleWeekView: View {
                 )
             }
             .overlay {
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
-                    .strokeBorder(colour.opacity(colorScheme == .dark ? 0.3 : 0.16), lineWidth: 0.5)
+                // Custom courses use a dashed edge so they differ by shape, not only colour.
+                if block.course.customCourseID != nil {
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
+                        .strokeBorder(colour.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                } else {
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
+                        .strokeBorder(colour.opacity(colorScheme == .dark ? 0.3 : 0.16), lineWidth: 0.5)
+                }
             }
             .overlay(alignment: .leading) { colour.frame(width: 2) }
             .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall))
             .clipped()
             .contentShape(Rectangle())
+        if let customID = block.course.customCourseID {
+            Button { editCustomCourse(customID) } label: { label }
+                .buttonStyle(.plain)
+                .accessibilityLabel("自訂課程，" + layout.accessibilityLabel(for: block, periods: schedule.periods))
+                .accessibilityHint("編輯自訂課程")
+        } else {
+            NavigationLink {
+                ClassScheduleCourseDestination(courseName: block.course.name)
+            } label: { label }
+                .buttonStyle(.plain)
+                .accessibilityLabel(layout.accessibilityLabel(for: block, periods: schedule.periods))
+                .accessibilityHint("開啟 M 園區課程")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(layout.accessibilityLabel(for: block, periods: schedule.periods))
-        .accessibilityHint("開啟 M 園區課程")
     }
 }
 

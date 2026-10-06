@@ -665,9 +665,9 @@ final class ClassLiveActivityCoordinator {
         }
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
         guard let data = defaults.data(forKey: cacheKey),
-              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
-              schedule.ownerSessionID == sessionID,
-              let snapshot = classSnapshot(from: schedule, now: now) else {
+              let cached = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              cached.ownerSessionID == sessionID,
+              let snapshot = classSnapshot(from: cached.withCustomCourses(from: defaults, weekContaining: now), now: now) else {
             await endAll()
             return
         }
@@ -759,11 +759,12 @@ final class ClassLiveActivityCoordinator {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
               let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else { return nil }
         guard let data = defaults.data(forKey: cacheKey),
-              let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data),
-              schedule.ownerSessionID == sessionID else {
+              let cached = try? JSONDecoder().decode(ClassSchedule.self, from: data),
+              cached.ownerSessionID == sessionID else {
             return nil
         }
 
+        let schedule = cached.withCustomCourses(from: defaults, weekContaining: now)
         let candidates = sessionsForDisplayDays(from: schedule, now: now)
 
         if let windowStart = displayWindowStart(for: candidates), now < windowStart {

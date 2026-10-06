@@ -179,7 +179,8 @@ struct HomeView: View {
     private func loadTodayCourses() {
         isLoadingCourses = true
         if let data = UserDefaults.standard.data(forKey: Self.cacheKey),
-           let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) {
+           let cached = try? JSONDecoder().decode(ClassSchedule.self, from: data) {
+            let schedule = cached.withCustomCourses(from: UserDefaults(suiteName: "group.dev.chien.niuapp"), weekContaining: Date())
             let extracted = extractRelevantPeriods(from: schedule)
             relevantPeriods = extracted.relevant
             todayHasAnyClasses = extracted.todayHasAnyClasses

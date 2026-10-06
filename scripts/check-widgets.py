@@ -34,7 +34,7 @@ methods = "\n".join(block(marker) for marker in [
     "private func loadTodayScheduleSummary", "private func weekdayIndex",
     "private func focusedScheduleItems", "private func minutes(from label",
 ])
-schedule = "import Foundation\n" + models + "\nstruct ScheduleCheck {\nlet fixture: ClassSchedule?\nfunc loadSchedule() -> ClassSchedule? { fixture }\n" + methods + "\n}\n"
+schedule = "import Foundation\n" + models + "\nstruct ScheduleCheck {\nlet fixture: ClassSchedule?\nfunc loadSchedule(at date: Date) -> ClassSchedule? { fixture }\n" + methods + "\n}\n"
 schedule += r'''
 @main struct ScheduleTests {
     static func main() {

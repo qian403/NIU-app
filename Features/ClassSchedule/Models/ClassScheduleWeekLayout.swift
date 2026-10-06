@@ -73,13 +73,14 @@ nonisolated struct ClassScheduleWeekLayout {
                 row += 1
                 while row < visibleRows.upperBound,
                       let next = schedule.periods[row].course(for: source),
-                      !name.isEmpty, Self.courseKey(next.name) == name,
+                      !name.isEmpty, Self.courseKey(next.name) == name, next.customCourseID == course.customCourseID,
                       Self.canMerge(schedule.periods[row - 1], schedule.periods[row]) {
                     courses.append(next)
                     row += 1
                 }
                 result.append(Block(column: column.id, rows: first..<row,
-                                    course: CourseInfo(name: name, teacher: course.teacher, classroom: course.classroom),
+                                    course: CourseInfo(name: name, teacher: course.teacher, classroom: course.classroom,
+                                                       customCourseID: course.customCourseID),
                                     classrooms: Self.unique(courses.compactMap(\.classroom)),
                                     teachers: Self.unique(courses.compactMap(\.teacher))))
             }

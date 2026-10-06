@@ -16,7 +16,14 @@ final class ClassScheduleViewModel: ObservableObject {
         case error(String)
     }
 
-    @Published var schedule: ClassSchedule?
+    /// School data only; this is what gets cached and shared with the Live Activity uploader.
+    @Published var schedule: ClassSchedule? {
+        didSet { rebuildDisplaySchedule() }
+    }
+    /// `schedule` plus this device's custom courses. Display only, never cached.
+    @Published private(set) var displaySchedule: ClassSchedule?
+    let customCourses: CustomCourseStore
+    private var customCourseSubscription: AnyCancellable?
     @Published var loadState: LoadState = .idle
     @Published var selectedDayIndex: Int = 0
     @Published var isFetchingInBackground = false  // background refresh while showing cache
@@ -36,6 +43,29 @@ final class ClassScheduleViewModel: ObservableObject {
     private let cacheKey = "classSchedule.v2.cachedData"
     private let appGroupIdentifier = "group.dev.chien.niuapp"
 
+    /// `nil` resolves to `.shared` inside the main-actor init; a default argument would be
+    /// evaluated in the caller's nonisolated context.
+    init(customCourses: CustomCourseStore? = nil) {
+        let customCourses = customCourses ?? .shared
+        self.customCourses = customCourses
+        // @Published emits before the store's value changes, so use the emitted list.
+        customCourseSubscription = customCourses.$courses.dropFirst().sink { [weak self] courses in
+            self?.rebuildDisplaySchedule(courses: courses)
+        }
+    }
+
+    /// "Now" for custom course expiry and week placement; fixed in UI fixtures.
+    var referenceDate: Date {
+        #if DEBUG
+        if ClassScheduleUIFixture.requested { return ClassScheduleUIFixture.now }
+        #endif
+        return Date()
+    }
+
+    private func rebuildDisplaySchedule(courses: [CustomCourse]? = nil) {
+        displaySchedule = schedule?.merging(courses ?? customCourses.courses, weekContaining: referenceDate)
+    }
+
     // MARK: - Computed helpers
 
     private static let weekdayNames = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -46,7 +76,7 @@ final class ClassScheduleViewModel: ObservableObject {
     var displayDayHeaders: [String] {
         let base = Array(Self.weekdayNames.prefix(5))   // always Mon-Fri
         let extra = Self.weekdayNames.dropFirst(5).filter { day in
-            schedule?.dayHeaders.contains(day) == true
+            displaySchedule?.dayHeaders.contains(day) == true
         }
         return base + Array(extra)
     }
@@ -62,11 +92,11 @@ final class ClassScheduleViewModel: ObservableObject {
     func scheduleColumnIndex(for displayIndex: Int) -> Int? {
         guard displayIndex < displayDayHeaders.count else { return nil }
         let day = displayDayHeaders[displayIndex]
-        return schedule?.dayHeaders.firstIndex(of: day)
+        return displaySchedule?.dayHeaders.firstIndex(of: day)
     }
 
     var periods: [ClassPeriod] {
-        schedule?.periods ?? []
+        displaySchedule?.periods ?? []
     }
 
     /// Relative time string for cache age, e.g. "3 小時前"
@@ -97,6 +127,7 @@ final class ClassScheduleViewModel: ObservableObject {
     func loadSchedule() {
         loadingAccount = UserDefaults.standard.string(forKey: StorageKeys.username)
         loadingSessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID)
+        customCourses.reload()
         if let cached = loadFromCache() {
             schedule = cached
             selectedDayIndex = todayDayIndex
@@ -293,6 +324,7 @@ final class ClassScheduleViewModel: ObservableObject {
             shared.set(data, forKey: cacheKey)
             WidgetCenter.shared.reloadAllTimelines()
         }
+        customCourses.syncShared()
         return decoded
     }
 
@@ -303,6 +335,7 @@ final class ClassScheduleViewModel: ObservableObject {
         if let data = try? JSONEncoder().encode(schedule) {
             UserDefaults.standard.set(data, forKey: cacheKey)
             UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: cacheKey)
+            customCourses.syncShared()
             WidgetCenter.shared.reloadAllTimelines()
         }
     }

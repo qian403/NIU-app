@@ -47,7 +47,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
             ]
             return Timeline(entries: entries, policy: .after(min(now.addingTimeInterval(1800), tomorrow)))
         }
-        let schedule = loadSchedule() ?? ClassSchedule(periods: [], dayCount: 0, dayHeaders: [], fetchedAt: now)
+        let schedule = loadSchedule(at: now) ?? ClassSchedule(periods: [], dayCount: 0, dayHeaders: [], fetchedAt: now)
         let dates = schedule.timelineDates(after: now)
         var entries: [NIUWidgetEntry] = []
         for date in dates {
@@ -77,7 +77,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
     }
 
     private func loadTodayScheduleSummary(now: Date) -> TodayScheduleSummary {
-        guard let schedule = loadSchedule() else {
+        guard let schedule = loadSchedule(at: now) else {
             return TodayScheduleSummary(
                 state: "未同步課表",
                 title: "課表資料",
@@ -155,7 +155,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
     }
 
     private func loadWeekSummary(now: Date) -> WeekTimetableSummary {
-        guard let schedule = loadSchedule() else {
+        guard let schedule = loadSchedule(at: now) else {
             return WeekTimetableSummary(
                 title: "完整課表",
                 subtitle: "請先在 App 內同步課表",
@@ -273,13 +273,14 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
         )
     }
 
-    private func loadSchedule() -> ClassSchedule? {
+    /// Includes the App's device-local custom courses active in the week of `date`.
+    private func loadSchedule(at date: Date) -> ClassSchedule? {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
               let data = defaults.data(forKey: "classSchedule.v2.cachedData"),
               let schedule = try? JSONDecoder().decode(ClassSchedule.self, from: data) else {
             return nil
         }
-        return schedule
+        return schedule.withCustomCourses(from: defaults, weekContaining: date)
     }
 
     private func displayDateRange(for event: CampusCalendarEvent) -> String {

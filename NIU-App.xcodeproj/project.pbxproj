@@ -176,6 +176,10 @@
 		C1A550010000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift */; };
 		C1A550010000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift */; };
 		C1A550010000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift */; };
+		C1A550010000000000000004 /* NIU-LiveActivities/CustomCourseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000004 /* NIU-LiveActivities/CustomCourseModels.swift */; };
+		C1A550010000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */; };
+		C1A550010000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */; };
+		C1A550010000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -387,6 +391,10 @@
 		C1A550020000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift; sourceTree = "<group>"; };
 		C1A550020000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleWeekView.swift; sourceTree = "<group>"; };
 		C1A550020000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift; sourceTree = "<group>"; };
+		C1A550020000000000000004 /* NIU-LiveActivities/CustomCourseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/CustomCourseModels.swift"; sourceTree = SOURCE_ROOT; };
+		C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/CustomCourseStore.swift; sourceTree = "<group>"; };
+		C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleSettingsView.swift; sourceTree = "<group>"; };
+		C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/CustomCourseEditorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -791,6 +799,10 @@
 				C1A550020000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift */,
 				C1A550020000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift */,
 				C1A550020000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift */,
+				C1A550020000000000000004 /* NIU-LiveActivities/CustomCourseModels.swift */,
+				C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */,
+				C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */,
+				C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */,
 				AA01BC15AA01BC15AA01BC15 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift */,
 				AA01BC16AA01BC16AA01BC16 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift */,
 				BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */,
@@ -1174,6 +1186,10 @@
 				C1A550010000000000000003 /* Features/ClassSchedule/Fixtures/ClassScheduleUIFixture.swift in Sources */,
 				C1A550010000000000000002 /* Features/ClassSchedule/Views/ClassScheduleWeekView.swift in Sources */,
 				C1A550010000000000000001 /* Features/ClassSchedule/Models/ClassScheduleWeekLayout.swift in Sources */,
+				C1A550010000000000000004 /* NIU-LiveActivities/CustomCourseModels.swift in Sources */,
+				C1A550010000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift in Sources */,
+				C1A550010000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift in Sources */,
+				C1A550010000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift in Sources */,
 				AA01BC05AA01BC05AA01BC05 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift in Sources */,
 				AA01BC06AA01BC06AA01BC06 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift in Sources */,
 				AA01BC07AA01BC07AA01BC07 /* Features/GradeHistory/Models/GradeHistoryModels.swift in Sources */,
