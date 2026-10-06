@@ -2,7 +2,8 @@ import SwiftUI
 
 struct ClassScheduleView: View {
     @StateObject private var vm = ClassScheduleViewModel()
-    @State private var showExportSheet = false
+    @State private var showSettings = false
+    @State private var editorRequest: CustomCourseEditorRequest?
     @State private var pagerSelection: Int = 1
     @AppStorage("classSchedule.displayMode") private var displayMode = "day"
 
@@ -10,7 +11,7 @@ struct ClassScheduleView: View {
 
     #if DEBUG
     init(fixtureSchedule: ClassSchedule, defaults: UserDefaults) {
-        let model = ClassScheduleViewModel()
+        let model = ClassScheduleViewModel(customCourses: CustomCourseStore(fixtureDefaults: defaults))
         model.schedule = fixtureSchedule
         model.loadState = .fresh
         model.selectedDayIndex = model.todayDayIndex
@@ -42,7 +43,7 @@ struct ClassScheduleView: View {
                     fullScreenLoading
 
                 case .cached, .fresh:
-                    if let schedule = vm.schedule {
+                    if let schedule = vm.displaySchedule {
                         scheduleContent(schedule: schedule)
                     }
 
@@ -83,12 +84,12 @@ struct ClassScheduleView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if vm.schedule != nil {
                     Button {
-                        showExportSheet = true
+                        showSettings = true
                     } label: {
-                        Image(systemName: "calendar.badge.plus")
+                        Image(systemName: "gearshape")
                             .font(.system(size: 17, weight: .medium))
                     }
-                    .accessibilityLabel("匯出課表至行事曆")
+                    .accessibilityLabel("課表設定")
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -104,12 +105,15 @@ struct ClassScheduleView: View {
                 }
             }
         }
-        .sheet(isPresented: $showExportSheet) {
+        .sheet(isPresented: $showSettings) {
             if let schedule = vm.schedule {
-                ClassScheduleExportView(
-                    schedule: schedule,
-                    isPresented: $showExportSheet
-                )
+                ClassScheduleSettingsView(schedule: schedule, store: vm.customCourses, today: vm.referenceDate)
+            }
+        }
+        .sheet(item: $editorRequest) { request in
+            if let schedule = vm.schedule {
+                CustomCourseEditorView(schedule: schedule, store: vm.customCourses, request: request,
+                                       today: vm.referenceDate)
             }
         }
         .onAppear {
@@ -210,7 +214,8 @@ struct ClassScheduleView: View {
                         displayDayHeaders: vm.displayDayHeaders,
                         isRefreshing: vm.isFetchingInBackground,
                         cacheAgeText: vm.cacheAgeText,
-                        refresh: refreshSchedule
+                        refresh: refreshSchedule,
+                        editCustomCourse: editCustomCourse
                     )
                 }
             }
@@ -226,9 +231,20 @@ struct ClassScheduleView: View {
         }
     }
 
+    private func editCustomCourse(_ id: UUID) {
+        guard let course = vm.customCourses.courses.first(where: { $0.id == id }) else { return }
+        editorRequest = CustomCourseEditorRequest(course: course)
+    }
+
+    /// Monday-based index for a display tab, used to preselect the weekday of a new course.
+    private func weekday(forDisplayIndex index: Int) -> Int? {
+        guard vm.displayDayHeaders.indices.contains(index) else { return nil }
+        return CustomCourse.weekdayHeaders.firstIndex(of: vm.displayDayHeaders[index])
+    }
+
     // MARK: - No course view
 
-    private var noCourseView: some View {
+    private func noCourseView(displayIndex: Int) -> some View {
         ScrollView {
             VStack(spacing: 12) {
                 Image(systemName: "calendar.badge.checkmark")
@@ -240,6 +256,17 @@ struct ClassScheduleView: View {
                 Text("這天沒有課")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color(.label))
+
+                Button {
+                    editorRequest = CustomCourseEditorRequest(weekday: weekday(forDisplayIndex: displayIndex))
+                } label: {
+                    Label("新增自訂課程", systemImage: "plus")
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 4)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 4)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 96)
@@ -309,7 +336,7 @@ struct ClassScheduleView: View {
                 let isSelected = vm.selectedDayIndex == index
                 let isToday = vm.actualTodayDayIndex == index
                 let hasClasses = vm.scheduleColumnIndex(for: index).map { column in
-                    vm.schedule?.periods.contains { $0.course(for: column) != nil } == true
+                    vm.displaySchedule?.periods.contains { $0.course(for: column) != nil } == true
                 } ?? false
 
                 Button {
@@ -390,7 +417,7 @@ struct ClassScheduleView: View {
             periodListView(schedule: schedule, scheduleColumnIndex: colIndex,
                            isToday: displayIndex == vm.actualTodayDayIndex)
         } else {
-            noCourseView
+            noCourseView(displayIndex: displayIndex)
         }
     }
 
@@ -406,7 +433,8 @@ struct ClassScheduleView: View {
                         PeriodRowView(
                             period: period,
                             scheduleColumnIndex: scheduleColumnIndex,
-                            isCurrent: isToday && period.isCurrentPeriod
+                            isCurrent: isToday && period.isCurrentPeriod,
+                            editCustomCourse: editCustomCourse
                         )
                         .id(period.id)
                     }
@@ -449,6 +477,7 @@ private struct PeriodRowView: View {
     let period: ClassPeriod
     let scheduleColumnIndex: Int
     let isCurrent: Bool
+    let editCustomCourse: (UUID) -> Void
 
     private var course: CourseInfo? { period.course(for: scheduleColumnIndex) }
 
@@ -465,7 +494,20 @@ private struct PeriodRowView: View {
             .frame(width: 48, alignment: .trailing)
             .padding(.top, 16)
 
-            if let course = course {
+            if let course = course, let customID = course.customCourseID {
+                Button {
+                    editCustomCourse(customID)
+                } label: {
+                    CourseCard(
+                        course: course,
+                        periodLabel: period.displayPeriodLabel,
+                        isCurrent: isCurrent
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(period.displayPeriodLabel)，\(period.startTimeLabel)到\(period.endTimeLabel)，自訂課程，\(course.name)，\(course.details ?? "")")
+                .accessibilityHint("編輯自訂課程")
+            } else if let course = course {
                 NavigationLink {
                     ClassScheduleCourseDestination(courseName: course.name)
                 } label: {
@@ -499,6 +541,15 @@ private struct CourseCard: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
+                if course.customCourseID != nil {
+                    Text("自訂")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                        .fixedSize()
+                }
                 Text(periodLabel)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(isCurrent ? Color.accentColor : Color(.secondaryLabel))
