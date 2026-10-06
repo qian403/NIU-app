@@ -12,6 +12,7 @@ struct ClassScheduleSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editorRequest: CustomCourseEditorRequest?
     @State private var showExportSheet = false
+    @State private var showWallpaperSheet = false
 
     var body: some View {
         NavigationStack {
@@ -48,6 +49,19 @@ struct ClassScheduleSettingsView: View {
 
                 Section {
                     Button {
+                        showWallpaperSheet = true
+                    } label: {
+                        Label("製作課表桌布", systemImage: "photo.artframe")
+                            .frame(minHeight: 44, alignment: .leading)
+                    }
+                } header: {
+                    Text("桌布")
+                } footer: {
+                    Text("選一張照片，自動把整週課表放在鎖定畫面時間下方，儲存成桌布。")
+                }
+
+                Section {
+                    Button {
                         showExportSheet = true
                     } label: {
                         Label("匯出課表至行事曆", systemImage: "calendar.badge.plus")
@@ -68,6 +82,9 @@ struct ClassScheduleSettingsView: View {
             }
             .sheet(item: $editorRequest) { request in
                 CustomCourseEditorView(schedule: schedule, store: store, request: request, today: today)
+            }
+            .sheet(isPresented: $showWallpaperSheet) {
+                ClassScheduleWallpaperView(schedule: schedule, customCourses: store.courses, today: today)
             }
             .sheet(isPresented: $showExportSheet) {
                 ClassScheduleExportView(schedule: schedule, isPresented: $showExportSheet)
