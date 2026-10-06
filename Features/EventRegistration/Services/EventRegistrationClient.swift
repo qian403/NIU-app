@@ -11,6 +11,12 @@ private nonisolated struct EventOperationSession: Sendable {
     let revision: UUID
     let username: String?
     let password: String?
+    let loginBudget: EventLoginBudget
+}
+
+@MainActor
+private final class EventLoginBudget {
+    var submissions = 0
 }
 
 private nonisolated enum EventOperationContext {
@@ -36,6 +42,30 @@ nonisolated enum EventRegistrationError: LocalizedError, Equatable {
         case .unavailable: return "目前無法連線至活動系統，請稍後重試。"
         case .invalidResponse: return "無法辨識活動系統的頁面內容，請稍後重試。"
         }
+    }
+}
+
+private nonisolated enum EventPageIssue: String, Equatable, Decodable, LocalizedError {
+    case unexpectedDestination = "E201"
+    case loginFormUnavailable = "E202"
+    case listNotReady = "E203"
+    case incompleteEvent = "E204"
+    case eventIDMissing = "E205"
+    case listDecodeFailed = "E206"
+    case scriptFailed = "E207"
+
+    var errorDescription: String? {
+        let message: String
+        switch self {
+        case .unexpectedDestination: message = "活動系統未開啟要求的頁面"
+        case .loginFormUnavailable: message = "無法讀取活動系統的登入表單"
+        case .listNotReady: message = "活動系統尚未顯示活動清單"
+        case .incompleteEvent: message = "活動清單的必要欄位不完整"
+        case .eventIDMissing: message = "無法讀取清單中的活動編號"
+        case .listDecodeFailed: message = "活動清單的資料格式無法辨識"
+        case .scriptFailed: message = "無法解析活動清單的頁面內容"
+        }
+        return "\(message)，請稍後重試。（\(rawValue)）"
     }
 }
 
@@ -251,10 +281,15 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         let url = try endpoint("/MvcTeam/Act/Apply/\(id)")
         return try await serialized { [self] in
             if let existing = try await loadApplied().first(where: { $0.eventSerialID == id }) {
+                guard Self.hasRegistrationState(existing) else {
+                    return .rejected("校方清單已有此活動，但無法確認有效的報名狀態；沒有再次送出。請至校方網頁核對。")
+                }
                 return .confirmed(Self.registeredMessage("你已報名這個活動", state: existing.state))
             }
             let page: URL
-            do { page = try await open(url) } catch EventRegistrationError.invalidResponse {
+            do { page = try await open(url) }
+            catch where (error as? EventRegistrationError) == .invalidResponse
+                || (error as? EventPageIssue) == .unexpectedDestination {
                 return .rejected("無法開啟此活動的報名頁面，可能已截止或額滿。請重新整理後再試。")
             }
             let token = try await evaluate(
@@ -267,7 +302,8 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
             request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.httpBody = Self.formBody([("__RequestVerificationToken", token), ("id", id), ("action", "我要報名")])
             return try await submitThenVerify(request, uncertain: "已送出報名，但尚無法確認校方是否完成。請到「已報名活動」確認，勿立即重複報名。", onSubmit: onSubmit) {
-                if let record = try await self.loadApplied().first(where: { $0.eventSerialID == id }) {
+                if let record = try await self.loadApplied().first(where: { $0.eventSerialID == id }),
+                   Self.hasRegistrationState(record) {
                     return .confirmed(Self.registeredMessage("已完成報名", state: record.state))
                 }
                 return nil
@@ -382,7 +418,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         }
         guard Self.samePage(landed, url) else {
             print("[EventRegistration] 頁面導向非預期位置 path=\(landed.path)")
-            throw EventRegistrationError.invalidResponse
+            throw EventPageIssue.unexpectedDestination
         }
         return landed
     }
@@ -393,45 +429,55 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         guard let credentials = credentials(), !credentials.username.isEmpty, !credentials.password.isEmpty else {
             throw EventRegistrationError.credentialsMissing
         }
-        var submissions = 0
+        // Preserve ReturnUrl and share the submission limit with the read's transport retry.
+        guard let loginURL = webView?.url, Self.isLoginPage(loginURL),
+              Self.samePage(loginURL, origin, pathOnly: false),
+              let budget = EventOperationContext.session?.loginBudget else {
+            throw EventPageIssue.loginFormUnavailable
+        }
         for attempt in 0..<Self.loginAttempts {
+            guard budget.submissions < Self.loginSubmissions else { break }
             if attempt > 0 {
                 try await Task.sleep(for: .milliseconds(600 * attempt))
                 // A login page that keeps rendering empty is usually a stuck web content process.
                 if attempt == Self.loginAttempts - 1 { discardWebView() }
-                let landed = try await load(URLRequest(url: try endpoint("/MvcTeam/Account/Login"),
+                let landed = try await load(URLRequest(url: loginURL,
                                                        cachePolicy: .reloadIgnoringLocalCacheData), acceptDocumentReady: true)
                 if !Self.isLoginPage(landed) { return landed }
             }
             let mark = navigationCount
-            let timeout = navigationTimeout(warm: 20)
+            // A rendered login page does not establish that the school's authentication is warm.
+            let timeout = navigationTimeout(warm: 90)
             prepareNavigation(acceptDocumentReady: true)
-            let state = try await evaluate(Scripts.login, [
-                "account": credentials.username, "password": credentials.password
-            ])
+            let state: String
+            do {
+                state = try await evaluate(Scripts.login, [
+                    "account": credentials.username, "password": credentials.password
+                ])
+            } catch EventRegistrationError.invalidResponse {
+                // Nothing was submitted; the next attempt reloads the login page.
+                continue
+            }
             print("[EventRegistration] 登入表單狀態=\(state) attempt=\(attempt + 1)")
             switch state {
             case "not_login_page":
                 if let url = webView?.url { return url }
                 continue
             case "submitted":
-                submissions += 1
+                budget.submissions += 1
             default:
                 continue
             }
-            do {
-                let page = try await waitForNavigation(after: mark, timeout: .seconds(timeout))
-                if !Self.isLoginPage(page) { return page }
-            } catch EventRegistrationError.timedOut {
-                if let url = webView?.url, !Self.isLoginPage(url) { return url }
-            }
+            // Keep a timeout as a timeout so serializedRead can retry with a fresh login page.
+            let page = try await waitForNavigation(after: mark, timeout: .seconds(timeout))
+            if !Self.isLoginPage(page) { return page }
             let text = (try? await evaluate(Scripts.pageText)) ?? ""
-            if ["帳號或密碼錯誤", "密碼錯誤", "帳號不存在", "登入失敗"].contains(where: text.contains) {
+            if ["帳號或密碼錯誤", "密碼錯誤", "帳號不存在"].contains(where: text.contains) {
                 throw EventRegistrationError.invalidCredentials
             }
-            if submissions >= Self.loginSubmissions { break }
         }
-        throw EventRegistrationError.loginFailed
+        // Without a submitted password, the failure is the login form, not the account.
+        throw budget.submissions > 0 ? EventRegistrationError.loginFailed : EventPageIssue.loginFormUnavailable
     }
 
     // MARK: Pages
@@ -444,18 +490,40 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         return records
     }
 
+    private struct ScrapeFailure: Decodable { let failure: String }
+
     private func scrape<T: Decodable>(_ script: String) async throws -> [T] {
         for attempt in 0..<2 {
             do {
-                let json = try await evaluate("return " + script)
+                // Return only known diagnostic codes; never expose page text or exception details.
+                let json = try await evaluate("""
+                try { return \(script) }
+                catch (error) {
+                  const codes = {event_list_not_ready: 'E203', applied_event_incomplete: 'E204',
+                                 applied_event_id_missing: 'E205'};
+                  const code = Object.prototype.hasOwnProperty.call(codes, error.message)
+                    ? codes[error.message] : 'E207';
+                  return JSON.stringify({failure: code});
+                }
+                """)
+                if let failure = try? JSONDecoder().decode(ScrapeFailure.self, from: Data(json.utf8)) {
+                    throw EventPageIssue(rawValue: failure.failure) ?? .scriptFailed
+                }
                 return try JSONDecoder().decode([T].self, from: Data(json.utf8))
             } catch EventRegistrationError.invalidResponse where attempt == 0 {
                 try await Task.sleep(for: .milliseconds(800))
+            } catch let issue as EventPageIssue where attempt == 0 && [.listNotReady, .scriptFailed].contains(issue) {
+                // Missing fields or IDs are deterministic for the same page; only a page still rendering is retried.
+                try await Task.sleep(for: .milliseconds(800))
+            } catch EventRegistrationError.invalidResponse {
+                throw EventPageIssue.scriptFailed
+            } catch is DecodingError where attempt == 0 {
+                try await Task.sleep(for: .milliseconds(800))
             } catch is DecodingError {
-                throw EventRegistrationError.invalidResponse
+                throw EventPageIssue.listDecodeFailed
             }
         }
-        throw EventRegistrationError.invalidResponse
+        throw EventPageIssue.scriptFailed
     }
 
     private struct LoadedForm: Decodable {
@@ -679,7 +747,8 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         #endif
         let id = UUID()
         let saved = credentials()
-        let session = EventOperationSession(revision: sessionRevision, username: saved?.username, password: saved?.password)
+        let session = EventOperationSession(revision: sessionRevision, username: saved?.username,
+                                            password: saved?.password, loginBudget: EventLoginBudget())
         let task = Task { @MainActor () async throws -> T in
             await previous?.value
             try Task.checkCancellation()
@@ -827,6 +896,13 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
         return state.isEmpty ? "\(prefix)。" : "\(prefix)，目前狀態：\(state)。"
     }
 
+    private static func hasRegistrationState(_ record: EventData_Apply) -> Bool {
+        // The school's wording varies ("報名成功", "審核中"); negative states must not match "錄取" or "報名".
+        let state = record.state.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !state.isEmpty, !["取消", "未", "不", "退", "失敗"].contains(where: state.contains) else { return false }
+        return ["報名", "正取", "錄取", "候補", "備取", "審核"].contains(where: state.contains)
+    }
+
     nonisolated static func isEventID(_ value: String) -> Bool {
         !value.isEmpty && value.count <= 20 && value.utf8.allSatisfy { (48...57).contains($0) }
     }
@@ -863,7 +939,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
     }
 
     nonisolated static func normalized(_ error: Error) -> Error {
-        if error is CancellationError || error is EventRegistrationError { return error }
+        if error is CancellationError || error is EventRegistrationError || error is EventPageIssue { return error }
         if let error = error as? URLError {
             switch error.code {
             case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff, .networkConnectionLost:
@@ -1001,17 +1077,22 @@ private nonisolated enum Scripts {
     static let applied = """
         (function() {
             var data = [];
-            var container = document.querySelector('.col-md-11.col-md-offset-1.col-sm-10.col-xs-12.col-xs-offset-0');
+            var legacyContainer = document.querySelector('.col-md-11.col-md-offset-1.col-sm-10.col-xs-12.col-xs-offset-0');
+            var content = document.querySelector('.body-content');
+            // Activity rows are semantic markers; Bootstrap column classes may change.
+            var container = content && content.querySelector('.row.enr-list-sec') ? content : legacyContainer;
             if (!container) { throw new Error('event_list_not_ready'); }
             var rows = container.querySelectorAll('.row.enr-list-sec');
-            var rowStates = document.querySelectorAll('.row.bg-warning');
+            var rowStates = Array.from(document.querySelectorAll('.row.bg-warning'))
+                .filter(stateRow => stateRow.querySelector('.text-danger.text-shadow'));
             var count = rows.length;
             for(let i=0; i<count; i++) {
                 let row = rows[i];
-                let row_state = rowStates[i];
                 let dialog = row.querySelector('.table');
-                if (!row || !dialog) { throw new Error('applied_event_incomplete'); }
+                // Ended activities may omit their detail table; retain the activity's list fields.
+                const cell = index => dialog?.querySelectorAll('tr')[index]?.querySelectorAll('td')[1] || null;
                 let name = row.querySelector('h3') ? row.querySelector('h3').innerText.trim() : '';
+                if (!name) { throw new Error('applied_event_incomplete'); }
                 let departmentNode = row.querySelector('.col-sm-3.text-center.enr-list-dep-nam.hidden-xs');
                 let department = departmentNode && departmentNode.title
                     ? (departmentNode.title.includes('：')
@@ -1020,7 +1101,9 @@ private nonisolated enum Scripts {
                             ? departmentNode.title.split(':')[1].trim()
                             : departmentNode.title.trim()))
                     : '';
-                let stateNode = row_state ? row_state.querySelector('.text-danger.text-shadow') : null;
+                // Missing status rows must not shift another activity's status onto this record.
+                let stateNode = row.querySelector('.row.bg-warning .text-danger.text-shadow')
+                    || (rowStates.length === count ? rowStates[i].querySelector('.text-danger.text-shadow') : null);
                 let state = stateNode
                     ? (stateNode.innerText.includes('：')
                         ? ((stateNode.innerText.split('：')[1] || '').trim())
@@ -1030,19 +1113,33 @@ private nonisolated enum Scripts {
                     : '';
                 let eventStateNode = row.querySelector('.btn.btn-danger');
                 let event_state = eventStateNode ? eventStateNode.innerText.trim() : '';
-                let eventSerialID = row.querySelector('p')
-                    ? ((row.querySelector('p').innerText.includes('：')
-                        ? (row.querySelector('p').innerText.split('：')[1] || '')
-                        : (row.querySelector('p').innerText.includes(':')
-                            ? row.querySelector('p').innerText.split(':')[1]
-                            : row.querySelector('p').innerText))
-                        .split(' ')[0].trim())
-                    : '';
-                if (!/^[0-9]+$/.test(eventSerialID)) { throw new Error('applied_event_id_missing'); }
+                // Ignore badges, require the complete labeled field, and reject conflicting IDs.
+                const ids = new Set();
+                for (const paragraph of row.querySelectorAll('p')) {
+                    if (paragraph.closest('.modal') || paragraph.closest('.enr-list-sec') !== row) { continue; }
+                    const field = paragraph.cloneNode(true);
+                    field.querySelectorAll('.badge').forEach(badge => badge.remove());
+                    const text = field.textContent.normalize('NFKC').trim();
+                    if (!/^活動編號\\s*[:：]/.test(text)) { continue; }
+                    const match = text.match(/^活動編號\\s*[:：]\\s*([0-9]{1,20})\\s*$/);
+                    if (!match) { throw new Error('applied_event_id_missing'); }
+                    ids.add(match[1]);
+                }
+                if (dialog) {
+                    for (const detailRow of dialog.querySelectorAll('tr')) {
+                        const cells = detailRow.querySelectorAll('td');
+                        if (cells[0]?.textContent.replace(/\\s+/g, '').replace(/[:：]$/, '') !== '活動編號') { continue; }
+                        const value = (cells[1]?.textContent || '').normalize('NFKC').trim();
+                        if (!/^[0-9]{1,20}$/.test(value)) { throw new Error('applied_event_id_missing'); }
+                        ids.add(value);
+                    }
+                }
+                if (ids.size !== 1) { throw new Error('applied_event_id_missing'); }
+                const eventSerialID = ids.values().next().value;
                 let eventTime = row.querySelector('.fa-calendar') ? row.querySelector('.fa-calendar').parentElement.innerText.replace(/\\s+/g,'').replace('~','起\\n')+'止'.trim() : '';
                 let eventLocation = row.querySelector('.fa-map-marker') ? row.querySelector('.fa-map-marker').parentElement.innerText.trim() : '';
-                let eventDetail = dialog.querySelectorAll('tr')[3] && dialog.querySelectorAll('tr')[3].querySelectorAll('td')[1]
-                    ? dialog.querySelectorAll('tr')[3].querySelectorAll('td')[1]
+                let eventDetail = cell(3)
+                    ? cell(3)
                         .innerHTML
                         .replace(/<br\\s*\\/?>/gi, '\\n')
                         .replace(/&nbsp;/gi, ' ')
@@ -1050,23 +1147,23 @@ private nonisolated enum Scripts {
                         .replace('"','')
                         .trim()
                     : '';
-                let contactInfoText = dialog.querySelectorAll('tr')[5] && dialog.querySelectorAll('tr')[5].querySelectorAll('td')[1]
-                    ? dialog.querySelectorAll('tr')[5].querySelectorAll('td')[1].innerHTML
+                let contactInfoText = cell(5)
+                    ? cell(5).innerHTML
                     : '';
                 let contactInfos = contactInfoText ? contactInfoText.split('<br>').map(function(info) {
                     return info.replace(/<[^>]*>/g,'').trim();
                 }) : ['', '', ''];
-                let Related_links = dialog.querySelectorAll('tr')[6] && dialog.querySelectorAll('tr')[6].querySelectorAll('td')[1]
-                    ? dialog.querySelectorAll('tr')[6].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').trim()
+                let Related_links = cell(6)
+                    ? cell(6).textContent.replace(/\\s+/g,'').trim()
                     : '';
-                let Remark = dialog.querySelectorAll('tr')[7] && dialog.querySelectorAll('tr')[7].querySelectorAll('td')[1]
-                    ? dialog.querySelectorAll('tr')[7].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('"','').trim()
+                let Remark = cell(7)
+                    ? cell(7).textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('"','').trim()
                     : '';
-                let Multi_factor_authentication = dialog.querySelectorAll('tr')[8] && dialog.querySelectorAll('tr')[8].querySelectorAll('td')[1]
-                    ? dialog.querySelectorAll('tr')[8].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('"','').trim()
+                let Multi_factor_authentication = cell(8)
+                    ? cell(8).textContent.replace(/\\s+/g,'').replace('<br>','\\n').replace('"','').trim()
                     : '';
-                let eventRegisterTime = dialog.querySelectorAll('tr')[9] && dialog.querySelectorAll('tr')[9].querySelectorAll('td')[1]
-                    ? dialog.querySelectorAll('tr')[9].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('~','~\\n').trim()
+                let eventRegisterTime = cell(9)
+                    ? cell(9).textContent.replace(/\\s+/g,'').replace('~','~\\n').trim()
                     : '';
                 data[i] = {name, department, state, event_state, eventSerialID, eventTime, eventLocation, eventDetail, contactInfoName: contactInfos[0] || '', contactInfoTel: contactInfos[1] || '', contactInfoMail: contactInfos[2] || '', Related_links, Remark, Multi_factor_authentication, eventRegisterTime};
             }
