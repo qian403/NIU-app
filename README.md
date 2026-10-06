@@ -62,7 +62,7 @@ NIU-Life 是為國立宜蘭大學學生打造的非官方 iOS 校務輔助工具
 
 ### 環境需求
 
-- macOS 與支援專案 SDK 的 Xcode；目前 App 與 Widget Extension 的最低部署版本皆為 **iOS 26.2**。
+- macOS 與支援專案 SDK 的 Xcode；目前 App 最低部署版本為 **iOS 18.6**，Widget Extension（含即時動態）為 **iOS 18.0**；iOS 26 起使用 Liquid Glass，較舊系統改用相同形狀的材質效果。
 - Swift 語言模式為 **Swift 5**，介面以 SwiftUI 為主，校方網頁互動使用 WebKit。
 - Python 3、Node.js：用於執行對應的離線檢查腳本；不是啟動 App 的必要條件。部分檢查會呼叫本機 Swift 工具鏈。
 
