@@ -146,7 +146,7 @@ import Combine
 
         _ = try await control("malformed=1")
         do { _ = try await client.appliedEvents(); expect(false, "malformed applied row must not become empty list") }
-        catch { expect(error as? EventRegistrationError == .invalidResponse, "malformed applied read remains error") }
+        catch { expect(error.localizedDescription.contains("（E205）"), "malformed applied read reports a missing event ID") }
         _ = try await control("malformed=0")
 
         _ = try await control("delay_get=1")
