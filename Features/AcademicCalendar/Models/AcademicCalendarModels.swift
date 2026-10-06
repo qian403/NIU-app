@@ -271,3 +271,56 @@ struct AcademicCalendarEventSection: Identifiable {
     let events: [CalendarEvent]
     var id: String { date.map(CampusCalendarDate.dayKey) ?? "carryover" }
 }
+
+/// Semester 1 covers August–January and semester 2 February–July, matching the feed's validated boundaries.
+struct AcademicCalendarSemester: Equatable {
+    let academicYear: Int
+    let number: Int
+
+    init(academicYear: Int, month: Int) {
+        self.academicYear = academicYear
+        number = month >= 8 || month == 1 ? 1 : 2
+    }
+
+    var months: [Int] { number == 1 ? [8, 9, 10, 11, 12, 1] : [2, 3, 4, 5, 6, 7] }
+    var title: String { "第 \(number) 學期" }
+    var firstDay: String { CampusCalendarDate.dayKey(AcademicCalendarMonth(academicYear: academicYear, month: months[0]).start) }
+
+    /// Each event appears once: periods carried over from the previous semester first, then by start day.
+    func monthSections(_ events: [CalendarEvent]) -> [AcademicCalendarMonthSection] {
+        let monthsInSemester = months.map { AcademicCalendarMonth(academicYear: academicYear, month: $0) }
+        let first = firstDay
+        let last = CampusCalendarDate.dayKey(monthsInSemester.last!.days.last!)
+        let matching = events.filter { $0.startDate <= last && ($0.endDate ?? $0.startDate) >= first }
+            .sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+        var result: [AcademicCalendarMonthSection] = []
+        let carryover = matching.filter { $0.startDate < first }
+        if !carryover.isEmpty {
+            result.append(AcademicCalendarMonthSection(month: nil, sections: [AcademicCalendarEventSection(date: nil, events: carryover)]))
+        }
+        for month in monthsInSemester {
+            let lower = CampusCalendarDate.dayKey(month.start)
+            let upper = CampusCalendarDate.dayKey(month.days.last!)
+            let starts = Dictionary(grouping: matching.filter { lower <= $0.startDate && $0.startDate <= upper }, by: \.startDate)
+            guard !starts.isEmpty else { continue }
+            result.append(AcademicCalendarMonthSection(month: month, sections: starts.keys.sorted().map {
+                AcademicCalendarEventSection(date: CampusCalendarDate.parse($0), events: starts[$0]!)
+            }))
+        }
+        return result
+    }
+
+    /// The day's own section, otherwise the next one; a day after every start uses the last section.
+    static func scrollTarget(for date: Date, in sections: [AcademicCalendarMonthSection]) -> String? {
+        let key = CampusCalendarDate.dayKey(date)
+        let dated = sections.flatMap(\.sections).filter { $0.date != nil }
+        return (dated.first { $0.id >= key } ?? dated.last)?.id
+    }
+}
+
+struct AcademicCalendarMonthSection: Identifiable {
+    /// nil groups periods that began in the previous semester.
+    let month: AcademicCalendarMonth?
+    let sections: [AcademicCalendarEventSection]
+    var id: String { month.map { "month-" + CampusCalendarDate.dayKey($0.start) } ?? "semester-carryover" }
+}

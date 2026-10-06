@@ -18,6 +18,7 @@ extension CalendarEventType {
 struct CalendarEventCard: View {
     let event: CalendarEvent
     var context: String? = nil
+    var isHighlighted = false
     let onTap: () -> Void
 
     var body: some View {
@@ -52,6 +53,11 @@ struct CalendarEventCard: View {
             }
             .padding(16)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                if isHighlighted {
+                    RoundedRectangle(cornerRadius: 16).strokeBorder(Color.primary.opacity(0.35), lineWidth: 1.5)
+                }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)

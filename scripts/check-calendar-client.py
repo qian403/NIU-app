@@ -275,6 +275,33 @@ actor DocumentRaceServer {
         let januarySections = AcademicCalendarMonth(academicYear: 115, month: 1).eventSections([uiExam])
         require(januarySections.count == 1 && januarySections[0].date == nil, "December to January carry-over stays in same academic year")
         print("PASS: monthly event list, inclusive overlaps, carry-over periods without daily duplicates")
+        let first = AcademicCalendarSemester(academicYear: 115, month: 1)
+        require(first.number == 1 && first.months == [8, 9, 10, 11, 12, 1], "January belongs to the first semester")
+        require(AcademicCalendarSemester(academicYear: 115, month: 2).number == 2, "February starts the second semester")
+        let winter = CalendarEvent(id: "winter", title: "寒假", description: nil,
+                                   startDate: "2027-01-20", endDate: "2027-02-20", type: .holiday)
+        let spring = CalendarEvent(id: "spring", title: "下學期開學", description: nil,
+                                   startDate: "2027-02-22", endDate: nil, type: .semester)
+        let sameDay = CalendarEvent(id: "same-day", title: "同日第二項", description: nil,
+                                    startDate: "2026-10-05", endDate: nil, type: .activity)
+        let semesterEvents = [nextMonth, oneDay, endsBefore, warningPeriod, closesFirst, winter, spring, sameDay]
+        let firstSections = first.monthSections(semesterEvents)
+        let firstIDs = firstSections.flatMap(\.sections).flatMap(\.events).map(\.id)
+        require(firstSections.allSatisfy { $0.month != nil } && !firstIDs.contains("spring"), "first semester excludes later starts")
+        require(firstIDs.contains("winter") && Set(firstIDs).count == firstIDs.count, "semester list shows each cross-month event once")
+        require(firstSections.first { $0.month?.start == october.start }?.sections.first { $0.id == "2026-10-05" }?.events.count == 2,
+                "same-day events share one scroll target")
+        let secondSections = AcademicCalendarSemester(academicYear: 115, month: 3).monthSections(semesterEvents)
+        require(secondSections.first?.month == nil && secondSections.first?.sections[0].events.map(\.id) == ["winter"],
+                "periods from the first semester are carried into the second semester once")
+        require(secondSections.flatMap(\.sections).flatMap(\.events).map(\.id) == ["winter", "spring"], "second semester contents")
+        let day = { (key: String) in CampusCalendarDate.parse(key)! }
+        require(AcademicCalendarSemester.scrollTarget(for: day("2026-10-05"), in: firstSections) == "2026-10-05", "tap scrolls to the day's events")
+        require(AcademicCalendarSemester.scrollTarget(for: day("2026-10-06"), in: firstSections) == "2026-11-01", "empty day scrolls to the next events")
+        require(AcademicCalendarSemester.scrollTarget(for: day("2027-01-31"), in: firstSections) == "2027-01-20", "day after every start uses the last section")
+        require(AcademicCalendarSemester.scrollTarget(for: day("2027-02-01"), in: secondSections) == "2027-02-22", "carry-over section is not a date target")
+        require(AcademicCalendarSemester.scrollTarget(for: day("2026-10-05"), in: []) == nil, "empty semester has no target")
+        print("PASS: semester list grouping, cross-semester periods, tap-to-scroll targets")
         print("PASS: month grid alignment, leap day, academic/civil year and selected date")
 
         print("PASS: Taipei January/August rollover, month spans, inclusive dates, widget states, future-year selection")
