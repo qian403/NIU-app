@@ -180,6 +180,8 @@
 		C1A550010000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */; };
 		C1A550010000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */; };
 		C1A550010000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */; };
+		C1A550010000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift */; };
+		C1A550010000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -395,6 +397,8 @@
 		C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/CustomCourseStore.swift; sourceTree = "<group>"; };
 		C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleSettingsView.swift; sourceTree = "<group>"; };
 		C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/CustomCourseEditorView.swift; sourceTree = "<group>"; };
+		C1A550020000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift; sourceTree = "<group>"; };
+		C1A550020000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -803,6 +807,8 @@
 				C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */,
 				C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */,
 				C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */,
+				C1A550020000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift */,
+				C1A550020000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift */,
 				AA01BC15AA01BC15AA01BC15 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift */,
 				AA01BC16AA01BC16AA01BC16 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift */,
 				BB01MF01BB01MF01BB01MF01 /* Features/Moodle/Models/MoodleModels.swift */,
@@ -1190,6 +1196,8 @@
 				C1A550010000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift in Sources */,
 				C1A550010000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift in Sources */,
 				C1A550010000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift in Sources */,
+				C1A550010000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift in Sources */,
+				C1A550010000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift in Sources */,
 				AA01BC05AA01BC05AA01BC05 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift in Sources */,
 				AA01BC06AA01BC06AA01BC06 /* Features/ClassSchedule/Views/ClassScheduleExportView.swift in Sources */,
 				AA01BC07AA01BC07AA01BC07 /* Features/GradeHistory/Models/GradeHistoryModels.swift in Sources */,
