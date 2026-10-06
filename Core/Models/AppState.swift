@@ -766,6 +766,10 @@ final class ClassLiveActivityCoordinator {
 
         let candidates = sessionsForDisplayDays(from: schedule, now: now)
 
+        if let windowStart = displayWindowStart(for: candidates), now < windowStart {
+            return windowStart
+        }
+
         for session in candidates {
             if now < session.start {
                 return session.start
@@ -780,8 +784,20 @@ final class ClassLiveActivityCoordinator {
 
     private typealias ClassSession = ScheduleSession
 
+    /// The activity appears 30 minutes before the day's first class rather than
+    /// right after midnight, which also keeps the ~8h activity lifetime for the
+    /// classes themselves instead of spending it on the early morning.
+    private static let displayLeadTime: TimeInterval = 30 * 60
+
+    private func displayWindowStart(for daySessions: [ClassSession]) -> Date? {
+        daySessions.map(\.start).min()?.addingTimeInterval(-Self.displayLeadTime)
+    }
+
     private func classSnapshot(from schedule: ClassSchedule, now: Date) -> (mode: String, primary: ScheduleBlock, next: ScheduleBlock?)? {
-        let candidates = schedule.sessions(on: now).mergedConsecutiveCourses()
+        let daySessions = schedule.sessions(on: now).mergedConsecutiveCourses()
+        if let windowStart = displayWindowStart(for: daySessions.map(\.session)), now < windowStart { return nil }
+
+        let candidates = daySessions
             .filter { $0.session.end > now }
 
         guard !candidates.isEmpty else { return nil }
