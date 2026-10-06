@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GraduationThresholdView: View {
     @StateObject private var vm = GraduationThresholdViewModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -30,6 +31,16 @@ struct GraduationThresholdView: View {
                 }
             }
         }
+        .overlay {
+            // 彩蛋：整體達成度 100% 時持續飄落彩帶
+            if showsConfetti {
+                ConfettiRainView()
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .transition(.opacity)
+            }
+        }
         .navigationTitle("畢業門檻")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -50,6 +61,12 @@ struct GraduationThresholdView: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    private var showsConfetti: Bool {
+        guard !reduceMotion, !vm.isWebVisible, vm.loadState == .loaded,
+              let data = vm.graduationData else { return false }
+        return overallProgress(data) >= 1
     }
 
     private var thresholdWebView: some View {
@@ -100,7 +117,8 @@ struct GraduationThresholdView: View {
 
     private func overallCard(data: GraduationData) -> some View {
         let progress = overallProgress(data)
-        let percent = Int((progress * 100).rounded())
+        // 未全數達成時最多顯示 99%，避免四捨五入成 100% 卻沒有真的完成
+        let percent = progress >= 1 ? 100 : min(99, Int((progress * 100).rounded()))
 
         return HStack(spacing: Theme.Spacing.large) {
             VStack(alignment: .leading, spacing: 8) {
@@ -384,8 +402,100 @@ struct GraduationThresholdView: View {
         case ..<0.4: return "起步階段，繼續加油"
         case ..<0.7: return "穩定推進中"
         case ..<0.95: return "即將達成各項門檻"
-        default: return "已接近全數達成"
+        case ..<1: return "已接近全數達成"
+        default: return "恭喜！已全數完成！"
         }
+    }
+}
+
+// MARK: - Confetti Rain
+
+/// 無狀態的彩帶雨：每片彩帶的位置只由經過時間與固定參數決定，
+/// 以 Canvas 繪製，不建立額外的 Task 或 Timer；離開畫面或 App 進入背景時暫停。
+private struct ConfettiRainView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var startDate = Date()
+
+    private static let pieces: [ConfettiPiece] = {
+        var generator = SeededGenerator(seed: 0x4E4955)
+        return (0..<70).map { _ in ConfettiPiece(using: &generator) }
+    }()
+
+    var body: some View {
+        TimelineView(.animation(paused: scenePhase != .active)) { timeline in
+            Canvas { context, size in
+                let elapsed = timeline.date.timeIntervalSince(startDate)
+                for piece in Self.pieces {
+                    piece.draw(in: &context, size: size, elapsed: elapsed)
+                }
+            }
+        }
+    }
+}
+
+private struct ConfettiPiece {
+    private static let palette: [Color] = [
+        .red, .orange, .yellow, .green, .mint, .blue, .purple, .pink
+    ]
+
+    let xFraction: Double
+    let fallSpeed: Double        // pt/s
+    let startOffset: Double      // 0...1，錯開每片的起始高度
+    let swayAmplitude: Double
+    let swaySpeed: Double
+    let spinSpeed: Double
+    let flipSpeed: Double
+    let width: Double
+    let height: Double
+    let isCircle: Bool
+    let color: Color
+
+    init(using rng: inout SeededGenerator) {
+        xFraction = Double.random(in: 0...1, using: &rng)
+        fallSpeed = Double.random(in: 70...150, using: &rng)
+        startOffset = Double.random(in: 0...1, using: &rng)
+        swayAmplitude = Double.random(in: 8...28, using: &rng)
+        swaySpeed = Double.random(in: 0.8...2.0, using: &rng)
+        spinSpeed = Double.random(in: -3...3, using: &rng)
+        flipSpeed = Double.random(in: 2...6, using: &rng)
+        isCircle = Double.random(in: 0...1, using: &rng) < 0.2
+        width = isCircle ? 7 : Double.random(in: 6...9, using: &rng)
+        height = isCircle ? 7 : Double.random(in: 10...16, using: &rng)
+        color = Self.palette.randomElement(using: &rng) ?? .yellow
+    }
+
+    func draw(in context: inout GraphicsContext, size: CGSize, elapsed: Double) {
+        let margin = 24.0
+        let travel = size.height + margin * 2
+        let y = (elapsed * fallSpeed + startOffset * travel)
+            .truncatingRemainder(dividingBy: travel) - margin
+        let x = xFraction * size.width + sin(elapsed * swaySpeed + startOffset * 2 * .pi) * swayAmplitude
+
+        var piece = context
+        piece.translateBy(x: x, y: y)
+        piece.rotate(by: .radians(elapsed * spinSpeed + startOffset * 2 * .pi))
+        // 以寬度縮放模擬彩帶翻面
+        piece.scaleBy(x: max(0.15, abs(cos(elapsed * flipSpeed + startOffset * 4))), y: 1)
+
+        let rect = CGRect(x: -width / 2, y: -height / 2, width: width, height: height)
+        let path = isCircle ? Path(ellipseIn: rect) : Path(roundedRect: rect, cornerRadius: 1.5)
+        piece.fill(path, with: .color(color.opacity(0.9)))
+    }
+}
+
+/// 固定種子的亂數產生器，讓彩帶分布在每次重繪時保持一致。
+private struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) { state = seed }
+
+    mutating func next() -> UInt64 {
+        // SplitMix64
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
     }
 }
 
