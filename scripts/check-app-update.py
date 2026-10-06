@@ -85,19 +85,20 @@ final class FixtureProtocol: URLProtocol {
         await relaunched.checkIfNeeded()
         precondition(FixtureProtocol.requests.count == 2, "local midnight permits a new check")
         precondition(relaunched.availableUpdate != nil)
-        let cases: [(String, Int, Bool)] = [
-            (response(version: "1.1.0"), 200, false),
-            (response(version: "1.0.0"), 200, false),
-            (response(version: "invalid"), 200, false),
-            (response(bundleID: "another.app"), 200, false),
-            (response(url: "https://example.com/update"), 200, false),
-            (response(url: "http://apps.apple.com/tw/app/test"), 200, false),
-            ("{\"results\":[]}", 200, false),
-            ("not json", 200, false),
-            (response(), 503, false),
-            (response(), 200, true)
+        // (body, status, offline, answered): an answered lookup ends the day; a failure may retry.
+        let cases: [(String, Int, Bool, Bool)] = [
+            (response(version: "1.1.0"), 200, false, true),
+            (response(version: "1.0.0"), 200, false, true),
+            (response(version: "invalid"), 200, false, true),
+            (response(bundleID: "another.app"), 200, false, true),
+            (response(url: "https://example.com/update"), 200, false, true),
+            (response(url: "http://apps.apple.com/tw/app/test"), 200, false, true),
+            ("{\"results\":[]}", 200, false, true),
+            ("not json", 200, false, false),
+            (response(), 503, false, false),
+            (response(), 200, true, false)
         ]
-        for (body, status, offline) in cases {
+        for (body, status, offline, answered) in cases {
             date = calendar.date(byAdding: .day, value: 1, to: date)!
             FixtureProtocol.body = body
             FixtureProtocol.status = status
@@ -107,15 +108,38 @@ final class FixtureProtocol: URLProtocol {
             await next.checkIfNeeded()
             await next.checkIfNeeded()
             precondition(next.availableUpdate == nil, "invalid or non-newer listings must not prompt")
-            precondition(FixtureProtocol.requests.count == count + 1)
+            precondition(FixtureProtocol.requests.count == count + (answered ? 1 : 2),
+                         "only failed lookups are retried the same day")
         }
+        // Failures retry on later activations, are capped per day, and the cap survives relaunch.
+        date = calendar.date(byAdding: .day, value: 1, to: date)!
+        FixtureProtocol.status = 200
+        FixtureProtocol.offline = true
+        var count = FixtureProtocol.requests.count
+        let flaky = checker()
+        for _ in 0..<5 { await flaky.checkIfNeeded() }
+        await checker().checkIfNeeded()
+        precondition(FixtureProtocol.requests.count == count + AppUpdateChecker.maxDailyAttempts,
+                     "same-day failed attempts are capped, including across relaunches")
+        // A retry that succeeds prompts and then ends the day.
+        date = calendar.date(byAdding: .day, value: 1, to: date)!
+        count = FixtureProtocol.requests.count
+        let retried = checker()
+        await retried.checkIfNeeded()
+        FixtureProtocol.offline = false
+        FixtureProtocol.body = response()
+        await retried.checkIfNeeded()
+        precondition(retried.availableUpdate != nil, "a same-day retry after a failure can prompt")
+        retried.dismissUpdate()
+        await checker().checkIfNeeded()
+        precondition(FixtureProtocol.requests.count == count + 2, "a successful retry completes the day")
         date = calendar.date(byAdding: .day, value: 1, to: date)!
         FixtureProtocol.offline = false
         FixtureProtocol.body = response()
         let recovered = checker()
         await recovered.checkIfNeeded()
         precondition(recovered.availableUpdate != nil, "network failure must not suppress future days")
-        print("PASS: numeric versions, concurrent checks, dismissal/relaunch, local midnight, lookup validation, offline recovery")
+        print("PASS: numeric versions, concurrent checks, dismissal/relaunch, local midnight, lookup validation, same-day failure retry limit, offline recovery")
     }
 }
 '''
