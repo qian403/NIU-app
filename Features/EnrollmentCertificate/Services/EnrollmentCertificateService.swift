@@ -28,6 +28,8 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
     private var didRefreshSSO = false
     private var reportedStage: EnrollmentLoadStage?
     private var bridgeTask: Task<Void, Never>?
+    private var bridgeWatchdog: Task<Void, Never>?
+    private var didRetryStalledBridge = false
     private var account = ""
     private var navigationGeneration = UUID()
     #if DEBUG
@@ -37,13 +39,16 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
     private let mainFrameURL: URL?
     private let allowsNavigation: (URL) -> Bool
     private let refreshSSO: @MainActor () async -> Bool
+    private let bridgeStallTimeout: Duration
 
     init(webView: WKWebView? = nil, mainFrameURL: URL? = EnrollmentEndpoint.mainFrame,
          allowsNavigation: @escaping (URL) -> Bool = EnrollmentEndpoint.allowsRegistrationNavigation,
-         refreshSSO: @escaping @MainActor () async -> Bool = { await SSOSessionService.shared.requestRefresh(force: true) }) {
+         refreshSSO: @escaping @MainActor () async -> Bool = { await SSOSessionService.shared.requestRefresh(force: true) },
+         bridgeStallTimeout: Duration = .seconds(15)) {
         self.mainFrameURL = mainFrameURL
         self.allowsNavigation = allowsNavigation
         self.refreshSSO = refreshSSO
+        self.bridgeStallTimeout = bridgeStallTimeout
         if let webView {
             self.webView = webView
         } else {
@@ -124,6 +129,8 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         continuation = nil
         bridgeTask?.cancel()
         bridgeTask = nil
+        bridgeWatchdog?.cancel()
+        bridgeWatchdog = nil
         pollTask?.cancel()
         pollTask = nil
         timeoutTask?.cancel()
@@ -187,6 +194,12 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         guard bridgeAttempts < 2, !(needsFreshSSO && didRefreshSSO) else {
             finish(.failure(EnrollmentError.sessionExpired)); return
         }
+        startBridge(needsFreshSSO: needsFreshSSO)
+    }
+
+    private func startBridge(needsFreshSSO: Bool) {
+        bridgeWatchdog?.cancel()
+        bridgeWatchdog = nil
         navigationGeneration = UUID()
         mainFrameReady = false
         didOpenRegistration = false
@@ -213,6 +226,7 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
                 self.bridgeAttempts += 1
                 self.bridgeTask = nil
                 self.webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
+                self.watchBridge(generation: self.navigationGeneration)
             } catch {
                 guard !Task.isCancelled, self.continuation != nil else { return }
                 let expired = (error as? URLError)?.code == .userAuthenticationRequired
@@ -223,9 +237,38 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         }
     }
 
+    /// Login.aspx can occasionally get no response at all. A GUID is single-use, so
+    /// a stalled bridge is retried once with a new GUID, then reported as a timeout.
+    private func watchBridge(generation: UUID) {
+        let timeout = bridgeStallTimeout
+        bridgeWatchdog = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self, self.continuation != nil, self.bridgeTask == nil,
+                  self.navigationGeneration == generation else { return }
+            self.bridgeWatchdog = nil
+            guard !self.didRetryStalledBridge else {
+                self.trace("bridge 仍無回應")
+                self.finish(.failure(URLError(.timedOut))); return
+            }
+            self.trace("bridge 無回應，改用新 GUID")
+            self.didRetryStalledBridge = true
+            // The stalled bridge never reached the school, so it is not evidence of a stale token.
+            self.bridgeAttempts -= 1
+            self.armTimeout()
+            self.startBridge(needsFreshSSO: false)
+        }
+    }
+
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard continuation != nil else { return }
+        if bridgeWatchdog != nil {
+            bridgeWatchdog?.cancel()
+            bridgeWatchdog = nil
+            // Only log a path: Login.aspx query strings contain the one-use GUID.
+            trace("bridge 已回應 path=\(webView.url?.path ?? "")")
+        }
         // A main document response has arrived; its login state is still being resolved.
-        guard continuation != nil, !mainFrameReady, !didOpenRegistration else { return }
+        guard !mainFrameReady, !didOpenRegistration else { return }
         report(.signingIn)
     }
 
