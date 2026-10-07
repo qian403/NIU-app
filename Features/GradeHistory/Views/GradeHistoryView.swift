@@ -451,17 +451,25 @@ private struct GradeSemesterCard: View {
             .joined(separator: " · ")
     }
 
-    /// 校方只給名次時顯示「第 3 名」，有總人數時顯示「第 3 名 / 45 人」。
     private var rankText: String? {
-        guard let rank = semester.classRank?.nilIfPlaceholder else { return nil }
+        let parts = [
+            Self.formatRank("班排", semester.classRank),
+            Self.formatRank("系排", semester.departmentRank)
+        ].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// 校方只給名次時顯示「第 3 名」，有總人數時顯示「第 3 名 / 45 人」。
+    private static func formatRank(_ label: String, _ raw: String?) -> String? {
+        guard let rank = raw?.nilIfPlaceholder else { return nil }
         let numbers = rank.split(whereSeparator: { !$0.isNumber })
         switch numbers.count {
         case 1 where rank.allSatisfy({ $0.isNumber || $0.isWhitespace }):
-            return "班級排名 第 \(numbers[0]) 名"
+            return "\(label) 第 \(numbers[0]) 名"
         case 2 where rank.contains("/"):
-            return "班級排名 第 \(numbers[0]) 名 / \(numbers[1]) 人"
+            return "\(label) 第 \(numbers[0]) 名 / \(numbers[1]) 人"
         default:
-            return "班級排名 \(rank)"
+            return "\(label) \(rank)"
         }
     }
 }
@@ -665,6 +673,7 @@ private struct GradeHistoryCourseDTO: Decodable {
     let scoreText: String
     let remark: String
     let classRank: String?
+    let departmentRank: String?
     let averageText: String?
 }
 
@@ -1133,17 +1142,47 @@ private struct GradeHistoryWebView: UIViewRepresentable {
 
                     // The school's accordion is mutually exclusive. All rows already
                     // exist in the DOM, so read hidden panels without clicking them.
+                    // Course tables also sit in div.row and start with the same
+                    // 學年期 column, so find the summary table by its rank header
+                    // and map columns by header text instead of fixed indexes.
                     var summaryBySem = {};
-                    var summaryRows = targetDoc.querySelectorAll('div.row table.table tr');
-                    for (var i = 1; i < summaryRows.length; i++) {
-                        var tds = summaryRows[i].querySelectorAll('td');
-                        if (!tds || tds.length < 4) continue;
-                        var sem = parseSemRaw(tds[0].textContent);
-                        if (!sem) continue;
-                        summaryBySem[sem.key] = {
-                            classRank: clean(tds[2].textContent),
-                            averageText: clean(tds[3].textContent)
-                        };
+                    var summaryTables = targetDoc.querySelectorAll('table.table');
+                    for (var s = 0; s < summaryTables.length; s++) {
+                        var summaryTable = summaryTables[s];
+                        if (summaryTable.closest && summaryTable.closest('#accordion修課紀錄')) continue;
+                        var summaryRows = summaryTable.querySelectorAll('tr');
+                        if (!summaryRows.length) continue;
+                        var headers = Array.prototype.map.call(
+                            summaryRows[0].querySelectorAll('th,td'),
+                            function(cell) { return clean(cell.textContent); }
+                        );
+                        function columnOf(keyword) {
+                            for (var h = 0; h < headers.length; h++) {
+                                if (headers[h].indexOf(keyword) >= 0) return h;
+                            }
+                            return -1;
+                        }
+                        var semCol = columnOf('學年期');
+                        var deptCol = columnOf('系排名');
+                        var classCol = columnOf('班排名');
+                        var avgCol = columnOf('平均');
+                        if (semCol < 0 || (deptCol < 0 && classCol < 0)) continue;
+
+                        for (var i = 1; i < summaryRows.length; i++) {
+                            var tds = summaryRows[i].querySelectorAll('td');
+                            if (!tds || tds.length <= semCol) continue;
+                            var sem = parseSemRaw(tds[semCol].textContent);
+                            if (!sem) continue;
+                            function cellText(col) {
+                                return col >= 0 && col < tds.length ? clean(tds[col].textContent) : '';
+                            }
+                            summaryBySem[sem.key] = {
+                                classRank: cellText(classCol),
+                                departmentRank: cellText(deptCol),
+                                averageText: cellText(avgCol)
+                            };
+                        }
+                        break;
                     }
 
                     var records = [];
@@ -1180,6 +1219,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                                 scoreText: scoreText,
                                 remark: "",
                                 classRank: summary.classRank || "",
+                                departmentRank: summary.departmentRank || "",
                                 averageText: summary.averageText || ""
                             });
                         }
@@ -1249,6 +1289,9 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                         let classRank = rows.compactMap { item in
                             item.row.classRank?.nilIfPlaceholder
                         }.first
+                        let departmentRank = rows.compactMap { item in
+                            item.row.departmentRank?.nilIfPlaceholder
+                        }.first
                         let averageScore = sourceAverage ?? computedAverage
 
                         return SemesterGrade(
@@ -1259,6 +1302,7 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                             creditsTaken: creditsTaken,
                             creditsPassed: creditsPassed,
                             classRank: classRank,
+                            departmentRank: departmentRank,
                             courses: courses
                         )
                     }
