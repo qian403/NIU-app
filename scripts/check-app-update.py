@@ -139,7 +139,14 @@ final class FixtureProtocol: URLProtocol {
         let recovered = checker()
         await recovered.checkIfNeeded()
         precondition(recovered.availableUpdate != nil, "network failure must not suppress future days")
-        print("PASS: numeric versions, concurrent checks, dismissal/relaunch, local midnight, lookup validation, same-day failure retry limit, offline recovery")
+        // Every lookup, including same-day retries, must use a fresh CDN cache key.
+        let cacheKeys = FixtureProtocol.requests.map { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
+                .queryItems!.first(where: { $0.name == "_" })?.value
+        }
+        precondition(cacheKeys.allSatisfy { !($0 ?? "").isEmpty }, "lookups must carry a cache-busting key")
+        precondition(Set(cacheKeys).count == cacheKeys.count, "cache-busting keys must not repeat")
+        print("PASS: numeric versions, concurrent checks, dismissal/relaunch, local midnight, lookup validation, same-day failure retry limit, offline recovery, CDN cache busting")
     }
 }
 '''

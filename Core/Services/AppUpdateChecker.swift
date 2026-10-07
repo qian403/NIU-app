@@ -76,7 +76,10 @@ final class AppUpdateChecker: ObservableObject {
         var components = URLComponents(string: "https://itunes.apple.com/lookup")!
         components.queryItems = [
             URLQueryItem(name: "bundleId", value: bundleID),
-            URLQueryItem(name: "country", value: "tw")
+            URLQueryItem(name: "country", value: "tw"),
+            // Apple's CDN caches this URL for hours, so today's single check could otherwise
+            // see a listing from before the latest release. A unique key forces a fresh answer.
+            URLQueryItem(name: "_", value: UUID().uuidString)
         ]
         guard let url = components.url else { return }
 
