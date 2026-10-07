@@ -19,9 +19,10 @@ def block(marker):
 
 
 widget = '\n'.join(block(m) for m in ['private struct CalendarSummary', 'private struct CalendarItem'])
+widget += '\nlet calendarEntryCapacity = 6\n'
 widget += '\nstruct WidgetCalendarCheck {\n' + '\n'.join(block(m) for m in [
     'private func calendarSummary', 'private func makeCalendarItem', 'private func displayDateRange',
-    'private func dayLabel', 'private func monthLabel']) + '\n}\n'
+    'private func relativeDayLabel', 'private func dayLabel', 'private func monthLabel']) + '\n}\n'
 
 checks = r'''
 import Foundation
@@ -164,6 +165,11 @@ actor DocumentRaceServer {
         require(missingSummary.title == "行事曆尚未公布" && missingSummary.state == "116 學年度", "widget missing-year state")
         let summary = widget.calendarSummary(result: online, now: instant("2027-01-10T15:00:00Z"))
         require(summary.entries.contains { $0.title == "期末考試" }, "widget includes final day of exam")
+        let widgetOctober = widget.calendarSummary(result: online, now: instant("2026-10-07T04:00:00Z"))
+        require(widgetOctober.entries.map(\.title) == ["國慶日補假", "國慶日", "學期1/3退費基準日", "臺灣光復暨金門古寧頭大捷紀念日", "臺灣光復暨金門古寧頭大捷紀念日補假", "期中考試"], "long warning period does not hide next three events")
+        require(widgetOctober.entries.prefix(3).map(\.relativeText) == ["2 天後", "3 天後", "9 天後"], "relative day labels use Taipei dates")
+        let widgetMidterm = widget.calendarSummary(result: online, now: instant("2026-11-02T04:00:00Z"))
+        require(widgetMidterm.entries.map(\.title).prefix(2) == ["期中考試", "申請停修期間"], "ongoing exam/registration stay listed")
 
         // A future year in the index must not become today's default.
         let viewModel = AcademicCalendarViewModel(store: store, now: instant("2026-07-30T04:00:00Z"))
