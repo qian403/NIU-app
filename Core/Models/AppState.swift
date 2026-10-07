@@ -283,6 +283,7 @@ final class AppState: ObservableObject {
     }
 
     func applicationDidBecomeActive() async {
+        notificationSettings = NotificationSettings.load()
         LiveActivityRemoteClient.shared.retryCleanup()
         if isAuthenticated {
             Task { await UsageHeartbeatClient.shared.report() }
@@ -303,6 +304,14 @@ final class AppState: ObservableObject {
 
 
     private func observeClassScheduleUpdates() {
+        let settingsObserver = NotificationCenter.default.addObserver(
+            forName: .classLiveActivitySettingDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.notificationSettings = NotificationSettings.load()
+            }
+        }
+        notificationObservers.append(settingsObserver)
         let observer = NotificationCenter.default.addObserver(
             forName: .classScheduleDidUpdate,
             object: nil,
@@ -381,6 +390,11 @@ struct NotificationSettings {
         defaults.set(classLiveActivityEnabled, forKey: NotificationKeys.classLiveActivityEnabled)
         defaults.set(eventReminderEnabled, forKey: NotificationKeys.eventReminderEnabled)
         defaults.set(eventReminderLeadTime.rawValue, forKey: NotificationKeys.eventReminderLeadTime)
+    }
+
+    static func setClassLiveActivityEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: NotificationKeys.classLiveActivityEnabled)
+        NotificationCenter.default.post(name: .classLiveActivitySettingDidChange, object: nil)
     }
 }
 
@@ -636,40 +650,78 @@ extension Notification.Name {
 @MainActor
 final class ClassLiveActivityCoordinator {
     static let shared = ClassLiveActivityCoordinator()
-    private let cacheKey = "classSchedule.v2.cachedData"
-    private let appGroupIdentifier = "group.dev.chien.niuapp"
+    enum RefreshResult {
+        case updated, outsideDisplayWindow, noSchedule, notAuthorized, disabled
+        case notAuthenticated, superseded, failed
+    }
     private var boundaryTask: Task<Void, Never>?
     private var foreground = false
     private var refreshGeneration = 0
+    private var shortcutRefreshGeneration: Int?
+    private var refreshAfterShortcut = false
 
     private init() {}
 
-    func refreshFromScheduleCache(forceRebuild: Bool = false) async {
-        guard !Task.isCancelled else { return }
+    @discardableResult
+    func refreshFromScheduleCache(
+        forceRebuild: Bool = false,
+        enableIfNeeded: Bool = false,
+        shortcutRequest: Bool = false
+    ) async -> RefreshResult {
+        guard !Task.isCancelled else { return .superseded }
+        if !shortcutRequest && !forceRebuild && shortcutRefreshGeneration != nil {
+            refreshAfterShortcut = true
+            return .superseded
+        }
         refreshGeneration &+= 1
         let generation = refreshGeneration
+        if shortcutRequest { shortcutRefreshGeneration = generation }
+        if forceRebuild && !shortcutRequest {
+            shortcutRefreshGeneration = nil
+            refreshAfterShortcut = false
+        }
         defer {
+            if shortcutRefreshGeneration == generation {
+                shortcutRefreshGeneration = nil
+                if refreshAfterShortcut {
+                    refreshAfterShortcut = false
+                    Task { await self.refreshFromScheduleCache() }
+                }
+            }
             if generation == refreshGeneration, !Task.isCancelled { scheduleBoundary() }
         }
-        guard NotificationSettings.load().classLiveActivityEnabled,
-              UserDefaults.standard.string(forKey: StorageKeys.username) != nil,
+        guard enableIfNeeded || NotificationSettings.load().classLiveActivityEnabled else {
+            await endAll()
+            return .disabled
+        }
+        guard let username = UserDefaults.standard.string(forKey: StorageKeys.username), !username.isEmpty,
               !UserDefaults.standard.bool(forKey: "app.logoutCleanupPending"),
               let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else {
             await endAll()
-            return
+            return .notAuthenticated
         }
         let now = Date()
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             await endAll()
-            return
+            return .notAuthorized
         }
-        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
-        guard let data = defaults.data(forKey: cacheKey),
-              let cached = try? JSONDecoder().decode(ClassSchedule.self, from: data),
-              cached.ownerSessionID == sessionID,
-              let snapshot = classSnapshot(from: cached.withCustomCourses(from: defaults, weekContaining: now), now: now) else {
+        let cached = await Task.detached(priority: .userInitiated) {
+            ClassScheduleCache.load(sessionID: sessionID, now: now)
+        }.value
+        guard isCurrentRefresh(generation, sessionID: sessionID, requireEnabled: !enableIfNeeded) else { return .superseded }
+        guard let cached else {
             await endAll()
-            return
+            return .noSchedule
+        }
+        if enableIfNeeded {
+            NotificationSettings.setClassLiveActivityEnabled(true)
+        }
+        guard let snapshot = classSnapshot(from: cached, now: now) else {
+            // Keep this refresh current so the foreground timer can reach the first class window.
+            LiveActivityRemoteClient.shared.stop()
+            await endActivities(generation: generation)
+            guard isCurrentRefresh(generation, sessionID: sessionID) else { return .superseded }
+            return .outsideDisplayWindow
         }
 
         let primary = snapshot.primary.session
@@ -691,21 +743,20 @@ final class ClassLiveActivityCoordinator {
 
         if forceRebuild || Activity<ClassLiveActivityAttributes>.activities.contains(where: { $0.attributes.token != sessionID }) {
             LiveActivityRemoteClient.shared.stop()
-            await endActivities()
-            guard !Task.isCancelled, generation == refreshGeneration,
-                  UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == sessionID else { return }
+            await endActivities(generation: generation)
+            guard isCurrentRefresh(generation, sessionID: sessionID) else { return .superseded }
         }
 
-        let activities = Activity<ClassLiveActivityAttributes>.activities
+        let activities = Activity<ClassLiveActivityAttributes>.activities.filter {
+            $0.activityState == .active || $0.activityState == .stale
+        }
 
         if activities.count > 1 {
             for activity in activities {
                 let final = ActivityContent(state: activity.content.state, staleDate: Date())
                 await activity.end(final, dismissalPolicy: .immediate)
-                guard !Task.isCancelled, generation == refreshGeneration,
-                      UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == sessionID else { return }
+                guard isCurrentRefresh(generation, sessionID: sessionID) else { return .superseded }
             }
-
             do {
                 let activity = try Activity<ClassLiveActivityAttributes>.request(
                     attributes: attributes,
@@ -713,19 +764,19 @@ final class ClassLiveActivityCoordinator {
                     pushType: LiveActivityRemoteClient.enabled ? .token : nil
                 )
                 LiveActivityRemoteClient.shared.observe(activity)
+                return .updated
             } catch {
                 print("[LiveActivity] 重建失敗: \(error.localizedDescription)")
+                return .failed
             }
-
-            return
         }
 
         if let activity = activities.first {
             await activity.update(content)
-            guard !Task.isCancelled, generation == refreshGeneration,
-                  UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == sessionID else { return }
+            guard isCurrentRefresh(generation, sessionID: sessionID) else { return .superseded }
+            guard activity.activityState == .active || activity.activityState == .stale else { return .failed }
             LiveActivityRemoteClient.shared.observe(activity)
-            return
+            return .updated
         }
 
         do {
@@ -735,8 +786,10 @@ final class ClassLiveActivityCoordinator {
                 pushType: LiveActivityRemoteClient.enabled ? .token : nil
             )
             LiveActivityRemoteClient.shared.observe(activity)
+            return .updated
         } catch {
             print("[LiveActivity] 啟動失敗: \(error.localizedDescription)")
+            return .failed
         }
     }
 
@@ -745,26 +798,30 @@ final class ClassLiveActivityCoordinator {
         boundaryTask = nil
         LiveActivityRemoteClient.shared.stop()
         refreshGeneration &+= 1
-        await endActivities()
+        shortcutRefreshGeneration = nil
+        refreshAfterShortcut = false
+        await endActivities(generation: refreshGeneration)
     }
 
-    private func endActivities() async {
+    private func isCurrentRefresh(_ generation: Int, sessionID: String, requireEnabled: Bool = true) -> Bool {
+        !Task.isCancelled && generation == refreshGeneration &&
+            UserDefaults.standard.string(forKey: StorageKeys.authSessionID) == sessionID &&
+            !UserDefaults.standard.bool(forKey: "app.logoutCleanupPending") &&
+            (!requireEnabled || NotificationSettings.load().classLiveActivityEnabled)
+    }
+
+    private func endActivities(generation: Int) async {
         for activity in Activity<ClassLiveActivityAttributes>.activities {
+            guard generation == refreshGeneration else { return }
             let final = ActivityContent(state: activity.content.state, staleDate: Date())
             await activity.end(final, dismissalPolicy: .immediate)
         }
     }
 
     func nextRefreshDate(after now: Date = Date()) -> Date? {
-        guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
-              let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID) else { return nil }
-        guard let data = defaults.data(forKey: cacheKey),
-              let cached = try? JSONDecoder().decode(ClassSchedule.self, from: data),
-              cached.ownerSessionID == sessionID else {
-            return nil
-        }
-
-        let schedule = cached.withCustomCourses(from: defaults, weekContaining: now)
+        guard let sessionID = UserDefaults.standard.string(forKey: StorageKeys.authSessionID),
+              let base = ClassScheduleCache.loadBase(sessionID: sessionID) else { return nil }
+        let schedule = base.schedule.merging(base.customCourses, weekContaining: now)
         let candidates = sessionsForDisplayDays(from: schedule, now: now)
 
         if let windowStart = displayWindowStart(for: candidates), now < windowStart {
@@ -778,6 +835,18 @@ final class ClassLiveActivityCoordinator {
             if session.start <= now && now < session.end {
                 return session.end
             }
+        }
+
+        // The stored timetable repeats weekly; find the next day's first display window.
+        let calendar = ScheduleClock.calendar
+        for offset in 1...7 {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: now),
+                  let firstClass = sessionsForDisplayDays(
+                    from: base.schedule.merging(base.customCourses, weekContaining: day), now: day
+                  ).min(by: { $0.start < $1.start })
+            else { continue }
+            let displayStart = firstClass.start.addingTimeInterval(-Self.displayLeadTime)
+            return max(calendar.startOfDay(for: day), displayStart)
         }
 
         return nil

@@ -25,6 +25,7 @@ struct SettingsView: View {
                     appearanceSection
                     actionsSection
                     notificationSection
+                    shortcutsSection
                     aboutSection
                     logoutSection
                 }
@@ -138,6 +139,19 @@ struct SettingsView: View {
 
             NavigationLink(destination: NotificationMenuView()) {
                 SettingsNavigationRow(icon: "bell.badge.fill", title: "通知設定", subtitle: "作業死線、重要日期、上課提醒、即時動態")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Shortcuts Section
+
+    private var shortcutsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            sectionLabel("自動化")
+            NavigationLink(destination: CampusShortcutsView()) {
+                SettingsNavigationRow(icon: "square.stack.3d.up.fill", title: "Siri 與捷徑",
+                                      subtitle: "更新靈動島、查詢課表與校園快捷功能")
             }
             .buttonStyle(.plain)
         }
