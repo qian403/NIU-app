@@ -23,14 +23,12 @@ final class EnrollmentCertificateViewModel: ObservableObject {
     // Injected closures allow offline cancellation/account-switch regression tests.
     private let currentSession: @MainActor () -> String?
     private let currentAccount: @MainActor () -> String?
-    private let refreshSession: @MainActor () async -> Bool
     private let loadRegistration: (@MainActor (String) async throws -> EnrollmentSnapshot)?
     private let makeRegistrationService: @MainActor () -> EnrollmentRegistrationService
     private let loadPDF: @MainActor (String) async throws -> Data
 
     init(currentSession: @escaping @MainActor () -> String? = { UserDefaults.standard.string(forKey: StorageKeys.authSessionID) },
          currentAccount: @escaping @MainActor () -> String? = { UserDefaults.standard.string(forKey: "app.user.username") },
-         refreshSession: @escaping @MainActor () async -> Bool = { await SSOSessionService.shared.requestRefresh(force: true) },
          loadRegistration: (@MainActor (String) async throws -> EnrollmentSnapshot)? = nil,
          makeRegistrationService: @escaping @MainActor () -> EnrollmentRegistrationService = { EnrollmentRegistrationService() },
          loadPDF: @escaping @MainActor (String) async throws -> Data = { studentID in
@@ -39,7 +37,6 @@ final class EnrollmentCertificateViewModel: ObservableObject {
          }) {
         self.currentSession = currentSession
         self.currentAccount = currentAccount
-        self.refreshSession = refreshSession
         self.loadRegistration = loadRegistration
         self.makeRegistrationService = makeRegistrationService
         self.loadPDF = loadPDF
@@ -62,7 +59,8 @@ final class EnrollmentCertificateViewModel: ObservableObject {
             defer { print("[Enrollment] 整體查詢結束 elapsed_ms=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))") }
             #endif
             do {
-                let result = try await self.fetchRegistrationWithRetry(operation: operation)
+                // The service owns SSO recovery so one query keeps one WebView and progress.
+                let result = try await self.fetchRegistration()
                 guard self.isCurrent(operation) else { return }
                 guard result.records.allSatisfy({ $0.studentID.caseInsensitiveCompare(owner) == .orderedSame }) else {
                     throw EnrollmentError.invalidResponse
@@ -73,14 +71,6 @@ final class EnrollmentCertificateViewModel: ObservableObject {
                 if self.isCurrent(operation), !(error is CancellationError) { self.errorMessage = Self.message(for: error) }
             }
             if self.isCurrent(operation) { self.isLoading = false; self.task = nil }
-        }
-    }
-
-    private func fetchRegistrationWithRetry(operation: UUID) async throws -> EnrollmentSnapshot {
-        do { return try await fetchRegistration() }
-        catch EnrollmentError.sessionExpired {
-            guard isCurrent(operation), await refreshSession(), isCurrent(operation) else { throw EnrollmentError.sessionExpired }
-            return try await fetchRegistration()
         }
     }
 

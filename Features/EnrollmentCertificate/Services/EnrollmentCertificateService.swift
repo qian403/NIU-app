@@ -24,7 +24,9 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
     private var timeoutTask: Task<Void, Never>?
     private var didOpenRegistration = false
     private var mainFrameReady = false
-    private var didAttemptBridge = false
+    private var bridgeAttempts = 0
+    private var didRefreshSSO = false
+    private var reportedStage: EnrollmentLoadStage?
     private var bridgeTask: Task<Void, Never>?
     private var account = ""
     private var navigationGeneration = UUID()
@@ -34,11 +36,14 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
     #endif
     private let mainFrameURL: URL?
     private let allowsNavigation: (URL) -> Bool
+    private let refreshSSO: @MainActor () async -> Bool
 
     init(webView: WKWebView? = nil, mainFrameURL: URL? = EnrollmentEndpoint.mainFrame,
-         allowsNavigation: @escaping (URL) -> Bool = EnrollmentEndpoint.allowsRegistrationNavigation) {
+         allowsNavigation: @escaping (URL) -> Bool = EnrollmentEndpoint.allowsRegistrationNavigation,
+         refreshSSO: @escaping @MainActor () async -> Bool = { await SSOSessionService.shared.requestRefresh(force: true) }) {
         self.mainFrameURL = mainFrameURL
         self.allowsNavigation = allowsNavigation
+        self.refreshSSO = refreshSSO
         if let webView {
             self.webView = webView
         } else {
@@ -59,17 +64,15 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 self.continuation = continuation
-                timeoutTask = Task { [weak self] in
-                    do { try await Task.sleep(for: .seconds(45)) } catch { return }
-                    self?.finish(.failure(URLError(.timedOut)))
-                }
+                armTimeout()
                 // Reuse the shared acade cookies first. Exchange a GUID only if
                 // the school actually reports an expired session.
                 webView.load(URLRequest(url: mainFrame, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
                 pollTask = Task { [weak self] in
                     // Frame loads do not consistently invoke the main-frame didFinish delegate.
-                    for _ in 0..<80 {
-                        do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                    // The loop ends with finish(): result, cancellation or armTimeout().
+                    while !Task.isCancelled {
+                        do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
                         guard let self, self.continuation != nil else { return }
                         guard self.mainFrameReady else { continue }
                         let navigationGeneration = self.navigationGeneration
@@ -83,6 +86,9 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
                                     self.report(.reading)
                                 }
                             }
+                            // Before the menu records its target frame, the snapshot cannot tell
+                            // a stale record left in MainFrame from the requested query.
+                            guard self.didOpenRegistration else { continue }
                             let value = try await self.webView.evaluateJavaScript(EnrollmentPageScript.snapshot)
                             guard !Task.isCancelled, self.continuation != nil else { return }
                             guard self.mainFrameReady, self.navigationGeneration == navigationGeneration else { continue }
@@ -104,7 +110,6 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
                             if Task.isCancelled { return }
                         }
                     }
-                    self?.finish(.failure(URLError(.timedOut)))
                 }
             }
         } onCancel: {
@@ -143,17 +148,45 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         #endif
     }
 
+    /// Progress only moves forward, so a GUID exchange or SSO refresh never looks like a restart.
     private func report(_ stage: EnrollmentLoadStage) {
+        if let reportedStage, stage.rawValue <= reportedStage.rawValue { return }
+        reportedStage = stage
         trace("\(stage.title)")
         onProgress?(stage)
     }
 
+    /// Bounds the school page work. SSO refresh suspends it because interactive
+    /// recovery has its own deadline in SSOSessionService.
+    private func armTimeout() {
+        timeoutTask?.cancel()
+        timeoutTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(45)) } catch { return }
+            self?.finish(.failure(URLError(.timedOut)))
+        }
+    }
+
+    private func refreshSSOOnce() async throws {
+        didRefreshSSO = true
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        trace("更新 SSO 登入")
+        let refreshed = await refreshSSO()
+        guard !Task.isCancelled, continuation != nil else { throw CancellationError() }
+        guard refreshed else { throw EnrollmentError.sessionExpired }
+        trace("SSO 已更新")
+        armTimeout()
+    }
+
+    /// Recovers the acade session inside this query. At most one SSO refresh and
+    /// two GUID bridges run, and the WebView is reused so progress never restarts.
     private func connectUsingExistingSSO() {
         guard continuation != nil, bridgeTask == nil else { return }
-        guard !didAttemptBridge else {
+        // A bridge that still lands on logout means the SSO token itself is stale.
+        let needsFreshSSO = bridgeAttempts > 0
+        guard bridgeAttempts < 2, !(needsFreshSSO && didRefreshSSO) else {
             finish(.failure(EnrollmentError.sessionExpired)); return
         }
-        didAttemptBridge = true
         navigationGeneration = UUID()
         mainFrameReady = false
         didOpenRegistration = false
@@ -162,16 +195,28 @@ final class EnrollmentRegistrationService: NSObject, WKNavigationDelegate {
         bridgeTask = Task { [weak self] in
             guard let self else { return }
             do {
+                if needsFreshSSO { try await self.refreshSSOOnce() }
                 self.trace("請求 GUID")
-                let guid = try await SSOGUIDBridge.requestGUID(account: self.account)
+                let guid: String
+                do {
+                    guid = try await SSOGUIDBridge.requestGUID(account: self.account)
+                } catch let error as URLError where error.code == .userAuthenticationRequired && !self.didRefreshSSO {
+                    guard !Task.isCancelled, self.continuation != nil else { return }
+                    self.trace("GUID 需要重新登入")
+                    try await self.refreshSSOOnce()
+                    self.trace("重新請求 GUID")
+                    guid = try await SSOGUIDBridge.requestGUID(account: self.account)
+                }
                 guard !Task.isCancelled, self.continuation != nil else { return }
                 guard let url = SSOGUIDBridge.acadeLoginURL(guid: guid) else { throw EnrollmentError.invalidResponse }
                 self.trace("GUID 已備妥，載入 bridge")
+                self.bridgeAttempts += 1
                 self.bridgeTask = nil
                 self.webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
             } catch {
                 guard !Task.isCancelled, self.continuation != nil else { return }
                 let expired = (error as? URLError)?.code == .userAuthenticationRequired
+                    || error as? EnrollmentError == .sessionExpired
                 self.trace("GUID 請求結束 authRequired=\(expired) code=\((error as NSError).code)")
                 self.finish(.failure(expired ? EnrollmentError.sessionExpired : error))
             }
