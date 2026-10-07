@@ -70,14 +70,13 @@ nonisolated struct EnrollmentPDFService {
             precondition(!EnrollmentEndpoint.isCertificate(URL(string: raw)!, studentID: record.studentID))
         }
         precondition(!EnrollmentEndpoint.isCertificateLogin(URL(string: "https://example.com/MvcTeam/Account/Login")!))
-        var loads = 0, refreshes = 0
-        let model = EnrollmentCertificateViewModel(currentSession: {"session-A"}, currentAccount: {"t0000001"}, refreshSession: { refreshes += 1; return true }, loadRegistration: { _ in
+        var loads = 0
+        let model = EnrollmentCertificateViewModel(currentSession: {"session-A"}, currentAccount: {"t0000001"}, loadRegistration: { _ in
             loads += 1
-            if loads == 1 { throw EnrollmentError.sessionExpired }
             return snapshot
         }, loadPDF: { _ in Data("synthetic-pdf".utf8) })
         await model.refreshAndWait()
-        precondition(loads == 2 && refreshes == 1 && model.snapshot?.records == [record] && !model.isLoading)
+        precondition(loads == 1 && model.snapshot?.records == [record] && !model.isLoading)
         model.showCertificate(); try await settle()
         precondition(model.pdfData != nil && !model.isLoadingPDF)
         model.dismissCertificate()
@@ -88,25 +87,14 @@ nonisolated struct EnrollmentPDFService {
         precondition(model.snapshot == nil && model.pdfData == nil && model.updatedAt == nil)
         precondition(model.loadStage == .connecting, "Cancellation resets query progress")
 
-        loads = 0; refreshes = 0
-        let expired = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, refreshSession: { refreshes += 1; return true }, loadRegistration: { _ in loads += 1; throw EnrollmentError.sessionExpired })
+        loads = 0
+        let expired = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, loadRegistration: { _ in loads += 1; throw EnrollmentError.sessionExpired })
         await expired.refreshAndWait()
-        precondition(loads == 2 && refreshes == 1 && expired.errorMessage != nil && !expired.isLoading)
-        var refreshGate: CheckedContinuation<Bool, Never>?
-        var cancelledLoads = 0
-        let cancelledLogin = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, refreshSession: {
-            await withCheckedContinuation { refreshGate = $0 }
-        }, loadRegistration: { _ in cancelledLoads += 1; throw EnrollmentError.sessionExpired })
-        cancelledLogin.refresh(); try await settle()
-        precondition(refreshGate != nil && cancelledLogin.isLoading)
-        cancelledLogin.cancel()
-        refreshGate?.resume(returning: true); try await settle()
-        precondition(cancelledLoads == 1 && !cancelledLogin.isLoading && cancelledLogin.snapshot == nil,
-                     "SSO completion after cancellation must not restart the old query")
-        refreshes = 0
-        let offline = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, refreshSession: { refreshes += 1; return true }, loadRegistration: { _ in throw URLError(.notConnectedToInternet) })
+        precondition(loads == 1 && expired.errorMessage != nil && !expired.isLoading,
+                     "The service already refreshed SSO; the ViewModel must not restart the whole query")
+        let offline = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, loadRegistration: { _ in throw URLError(.notConnectedToInternet) })
         await offline.refreshAndWait()
-        precondition(refreshes == 0 && offline.errorMessage?.contains("連線") == true)
+        precondition(offline.errorMessage?.contains("連線") == true)
 
         let gate = Gate()
         var session = "A"
@@ -135,11 +123,11 @@ nonisolated struct EnrollmentPDFService {
         pendingPDF.cancel()
         pdfGate?.resume(returning: Data("old-pdf".utf8)); try await settle()
         precondition(pendingPDF.pdfData == nil && !pendingPDF.isLoadingPDF)
-        let mvcLogin = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, refreshSession: { fatalError("MvcTeam expiry must not refresh modern SSO") }, loadRegistration: { _ in snapshot }, loadPDF: { _ in throw EnrollmentError.sessionExpired })
+        let mvcLogin = EnrollmentCertificateViewModel(currentSession: {"A"}, currentAccount: {"T0000001"}, loadRegistration: { _ in snapshot }, loadPDF: { _ in throw EnrollmentError.sessionExpired })
         await mvcLogin.refreshAndWait()
         mvcLogin.showCertificate(); try await settle()
         precondition(mvcLogin.certificateLoginURL == pdfURL && !mvcLogin.isLoadingPDF)
-        print("PASS: endpoint ownership, bounded SSO recovery, offline classification, cancellation, stale requests, account switch, PDF cancellation, separate MvcTeam login")
+        print("PASS: endpoint ownership, single-pass expiry, offline classification, cancellation, stale requests, account switch, PDF cancellation, separate MvcTeam login")
     }
 }
 '''
@@ -164,6 +152,10 @@ final class SSOTokenStore {
     static let shared = SSOTokenStore()
     var token: String? = "synthetic-token"
     func clear(ifMatching value: String) { if token == value { token = nil } }
+}
+@MainActor final class SSOSessionService {
+    static let shared = SSOSessionService()
+    func requestRefresh(force: Bool) async -> Bool { fatalError("Live SSO must not be used") }
 }
 enum FixtureHTTP {
     static var status = 200
@@ -205,62 +197,120 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
             precondition(policy == .cancel)
         }
     }
-    @MainActor static func main() async throws {
-        for status in [401, 200] {
-            FixtureHTTP.status = status
-            FixtureHTTP.calls = 0
-            SSOTokenStore.shared.token = "synthetic-token"
-            let service = EnrollmentRegistrationService()
-            var completed = false
-            let load = Task {
-                defer { completed = true }
-                do { _ = try await service.load(account: "synthetic"); fatalError("Expected expired session") }
-                catch { precondition(error as? EnrollmentError == .sessionExpired) }
-            }
-            try await settle()
-            redirect(service, "/NIU/Default.aspx")
-            try await settle()
-            precondition(FixtureHTTP.calls == 1)
-            if status == 401 {
-                precondition(completed && service.webView.requests.count == 1,
-                             "401 must fail before loading any acade GUID bridge")
-                precondition(SSOTokenStore.shared.token == nil)
-            } else {
-                precondition(!completed && service.webView.requests.count == 2)
-                // A GUID-bearing Login.aspx finishing is not a failure yet.
-                service.webView(service.webView, didFinish: nil)
-                precondition(!completed)
-                // An unrelated hidden subframe must not expire the session.
-                let hidden = WKNavigationAction(URL(string: "https://acade.niu.edu.tw/NIU/logout.aspx")!)
-                hidden.targetFrame?.isMainFrame = false
-                service.webView(service.webView, decidePolicyFor: hidden) { precondition($0 == .allow) }
-                precondition(!completed)
-                redirect(service, "/NIU/logout.aspx")
-                try await settle()
-                precondition(completed && FixtureHTTP.calls == 1 && service.webView.requests.count == 2,
-                             "Logout after GUID must fail immediately without polling or another bridge")
-            }
-            await load.value
-        }
-        // The didFinish fallback must also detect logout without waiting for a timeout.
-        FixtureHTTP.status = 200
+    @MainActor static func reset(status: Int) {
+        FixtureHTTP.status = status
+        FixtureHTTP.calls = 0
         SSOTokenStore.shared.token = "synthetic-token"
-        let service = EnrollmentRegistrationService()
+    }
+    /// Starts a load that must end in sessionExpired; `completed` flips when it does.
+    @MainActor static func expectExpiry(_ service: EnrollmentRegistrationService) -> (Task<Void, Never>, () -> Bool) {
         var completed = false
         let load = Task {
             defer { completed = true }
-            do { _ = try await service.load(account: "synthetic"); fatalError("Expected expiry") }
-            catch { precondition(error as? EnrollmentError == .sessionExpired) }
+            do { _ = try await service.load(account: "synthetic"); fatalError("Expected expired session") }
+            catch { precondition(error as? EnrollmentError == .sessionExpired, "\(error)") }
         }
+        return (load, { completed })
+    }
+    @MainActor static func main() async throws {
+        // GUID 401 and SSO refresh fails: stop before loading any acade bridge.
+        reset(status: 401)
+        var refreshes = 0
+        var service = EnrollmentRegistrationService(refreshSSO: { refreshes += 1; return false })
+        var (load, completed) = expectExpiry(service)
+        try await settle()
+        redirect(service, "/NIU/Default.aspx")
+        try await settle()
+        precondition(completed() && FixtureHTTP.calls == 1 && refreshes == 1 && service.webView.requests.count == 1,
+                     "401 with failed refresh must end without a bridge")
+        precondition(SSOTokenStore.shared.token == nil)
+        await load.value
+
+        // GUID 401, SSO refresh succeeds: retry GUID in the same WebView without reloading MainFrame.
+        reset(status: 401)
+        refreshes = 0
+        var stages: [EnrollmentLoadStage] = []
+        service = EnrollmentRegistrationService(refreshSSO: {
+            refreshes += 1
+            SSOTokenStore.shared.token = "fresh-token"
+            FixtureHTTP.status = 200
+            return true
+        })
+        service.onProgress = { stages.append($0) }
+        (load, completed) = expectExpiry(service)
+        try await settle()
+        redirect(service, "/NIU/Default.aspx")
+        try await settle()
+        precondition(!completed() && refreshes == 1 && FixtureHTTP.calls == 2 && service.webView.requests.count == 2,
+                     "Refreshed SSO must exchange a GUID within the same query")
+        precondition(service.webView.requests.last?.url?.path == "/NIU/Login.aspx")
+        // Logout after a bridge built from a fresh token cannot refresh again.
+        redirect(service, "/NIU/logout.aspx")
+        try await settle()
+        precondition(completed() && refreshes == 1 && FixtureHTTP.calls == 2 && service.webView.requests.count == 2)
+        precondition(stages == [.connecting, .signingIn], "Progress must not restart: \(stages)")
+        await load.value
+
+        // GUID 200 then logout: refresh SSO once, bridge once more, then stop.
+        reset(status: 200)
+        refreshes = 0
+        service = EnrollmentRegistrationService(refreshSSO: { refreshes += 1; return true })
+        (load, completed) = expectExpiry(service)
+        try await settle()
+        redirect(service, "/NIU/Default.aspx")
+        try await settle()
+        precondition(!completed() && FixtureHTTP.calls == 1 && service.webView.requests.count == 2)
+        // A GUID-bearing Login.aspx finishing is not a failure yet.
+        service.webView(service.webView, didFinish: nil)
+        precondition(!completed())
+        // An unrelated hidden subframe must not expire the session.
+        let hidden = WKNavigationAction(URL(string: "https://acade.niu.edu.tw/NIU/logout.aspx")!)
+        hidden.targetFrame?.isMainFrame = false
+        service.webView(service.webView, decidePolicyFor: hidden) { precondition($0 == .allow) }
+        precondition(!completed())
+        redirect(service, "/NIU/logout.aspx")
+        try await settle()
+        precondition(!completed() && refreshes == 1 && FixtureHTTP.calls == 2 && service.webView.requests.count == 3,
+                     "A stale token gets exactly one SSO refresh and one more bridge")
+        redirect(service, "/NIU/logout.aspx")
+        try await settle()
+        precondition(completed() && refreshes == 1 && FixtureHTTP.calls == 2 && service.webView.requests.count == 3,
+                     "Recovery is bounded to one refresh and two bridges")
+        await load.value
+
+        // Cancelling while SSO refresh is pending must not request a GUID or load a bridge afterwards.
+        reset(status: 401)
+        var gate: CheckedContinuation<Bool, Never>?
+        service = EnrollmentRegistrationService(refreshSSO: { await withCheckedContinuation { gate = $0 } })
+        let cancelled = Task {
+            do { _ = try await service.load(account: "synthetic"); fatalError("Expected cancellation") }
+            catch { precondition(error is CancellationError) }
+        }
+        try await settle()
+        redirect(service, "/NIU/Default.aspx")
+        try await settle()
+        precondition(gate != nil && FixtureHTTP.calls == 1)
+        service.cancel()
+        await cancelled.value
+        FixtureHTTP.status = 200
+        gate?.resume(returning: true)
+        try await settle()
+        precondition(FixtureHTTP.calls == 1 && service.webView.requests.count == 1,
+                     "SSO completion after cancellation must not resume the old query")
+
+        // The didFinish fallback must also detect logout without waiting for a timeout.
+        reset(status: 200)
+        service = EnrollmentRegistrationService(refreshSSO: { false })
+        (load, completed) = expectExpiry(service)
         try await settle()
         redirect(service, "/NIU/Default.aspx")
         try await settle()
         service.webView.url = URL(string: "https://acade.niu.edu.tw/NIU/logout.aspx")!
         service.webView(service.webView, didFinish: nil)
         try await settle()
-        precondition(completed)
+        precondition(completed())
         await load.value
-        print("PASS: production GUID 401 fast-path, immediate logout failure, single bridge and unrelated-frame isolation")
+        print("PASS: in-query SSO refresh, bounded bridges, cancellation during refresh, monotonic progress, unrelated-frame isolation")
     }
 }
 '''
