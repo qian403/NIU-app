@@ -1,25 +1,45 @@
 # NIU-Life
 
+<a href="https://apps.apple.com/tw/app/niu-life/id6813616626"><img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/zh-tw" alt="在 App Store 下載" height="40"></a>
+
+[![行事曆資料檢查](https://img.shields.io/github/actions/workflow/status/qian403/NIU-app/calendar-data.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=%E8%A1%8C%E4%BA%8B%E6%9B%86%E8%B3%87%E6%96%99)](https://github.com/qian403/NIU-app/actions/workflows/calendar-data.yml)
+
 把課表、M 園區與校園常用服務，放進同一個 App。
 
 NIU-Life 是為國立宜蘭大學學生打造的非官方 iOS 校務輔助工具，以 SwiftUI 開發，整合課程查詢、學年度行事曆、快速點名與圖書館通行碼，並提供主畫面小工具、鎖定畫面快捷與課表即時動態。
 
+> [!NOTE]
 > 本專案為個人開發，與國立宜蘭大學並無隸屬、合作或授權關係。校務資訊、點名結果與服務狀態，請以學校官方系統為準。
+
+NIU-Life 有 iOS 與 Android 兩個版本，功能與設計保持一致：
+
+| 平台 | 維護者 | Repository | 下載 |
+| --- | --- | --- | --- |
+| iOS | [Qian](https://github.com/qian403) | [qian403/NIU-app](https://github.com/qian403/NIU-app)（本 repo） | [App Store](https://apps.apple.com/tw/app/niu-life/id6813616626) |
+| Android | [Windless](https://github.com/windlessme) | [windlessme/niu-app-android](https://github.com/windlessme/niu-app-android) | [Google Play](https://play.google.com/store/apps/details?id=me.windless.niulife) |
+
+## 下載
+
+正式版已上架 [App Store](https://apps.apple.com/tw/app/niu-life/id6813616626)，支援 iOS 18.6 以上的 iPhone 與 iPad。多數功能需要有效的宜蘭大學帳號。
+
+<a href="https://apps.apple.com/tw/app/niu-life/id6813616626"><img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/zh-tw" alt="在 App Store 下載" height="48"></a>
 
 ## 功能
 
 | 功能         | 說明                                                                   |
 | ------------ | ---------------------------------------------------------------------- |
-| 我的課表     | 查看每週課程與今日安排，將課程匯出為 iOS 行事曆中的每週重複事件。      |
+| 我的課表     | 查看每週課程與今日安排，將課程匯出為 iOS 行事曆中的每週重複事件；可新增本機自訂課程並選擇顏色，製作課表桌布。 |
 | M 園區       | 查閱課程、公告、作業、教材與課程成績。                                 |
 | 快速點名     | 使用相機掃描課堂 QR Code，進入 M 園區點名流程。                        |
-| 圖書館通行碼 | 顯示門禁 QR Code 與借書條碼。                                          |
+| 圖書館       | 顯示門禁 QR Code 與借書條碼，預約空間與設備、查看我的預約。            |
 | 學年度行事曆 | 切換月曆／事件模式，依學年度搜尋及分類篩選，查看校方原文與來源 PDF。   |
 | 活動報名     | 瀏覽與報名校園活動、管理已報名活動，分享活動資訊及報名連結。             |
-| 成績查詢     | 查看歷年成績與 GPA。                                                   |
-| 畢業門檻     | 查詢多元時數、英文與體適能等門檻。                                     |
+| 成績查詢     | 查看期中／期末與歷年成績、班排與系排；GPA 由 App 依各科成績換算，僅供參考。 |
+| 畢業門檻     | 查詢多元時數、英文與體適能等門檻，查看多元學習時數紀錄明細。           |
 | 請假         | 先列出自己的假單與審核結果，校方開放時可撤回、修改或補交證明；新請假原生填寫假別、日期、節次與附件。 |
-| 小工具與快捷 | 在主畫面查看課表、行事曆，從鎖定畫面或控制中心快速開啟點名與圖書館。   |
+| 校園信箱     | 收信、寫信、回覆與附件；校內網路可能阻擋 SMTP 寄信。                   |
+| 其他查詢     | 在學證明 PDF、郵件包裹查詢。                                           |
+| 小工具與快捷 | 在主畫面查看課表、行事曆，從鎖定畫面或控制中心快速開啟點名與圖書館；捷徑 App 提供校園操作。 |
 | 版本更新提醒 | 每天首次開啟時檢查台灣 App Store 版本，有新版可選擇「前往更新」或「我知道了」。 |
 | 課表即時動態 | 在鎖定畫面與支援裝置的動態島顯示課程資訊；背景遠端更新需另行同意啟用。 |
 
