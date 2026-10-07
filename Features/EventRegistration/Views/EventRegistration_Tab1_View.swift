@@ -52,7 +52,7 @@ struct EventRegistration_Tab1_View: View {
         }
         .alert(viewModel.alert?.title ?? "", isPresented: Binding(
             get: { viewModel.alert != nil },
-            set: { if !$0 { viewModel.alert = nil } }
+            set: { if !$0 { viewModel.dismissAlert() } }
         ), presenting: viewModel.alert) { alert in
             if alert.kind != .failure {
                 Button("查看已報名活動") { showApplied() }

@@ -500,7 +500,7 @@ final class EventRegistrationClient: NSObject, EventRegistrationServing, WKNavig
                 try { return \(script) }
                 catch (error) {
                   const codes = {event_list_not_ready: 'E203', applied_event_incomplete: 'E204',
-                                 applied_event_id_missing: 'E205'};
+                                 applied_event_id_missing: 'E205', event_id_missing: 'E205'};
                   const code = Object.prototype.hasOwnProperty.call(codes, error.message)
                     ? codes[error.message] : 'E207';
                   return JSON.stringify({failure: code});
@@ -1049,7 +1049,20 @@ private nonisolated enum Scripts {
                 if (state === '活動已結束') {count--;skip++;continue;}
                 let targets = row.querySelector('.fa-id-badge').parentElement.innerText.trim();
                 if (!targets.includes('本校在校生')) {count--;skip++;continue;}
-                let eventSerialID = row.querySelector('p').innerText.split('：')[1].split(' ')[0].trim();
+                // The ID paragraph also holds status badges; strip them and require digits only.
+                const ids = new Set();
+                for (const paragraph of row.querySelectorAll('p')) {
+                    if (paragraph.closest('.modal') || paragraph.closest('.enr-list-sec') !== row) { continue; }
+                    const field = paragraph.cloneNode(true);
+                    field.querySelectorAll('.badge').forEach(badge => badge.remove());
+                    const text = field.textContent.normalize('NFKC').trim();
+                    if (!/^活動編號\\s*[:：]/.test(text)) { continue; }
+                    const match = text.match(/^活動編號\\s*[:：]\\s*([0-9]{1,20})\\s*$/);
+                    if (!match) { throw new Error('event_id_missing'); }
+                    ids.add(match[1]);
+                }
+                if (ids.size !== 1) { throw new Error('event_id_missing'); }
+                let eventSerialID = ids.values().next().value;
                 let eventTime = row.querySelector('.fa-calendar').parentElement.innerText.replace(/\\s+/g,'').replace('~','起\\n')+'止'.trim();
                 let eventLocation = row.querySelector('.fa-map-marker').parentElement.innerText.trim();
                 let eventRegisterTime = row.querySelector('.table').querySelectorAll('tr')[9].querySelectorAll('td')[1].textContent.replace(/\\s+/g,'').replace('~','起\\n')+'止'.trim();
