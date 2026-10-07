@@ -63,7 +63,21 @@ for kind in [MoodleAttendanceWebOutcome.Kind.requiresAction, .unknown] {
     precondition(!outcome.isTerminal)
     precondition(!outcome.allowsAttendanceLinkSharing)
 }
-print("PASS: \(checks) attendance response cases; only real forms open automatically")
+let sharedLink = "https://euni.niu.edu.tw/mod/attendance/attendance.php?qrpass=RAjWP5gHWP6P6Jg&sessid=3032"
+for text in [sharedLink, "  \(sharedLink)\n", "點名連結：\(sharedLink) 快點",
+             "「\(sharedLink)」", "euni.niu.edu.tw/mod/attendance/attendance.php?qrpass=RAjWP5gHWP6P6Jg&sessid=3032"] {
+    precondition(MoodleAttendanceQRCode.validatedURL(fromSharedText: text)?.absoluteString == sharedLink, text)
+    checks += 1
+}
+for text in ["", "http://euni.niu.edu.tw/mod/attendance/attendance.php?qrpass=a&sessid=1",
+             "https://example.org/mod/attendance/attendance.php?qrpass=a&sessid=1",
+             "https://euni.niu.edu.tw/mod/attendance/attendance.php?qrpass=a&sessid=0",
+             "https://euni.niu.edu.tw/mod/attendance/attendance.php?qrpass=a&sessid=1&next=https://x",
+             "https://euni.niu.edu.tw/my/"] {
+    precondition(MoodleAttendanceQRCode.validatedURL(fromSharedText: text) == nil, text)
+    checks += 1
+}
+print("PASS: \(checks) attendance response and shared link cases; only real forms open automatically")
 '''
 # Exercise the production DOM extractor in WebKit without account/network access.
 script = re.search(r'let script = """\n(.*?)\n\s*"""',

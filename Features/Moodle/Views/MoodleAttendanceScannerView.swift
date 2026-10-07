@@ -16,6 +16,8 @@ struct MoodleAttendanceScannerView: View {
     @State private var isVisible = false
     @State private var debugPreviewOutcome: MoodleAttendanceWebOutcome?
     @State private var expiredAttendanceURLs: Set<URL> = []
+    @State private var isShowingLinkEntry = false
+    @State private var pendingLinkURL: URL?
 
     var body: some View {
         ZStack {
@@ -84,7 +86,23 @@ struct MoodleAttendanceScannerView: View {
             attendanceURL = nil
             debugPreviewOutcome = nil
         }
+        .sheet(isPresented: $isShowingLinkEntry, onDismiss: handleLinkEntryDismissed) {
+            AttendanceLinkEntrySheet(resolve: resolveSharedLink) { url in
+                pendingLinkURL = url
+                isShowingLinkEntry = false
+            }
+        }
         .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    scanner.pauseScanning()
+                    isShowingLinkEntry = true
+                } label: {
+                    Label("輸入連結", systemImage: "link")
+                }
+                .accessibilityLabel("輸入點名連結")
+            }
+
             #if DEBUG
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -335,9 +353,31 @@ struct MoodleAttendanceScannerView: View {
         }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        openAttendance(url)
+    }
+
+    private func openAttendance(_ url: URL) {
         debugPreviewOutcome = nil
         attendanceURL = url
         isShowingAttendance = true
+    }
+
+    private func resolveSharedLink(_ text: String) -> Result<URL, AttendanceLinkEntryError> {
+        guard let url = MoodleAttendanceQRCode.validatedURL(fromSharedText: text) else {
+            return .failure(.invalid)
+        }
+        guard !expiredAttendanceURLs.contains(url) else { return .failure(.expired) }
+        return .success(url)
+    }
+
+    private func handleLinkEntryDismissed() {
+        // Push only after the sheet is gone so the navigation transition is not dropped.
+        if let url = pendingLinkURL {
+            pendingLinkURL = nil
+            openAttendance(url)
+        } else if isVisible, scenePhase == .active {
+            scanner.resumeScanning()
+        }
     }
 
     private func showScanWarning(_ message: String) {
@@ -857,6 +897,140 @@ private struct AttendanceSubmissionWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
+enum AttendanceLinkEntryError: Error {
+    case invalid
+    case expired
+
+    var message: String {
+        switch self {
+        case .invalid:
+            return "這不是有效的 M 園區點名連結"
+        case .expired:
+            return "這個點名連結已過期，請向同學取得最新的連結"
+        }
+    }
+}
+
+private struct AttendanceLinkEntrySheet: View {
+    let resolve: (String) -> Result<URL, AttendanceLinkEntryError>
+    let onOpen: (URL) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: Theme.Spacing.large) {
+                    pasteSection
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(Theme.Spacing.medium)
+                            .background(.red, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .transition(.opacity)
+                    }
+                    manualEntrySection
+                }
+                .padding(Theme.Spacing.large)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("輸入連結")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
+        // A solid background keeps text readable over the camera preview behind the sheet.
+        .presentationBackground(Color(.systemGroupedBackground))
+        .presentationDetents([.medium, .large])
+    }
+
+    private var pasteSection: some View {
+        VStack(spacing: Theme.Spacing.medium) {
+            VStack(spacing: Theme.Spacing.xsmall) {
+                Text("複製同學分享的點名連結後按下方按鈕")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color(.label))
+                Text("貼上有效連結會立即開始點名，訊息中的其他文字會自動略過。")
+                    .font(.subheadline)
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+            .multilineTextAlignment(.center)
+
+            PasteButton(payloadType: String.self) { values in
+                guard let value = values.first else { return }
+                Task { @MainActor in
+                    text = value
+                    // A valid pasted link opens immediately, matching a QR scan.
+                    submit(value)
+                }
+            }
+            .controlSize(.extraLarge)
+            .buttonBorderShape(.capsule)
+            .tint(.accentColor)
+            .accessibilityHint("貼上點名連結並立即點名")
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var manualEntrySection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+            Text("或手動輸入連結")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color(.secondaryLabel))
+
+            TextField(
+                "https://euni.niu.edu.tw/mod/attendance/…",
+                text: $text,
+                axis: .vertical
+            )
+            .font(.body)
+            .foregroundStyle(Color(.label))
+            .lineLimit(1...4)
+            .keyboardType(.URL)
+            .textContentType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.go)
+            .onSubmit { submit(text) }
+            .onChange(of: text) { _, _ in withAnimation { errorMessage = nil } }
+            .padding(Theme.Spacing.medium)
+            .frame(minHeight: 44)
+            .background(Color(.secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityLabel("點名連結")
+
+            Button {
+                submit(text)
+            } label: {
+                Text("點名")
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    private func submit(_ value: String) {
+        switch resolve(value) {
+        case .success(let url):
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onOpen(url)
+        case .failure(let error):
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            withAnimation { errorMessage = error.message }
+        }
+    }
+}
+
 private struct AttendanceLinkShareSheet: UIViewControllerRepresentable {
     let url: URL
 
@@ -897,6 +1071,22 @@ enum MoodleAttendanceQRCode {
         components.port = nil
         components.fragment = nil
         return components.url
+    }
+
+    /// Accepts a link pasted from a classmate's message, which may include surrounding text.
+    static func validatedURL(fromSharedText text: String) -> URL? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 2_048 else { return nil }
+        if let url = validatedURL(from: value) { return url }
+
+        // Tokens are split on whitespace and full-width punctuation that chat apps add around links.
+        let separators = CharacterSet.whitespacesAndNewlines
+            .union(CharacterSet(charactersIn: "「」『』（）()<>《》，。、：；！？\"'"))
+        for token in value.components(separatedBy: separators) where !token.isEmpty {
+            let candidate = token.lowercased().hasPrefix("euni.niu.edu.tw/") ? "https://" + token : token
+            if let url = validatedURL(from: candidate) { return url }
+        }
+        return nil
     }
 
     static func sessionID(from url: URL) -> Int? {
