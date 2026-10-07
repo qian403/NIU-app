@@ -1,63 +1,67 @@
 import SwiftUI
+import Charts
 import WebKit
 
 struct GradeHistoryView: View {
     @StateObject private var vm = GradeHistoryViewModel()
+    @State private var showsGPAInfo = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            modeSection
-                .padding(.horizontal, Theme.Spacing.large)
-                .padding(.vertical, Theme.Spacing.medium)
-            ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                switch vm.loadState {
-                case .idle, .loading:
-                    ProgressView(loadingText)
-                        .progressViewStyle(.circular)
-                        .tint(.primary)
-                        .foregroundColor(.primary.opacity(0.6))
+            switch vm.loadState {
+            case .idle, .loading:
+                ProgressView(loadingText)
 
-                case .error(let message):
-                    errorView(message: message)
-
-                case .loaded:
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: Theme.Spacing.large) {
-                            contentHeader
-                            contentSection
-                            AcademicRefreshFooter(
-                                lastUpdated: vm.lastUpdated,
-                                isRefreshing: vm.isRefreshing,
-                                errorMessage: vm.lastRefreshError,
-                                onRetry: vm.refresh
-                            )
-                        }
-                        .padding(.horizontal, Theme.Spacing.large)
-                        .padding(.vertical, Theme.Spacing.medium)
-                    }
-                    .scrollBounceBehavior(.always, axes: .vertical)
-                    .refreshable { await vm.refreshAndWait() }
+            case .error(let message):
+                ContentUnavailableView {
+                    Label("無法載入成績", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("重新載入", action: vm.refresh)
+                        .buttonStyle(.bordered)
                 }
+
+            case .loaded:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+                        if vm.selectedMode == .history {
+                            historyContent
+                        } else {
+                            termContent
+                        }
+                        AcademicRefreshFooter(
+                            lastUpdated: vm.lastUpdated,
+                            isRefreshing: vm.isRefreshing,
+                            errorMessage: vm.lastRefreshError,
+                            onRetry: vm.refresh
+                        )
+                    }
+                    .padding(.horizontal, Theme.Spacing.medium)
+                    .padding(.vertical, Theme.Spacing.small)
+                }
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .refreshable { await vm.refreshAndWait() }
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { modePicker }
         .navigationTitle("成績查詢")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if vm.isModeLoading {
                     ProgressView()
-                        .tint(.primary)
                 } else {
                     Button(action: vm.refresh) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 16, weight: .light))
-                            .foregroundColor(.primary)
                     }
+                    .accessibilityLabel("重新整理成績")
                 }
             }
         }
+        .sheet(isPresented: $showsGPAInfo) { GPAInfoSheet() }
         .overlay {
             if vm.showWebView {
                 GradeHistoryWebView(mode: vm.selectedMode) { [requestID = vm.webViewID] result in
@@ -73,8 +77,6 @@ struct GradeHistoryView: View {
         .onDisappear { vm.cancelLoading() }
     }
 
-    // MARK: - Sections
-
     private var loadingText: String {
         switch vm.selectedMode {
         case .midterm: return "載入期中成績…"
@@ -83,338 +85,280 @@ struct GradeHistoryView: View {
         }
     }
 
-    private var modeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("查詢模式")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.primary.opacity(0.55))
-            Picker("查詢模式", selection: $vm.selectedMode) {
-                ForEach(GradeQueryMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+    private var modePicker: some View {
+        Picker("查詢模式", selection: $vm.selectedMode) {
+            ForEach(GradeQueryMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.xsmall)
+        .background(.bar)
+        .onChange(of: vm.selectedMode) { _, mode in
+            vm.selectMode(mode)
+        }
+    }
+
+    // MARK: - History
+
+    private var selectedSemester: SemesterGrade? {
+        vm.selectedSemesterID.flatMap { id in vm.semesters.first { $0.id == id } }
+    }
+
+    @ViewBuilder
+    private var historyContent: some View {
+        let summary = vm.summary
+        GPAOverviewCard(
+            title: selectedSemester.map { "\($0.shortTitle) 學期 GPA" } ?? "累計 GPA",
+            summary: summary,
+            onInfo: { showsGPAInfo = true }
+        )
+
+        if selectedSemester == nil, summary.trend.count >= 2 {
+            GradeTrendCard(points: summary.trend)
+        }
+
+        HStack {
+            Text("各學期成績")
+                .font(.headline)
+            Spacer()
+            semesterMenu
+        }
+        .padding(.top, Theme.Spacing.xsmall)
+
+        if vm.displayedSemesters.isEmpty {
+            ContentUnavailableView("尚無歷年成績", systemImage: "doc.text.magnifyingglass",
+                                   description: Text("教務系統目前沒有可顯示的修課紀錄"))
+        } else {
+            ForEach(vm.displayedSemesters) { semester in
+                GradeSemesterCard(
+                    semester: semester,
+                    isExpanded: vm.selectedSemesterID != nil || vm.expandedSemesters.contains(semester.id),
+                    canToggle: vm.selectedSemesterID == nil,
+                    toggle: {
+                        withAnimation(Theme.Animation.standard) { vm.toggle(semester) }
+                    }
+                )
+            }
+        }
+    }
+
+    private var semesterMenu: some View {
+        Menu {
+            Picker("學期", selection: $vm.selectedSemesterID) {
+                Text("全部學期").tag(String?.none)
+                ForEach(vm.semesters) { semester in
+                    Text(semester.termTitle).tag(Optional(semester.id))
                 }
             }
-            .pickerStyle(.segmented)
-            .onModeChange(vm.selectedMode) { mode in
-                vm.selectMode(mode)
+        } label: {
+            HStack(spacing: 4) {
+                Text(selectedSemester?.shortTitle ?? "全部學期")
+                Image(systemName: "chevron.up.chevron.down")
+                    .imageScale(.small)
             }
+            .font(.subheadline)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel("篩選學期")
+        .accessibilityValue(selectedSemester?.termTitle ?? "全部學期")
+    }
+
+    // MARK: - Midterm / final
+
+    @ViewBuilder
+    private var termContent: some View {
+        if let snapshot = vm.termSnapshot, !snapshot.courses.isEmpty {
+            let publishedCount = snapshot.courses.filter { $0.scoreText.nilIfPlaceholder != nil }.count
+            GradeCard {
+                VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                    if let title = snapshot.semesterTitle.nilIfPlaceholder {
+                        Text(title)
+                            .font(.headline)
+                    }
+                    MetricRow(metrics: [
+                        (vm.selectedMode == .midterm ? "期中平均" : "期末平均",
+                         snapshot.averageText.nilIfPlaceholder ?? "未公布"),
+                        ("班排名", snapshot.rankText.nilIfPlaceholder ?? "未公布"),
+                        ("已公布", "\(publishedCount) / \(snapshot.courses.count) 科")
+                    ])
+                }
+                .padding(Theme.Spacing.medium)
+            }
+
+            GradeCard {
+                VStack(spacing: 0) {
+                    ForEach(Array(snapshot.courses.enumerated()), id: \.offset) { index, course in
+                        if index > 0 { Divider().padding(.leading, Theme.Spacing.medium) }
+                        TermScoreRow(course: course)
+                    }
+                }
+            }
+        } else {
+            ContentUnavailableView("尚無\(vm.selectedMode.rawValue)成績", systemImage: "doc.text.magnifyingglass",
+                                   description: Text("教師登錄成績後就會顯示在這裡"))
+        }
+    }
+}
+
+// MARK: - Building blocks
+
+private struct GradeCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+    }
+}
+
+/// 三欄數據；放大文字時改為直排，避免窄螢幕截字。
+private struct MetricRow: View {
+    let metrics: [(title: String, value: String)]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xsmall))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.small))
+        layout {
+            ForEach(metrics, id: \.title) { metric in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(metric.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(metric.value)
+                        .font(.body.weight(.semibold))
+                        .monospacedDigit()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+}
+
+private extension Double {
+    var gpaText: String { String(format: "%.2f", self) }
+    var creditText: String { formatted(.number.precision(.fractionLength(0...1))) }
+}
+
+// MARK: - GPA overview
+
+private struct GPAOverviewCard: View {
+    let title: String
+    let summary: GradeHistorySummary
+    let onInfo: () -> Void
+
+    var body: some View {
+        GradeCard {
+            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                HStack(spacing: 0) {
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button(action: onInfo) {
+                        Image(systemName: "info.circle")
+                            .font(.body)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, -10)
+                    .accessibilityLabel("GPA 計算說明")
+                    .accessibilityHint("說明 GPA 為估算值及計算公式")
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(summary.cumulativeGPA?.gpaText ?? "—")
+                            .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                            .monospacedDigit()
+                        Text("/ \(GPAFormula.maxGPA, specifier: "%.1f")")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressView(value: min(1, (summary.cumulativeGPA ?? 0) / GPAFormula.maxGPA))
+                        .tint(.primary)
+                    Text("依各科成績換算的估算值，僅供參考")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(title)
+                .accessibilityValue(summary.cumulativeGPA.map {
+                    "\($0.gpaText)，滿分 \(GPAFormula.maxGPA)，估算值，僅供參考"
+                } ?? "無法計算")
+
+                Divider()
+
+                MetricRow(metrics: [
+                    ("加權平均", summary.averageScore.map { String(format: "%.1f", $0) } ?? "—"),
+                    ("實得學分", "\(summary.earnedCredits.creditText) / \(summary.attemptedCredits.creditText)"),
+                    ("課程數", "\(summary.courseCount)")
+                ])
+            }
+            .padding(Theme.Spacing.medium)
+        }
+    }
+}
+
+// MARK: - Trend chart
+
+private struct GradeTrendCard: View {
+    let points: [GradeHistorySummary.SemesterTrendPoint]
+    private let visibleCount = 6
+
+    var body: some View {
+        GradeCard {
+            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                Text("各學期 GPA 走勢")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                chart
+                    .frame(height: 170)
+            }
+            .padding(Theme.Spacing.medium)
         }
     }
 
     @ViewBuilder
-    private var contentHeader: some View {
-        if vm.selectedMode == .history {
-            summarySection
-            filterSection
+    private var chart: some View {
+        let base = Chart(points) { point in
+            LineMark(x: .value("學期", point.label), y: .value("GPA", point.gpa))
+                .foregroundStyle(Color.primary.opacity(0.85))
+            PointMark(x: .value("學期", point.label), y: .value("GPA", point.gpa))
+                .foregroundStyle(Color.primary)
+                .annotation(position: .top, spacing: 4) {
+                    Text(point.gpa.gpaText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+        }
+        .chartYScale(domain: 0...GPAFormula.maxGPA)
+        .chartYAxis {
+            AxisMarks(position: .leading, values: [0, 1, 2, 3, 4]) {
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                AxisValueLabel()
+            }
+        }
+
+        if points.count > visibleCount, let last = points.last {
+            base
+                .chartScrollableAxes(.horizontal)
+                .chartXVisibleDomain(length: visibleCount)
+                .chartScrollPosition(initialX: last.label)
         } else {
-            termSummarySection
-        }
-    }
-
-    private var summarySection: some View {
-        let summary = vm.summary
-        return VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-            HStack(alignment: .center, spacing: Theme.Spacing.medium) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("累計 GPA")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.primary.opacity(0.55))
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(String(format: "%.2f", summary.cumulativeGPA))
-                            .font(.system(size: 32, weight: .bold))
-                        Text("/ 4.30")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
-                    Capsule()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(height: 6)
-                        .overlay(alignment: .leading) {
-                            GeometryReader { proxy in
-                                Capsule()
-                                    .fill(Color.primary)
-                                    .frame(width: max(0, min(1, summary.cumulativeGPA / 4.3)) * proxy.size.width)
-                            }
-                        }
-                }
-
-                Spacer()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    statRow(title: "平均分數", value: String(format: "%.2f", summary.averageScore))
-                    statRow(title: "通過率", value: summary.passRate.isNaN ? "0%" : String(format: "%.0f%%", summary.passRate * 100))
-                    statRow(title: "已修/通過學分", value: String(format: "%.0f / %.0f", summary.passedCredits, summary.totalCredits))
-                }
-            }
-
-            if !summary.trend.isEmpty {
-                GradeTrendView(points: summary.trend)
-            }
-        }
-        .padding(Theme.Spacing.large)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .fill(Color.primary.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
-        )
-    }
-
-    private func statRow(title: String, value: String) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.primary.opacity(0.55))
-            Spacer()
-            Text(value)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.primary)
-        }
-    }
-
-    private var filterSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("學期篩選")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.primary.opacity(0.55))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    filterChip(label: "全部", id: nil)
-                    ForEach(vm.semesters.sorted { lhs, rhs in
-                        if lhs.year == rhs.year { return lhs.term.order > rhs.term.order }
-                        return lhs.year > rhs.year
-                    }) { sem in
-                        filterChip(label: "\(sem.year)\(sem.term.rawValue)", id: sem.id)
-                    }
-                }
-            }
-        }
-    }
-
-    private func filterChip(label: String, id: String?) -> some View {
-        let selected = vm.selectedSemesterID == id
-        return Text(label)
-            .font(.system(size: 13, weight: selected ? .medium : .regular))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(selected ? Color.primary : Color.primary.opacity(0.06))
-            .foregroundColor(selected ? Color(.systemBackground) : .primary)
-            .clipShape(Capsule())
-            .onTapGesture { vm.selectedSemesterID = id }
-    }
-
-    private var termSummarySection: some View {
-        let averageValue = vm.termSnapshot?.averageText.nilIfPlaceholder ?? "-"
-        let rankValue = vm.termSnapshot?.rankText.nilIfPlaceholder ?? "-"
-        let courseCount = String(vm.termSnapshot?.courses.count ?? 0)
-        let averageTitle = vm.selectedMode == .midterm ? "期中平均" : "期末平均"
-
-        return VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-            if let title = vm.termSnapshot?.semesterTitle, !title.isEmpty {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.primary)
-            }
-
-            HStack(spacing: 12) {
-                StatPill(title: averageTitle, value: averageValue)
-                StatPill(title: "班排名", value: rankValue)
-                StatPill(title: "課程數", value: courseCount)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.large)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .fill(Color.primary.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
-        )
-    }
-
-    private var contentSection: some View {
-        Group {
-            if vm.selectedMode == .history {
-                historyContent
-            } else {
-                termContent
-            }
-        }
-    }
-
-    private var historyContent: some View {
-        Group {
-            if vm.yearSections.isEmpty {
-                emptyState
-            } else {
-                VStack(spacing: Theme.Spacing.medium) {
-                    ForEach(vm.yearSections, id: \.year) { section in
-                        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-                            Text("\(section.year) 學年度")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.primary)
-                                .padding(.bottom, 2)
-
-                            ForEach(section.semesters) { sem in
-                                GradeSemesterCard(
-                                    semester: sem,
-                                    isExpanded: vm.expandedSemesters.contains(sem.id),
-                                    toggle: { vm.toggle(sem) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var termContent: some View {
-        Group {
-            if let snapshot = vm.termSnapshot, !snapshot.courses.isEmpty {
-                VStack(spacing: 12) {
-                    ForEach(snapshot.courses) { course in
-                        TermScoreRow(course: course)
-                    }
-                }
-            } else {
-                termEmptyState
-            }
-        }
-    }
-
-    // MARK: - Subviews
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 32, weight: .light))
-                .foregroundColor(.primary.opacity(0.35))
-            Text("目前沒有符合篩選條件的課程")
-                .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.primary.opacity(0.55))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.large)
-    }
-
-    private var termEmptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 32, weight: .light))
-                .foregroundColor(.primary.opacity(0.35))
-            Text("目前沒有可顯示的\(vm.selectedMode.rawValue)成績")
-                .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.primary.opacity(0.55))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.large)
-    }
-
-    private func errorView(message: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32, weight: .light))
-                .foregroundColor(.primary.opacity(0.35))
-            Text(message)
-                .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.primary.opacity(0.6))
-                .multilineTextAlignment(.center)
-            Button("重新載入") {
-                vm.refresh()
-            }
-            .font(.system(size: 14, weight: .medium))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                    .stroke(Color.primary.opacity(0.2), lineWidth: 1)
-            )
-            .foregroundColor(.primary)
-        }
-        .padding(.horizontal, Theme.Spacing.large)
-    }
-}
-
-// MARK: - Trend mini-chart
-
-private struct GradeTrendView: View {
-    let points: [GradeHistorySummary.SemesterTrendPoint]
-    private let maxGPA: Double = 4.3
-    private let chartHeight: CGFloat = 120
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("GPA 走勢")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.primary.opacity(0.55))
-
-            GeometryReader { proxy in
-                let width = max(proxy.size.width, 1)
-                let height = max(proxy.size.height, 1)
-                let stepX = points.count > 1 ? width / CGFloat(points.count - 1) : 0
-                let chartPoints = points.enumerated().map { index, point in
-                    let x = CGFloat(index) * stepX
-                    let clamped = max(0, min(maxGPA, point.gpa))
-                    let y = height - CGFloat(clamped / maxGPA) * height
-                    return CGPoint(x: x, y: y)
-                }
-
-                ZStack(alignment: .topLeading) {
-                    Path { path in
-                        let levels: [CGFloat] = [0, 0.5, 1]
-                        for level in levels {
-                            let y = (1 - level) * height
-                            path.move(to: CGPoint(x: 0, y: y))
-                            path.addLine(to: CGPoint(x: width, y: y))
-                        }
-                    }
-                    .stroke(Color.primary.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-
-                    Path { path in
-                        guard let first = chartPoints.first else { return }
-                        path.move(to: first)
-                        for point in chartPoints.dropFirst() {
-                            path.addLine(to: point)
-                        }
-                    }
-                    .stroke(Color.primary.opacity(0.9), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-
-                    ForEach(Array(chartPoints.enumerated()), id: \.offset) { index, point in
-                        Circle()
-                            .fill(Color(.systemBackground))
-                            .frame(width: 10, height: 10)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.primary, lineWidth: 2)
-                            )
-                            .position(point)
-
-                        Text(String(format: "%.2f", points[index].gpa))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.primary.opacity(0.55))
-                            .position(x: point.x, y: max(10, point.y - 12))
-                    }
-                }
-            }
-            .frame(height: chartHeight)
-
-            HStack(alignment: .top, spacing: 0) {
-                ForEach(points.indices, id: \.self) { index in
-                    Text(points[index].label)
-                        .font(.system(size: 11, weight: .light))
-                        .foregroundColor(.primary.opacity(0.55))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .frame(maxWidth: .infinity)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .frame(maxWidth: .infinity)
+            base
         }
     }
 }
@@ -424,90 +368,101 @@ private struct GradeTrendView: View {
 private struct GradeSemesterCard: View {
     let semester: SemesterGrade
     let isExpanded: Bool
+    let canToggle: Bool
     let toggle: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(semester.termTitle)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
-                    if let rank = semester.classRank, !rank.isEmpty {
-                        Text("班級排名：\(rank)")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.primary.opacity(0.55))
+        GradeCard {
+            VStack(spacing: 0) {
+                if canToggle {
+                    Button(action: toggle) {
+                        header
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(isExpanded ? "已展開" : "已收合")
+                    .accessibilityHint(isExpanded ? "收合課程列表" : "顯示課程列表")
+                } else {
+                    header
+                        .accessibilityElement(children: .combine)
                 }
-                Spacer()
-                Button(action: toggle) {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary.opacity(0.7))
-                        .padding(8)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
 
-            HStack(spacing: 12) {
-                StatPill(title: "學期 GPA", value: String(format: "%.2f", semester.displayGPA))
-                StatPill(title: "平均分數", value: String(format: "%.2f", semester.averageScore))
-                StatPill(title: "通過率", value: String(format: "%.0f%%", semester.passRate * 100))
-            }
-
-            ProgressView(value: semester.passRate)
-                .progressViewStyle(.linear)
-                .tint(.primary)
-                .padding(.top, 4)
-
-            if isExpanded {
-                VStack(spacing: 12) {
-                    ForEach(semester.courses) { course in
+                if isExpanded {
+                    Divider()
+                    ForEach(Array(semester.courses.enumerated()), id: \.offset) { index, course in
+                        if index > 0 { Divider().padding(.leading, Theme.Spacing.medium) }
                         GradeCourseRow(course: course)
                     }
                 }
-                .padding(.top, 6)
-            } else {
-                if let first = semester.courses.first {
-                    GradeCourseRow(course: first)
-                        .padding(.top, 6)
-                    if semester.courses.count > 1 {
-                        Text("其餘 \(semester.courses.count - 1) 門課程…")
-                            .font(.system(size: 12, weight: .light))
-                            .foregroundColor(.primary.opacity(0.5))
-                    }
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.small) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(semester.termTitle)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text(detailLine)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let rankText {
+                    Text(rankText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                if semester.failedCount > 0 {
+                    Label("\(semester.failedCount) 科不及格", systemImage: "exclamationmark.circle")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Spacer(minLength: Theme.Spacing.xsmall)
+
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(semester.displayGPA?.gpaText ?? "—")
+                    .font(.title3.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+                Text("GPA")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if canToggle {
+                Image(systemName: "chevron.down")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .accessibilityHidden(true)
             }
         }
         .padding(Theme.Spacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-        )
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
-}
 
-private struct StatPill: View {
-    let title: String
-    let value: String
+    private var detailLine: String {
+        ["平均 \(String(format: "%.1f", semester.averageScore))",
+         "\(semester.earnedCredits.creditText)/\(semester.attemptedCredits.creditText) 學分"]
+            .joined(separator: " · ")
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(.primary.opacity(0.55))
-            Text(value)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.primary)
+    /// 校方只給名次時顯示「第 3 名」，有總人數時顯示「第 3 名 / 45 人」。
+    private var rankText: String? {
+        guard let rank = semester.classRank?.nilIfPlaceholder else { return nil }
+        let numbers = rank.split(whereSeparator: { !$0.isNumber })
+        switch numbers.count {
+        case 1 where rank.allSatisfy({ $0.isNumber || $0.isWhitespace }):
+            return "班級排名 第 \(numbers[0]) 名"
+        case 2 where rank.contains("/"):
+            return "班級排名 第 \(numbers[0]) 名 / \(numbers[1]) 人"
+        default:
+            return "班級排名 \(rank)"
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                .fill(Color.primary.opacity(0.03))
-        )
     }
 }
 
@@ -515,47 +470,50 @@ private struct GradeCourseRow: View {
     let course: GradeCourse
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .center, spacing: Theme.Spacing.small) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(course.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(2)
-                HStack(spacing: 8) {
-                    Text(course.code)
-                        .font(.system(size: 12, weight: .light))
-                        .foregroundColor(.primary.opacity(0.6))
-                    Badge(text: course.category.shortLabel)
-                    if let remark = course.remarks, !remark.isEmpty {
-                        Text(remark)
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.primary.opacity(0.55))
-                    }
-                }
+                Text(detailLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: Theme.Spacing.xsmall)
 
-            VStack(spacing: 4) {
-                Text(String(format: "%.0f", course.score))
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(course.passed ? .primary : .red)
-                Text("學分 \(String(format: "%.0f", course.credits))")
-                    .font(.system(size: 11, weight: .light))
-                    .foregroundColor(.primary.opacity(0.5))
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(course.displayScore)
+                    .font(.title3.weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(isFailed ? .red : .primary)
+                Text(gradeCaption)
+                    .font(.caption2)
+                    .foregroundStyle(isFailed ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
             }
-            .frame(width: 70)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                .stroke(course.passed ? Color.primary.opacity(0.12) : Color.red.opacity(0.35), lineWidth: course.passed ? 1 : 1.2)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                        .fill(course.passed ? Color.clear : Color.red.opacity(0.05))
-                )
-        )
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var isFailed: Bool { course.hasNumericScore && !course.passed }
+
+    private var detailLine: String {
+        var parts = [course.category.shortLabel, "\(course.credits.creditText) 學分"]
+        if let remark = course.remarks, !remark.isEmpty, remark != course.displayScore {
+            parts.append(remark)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var gradeCaption: String {
+        if isFailed { return "不及格" }
+        guard let letter = course.letterGrade else { return "不計 GPA" }
+        guard let point = course.gradePoint else { return "\(letter) · 不計 GPA" }
+        return "\(letter) · \(String(format: "%.1f", point))"
     }
 }
 
@@ -563,48 +521,113 @@ private struct TermScoreRow: View {
     let course: TermScoreCourse
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .center, spacing: Theme.Spacing.small) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(course.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(2)
-                Badge(text: course.type.isEmpty ? "未分類" : course.type)
+                Text(course.type.isEmpty ? "未分類" : course.type)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: Theme.Spacing.xsmall)
 
-            Text(course.scoreText)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(scoreColor(text: course.scoreText))
-                .frame(width: 70)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(course.scoreText.nilIfPlaceholder ?? "未公布")
+                    .font(.title3.weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(score == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(isFailed ? Color.red : Color.primary))
+                if isFailed {
+                    Text("不及格")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
-        )
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
+        .accessibilityElement(children: .combine)
     }
 
-    private func scoreColor(text: String) -> Color {
-        guard let value = Double(text) else { return .primary.opacity(0.65) }
-        return value >= 60 ? .primary : .red
-    }
+    private var score: Double? { Double(course.scoreText.trimmingCharacters(in: .whitespaces)) }
+    private var isFailed: Bool { (score ?? 100) < 60 }
 }
 
-private struct Badge: View {
-    let text: String
+// MARK: - GPA info
+
+private struct GPAInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(.primary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.primary.opacity(0.2), lineWidth: 1)
-            )
+        NavigationStack {
+            List {
+                Section {
+                    Label {
+                        Text("校方沒有提供 GPA，本頁的 GPA 是 App 依各科成績自行換算，可能與學校的正式紀錄有誤差，僅供參考。申請升學、獎學金或交換等正式用途，請以學校核發的成績單為準。")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                Section {
+                    Text("GPA = Σ（各科績分 × 學分）÷ Σ 學分")
+                        .font(.body.weight(.semibold))
+                    Text("例如：3 學分 85 分（A，4.0）與 2 學分 72 分（B-，2.7）\n(4.0 × 3 + 2.7 × 2) ÷ 5 = 3.48")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("計算公式")
+                }
+
+                Section {
+                    ForEach(GPAFormula.bands) { band in
+                        HStack {
+                            Text(band.range)
+                                .monospacedDigit()
+                            Spacer()
+                            Text(band.letter)
+                                .frame(minWidth: 32, alignment: .leading)
+                            Text(String(format: "%.1f", band.points))
+                                .monospacedDigit()
+                                .frame(minWidth: 36, alignment: .trailing)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(band.range) 分，等第 \(band.letter)，績分 \(String(format: "%.1f", band.points))")
+                    }
+                } header: {
+                    HStack {
+                        Text("分數")
+                        Spacer()
+                        Text("等第　績分")
+                    }
+                } footer: {
+                    Text("採台灣多數大學使用的 4.3 制對照，並非校方公告的換算方式。")
+                }
+
+                Section {
+                    Text("只計入學分大於 0 且有數字成績的課程；抵免、通過等文字成績不列入 GPA。")
+                    Text("不及格科目以 0 績分計入。")
+                    Text("重修的課程每次修課都會計入，可能與學校的採計方式不同。")
+                    Text("累計 GPA 以所有學期的課程直接按學分加權，不是各學期 GPA 的平均。")
+                } header: {
+                    Text("計算方式")
+                }
+                .font(.subheadline)
+            }
+            .navigationTitle("GPA 計算說明")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -621,27 +644,7 @@ private extension String {
 
 private extension Optional where Wrapped == String {
     var nilIfPlaceholder: String? {
-        guard let raw = self?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else { return nil }
-        if raw == "-" || raw == "--" || raw == "尚未計算" || raw == "尚未公佈" {
-            return nil
-        }
-        return raw
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func onModeChange(_ value: GradeQueryMode, perform action: @escaping (GradeQueryMode) -> Void) -> some View {
-        if #available(iOS 17.0, *) {
-            self.onChange(of: value) { _, newValue in
-                action(newValue)
-            }
-        } else {
-            self.onChange(of: value) { newValue in
-                action(newValue)
-            }
-        }
+        self?.nilIfPlaceholder
     }
 }
 
@@ -1232,14 +1235,14 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                                 credits: raw.credits,
                                 score: score,
                                 gpa: nil,
-                                remarks: combinedRemark.isEmpty ? nil : combinedRemark
+                                remarks: combinedRemark.isEmpty ? nil : combinedRemark,
+                                scoreText: raw.scoreText
                             )
                         }
 
                         let creditsTaken = courses.reduce(0.0) { $0 + $1.credits }
                         let creditsPassed = courses.filter { $0.passed }.reduce(0.0) { $0 + $1.credits }
-                        let weightedScore = courses.reduce(0.0) { $0 + ($1.score * $1.credits) }
-                        let computedAverage = creditsTaken == 0 ? 0 : weightedScore / creditsTaken
+                        let computedAverage = GPAFormula.weightedScore(courses) ?? 0
                         let sourceAverage = rows.compactMap { item in
                             Self.parseNumber(item.row.averageText)
                         }.first

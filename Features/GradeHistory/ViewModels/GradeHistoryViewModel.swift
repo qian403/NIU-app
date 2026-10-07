@@ -135,9 +135,6 @@ final class GradeHistoryViewModel: ObservableObject {
            Self.hasMeaningfulHistory(cache.semesters) {
             semesters = cache.semesters
             lastUpdated = cache.fetchedAt
-            if expandedSemesters.isEmpty, let latest = semesters.first {
-                expandedSemesters = [latest.id]
-            }
         } else if selectedMode != .history, let cache = termCache[selectedMode] {
             termSnapshot = cache.snapshot
             lastUpdated = cache.fetchedAt
@@ -199,7 +196,6 @@ final class GradeHistoryViewModel: ObservableObject {
             if let selectedSemesterID, !sorted.contains(where: { $0.id == selectedSemesterID }) {
                 self.selectedSemesterID = nil
             }
-            if let latest = sorted.first { expandedSemesters.insert(latest.id) }
             finishOperation()
             loadState = .loaded
 
@@ -347,6 +343,7 @@ extension GradeHistoryViewModel {
                 GradeCourse(code: "GE1008", name: "社會觀察", category: .general, credits: 2, score: 75, gpa: nil, remarks: nil),
                 GradeCourse(code: "GE1009", name: "美學欣賞", category: .general, credits: 2, score: 85, gpa: nil, remarks: nil),
                 GradeCourse(code: "EL1001", name: "英文(一)", category: .elective, credits: 2, score: 58, gpa: nil, remarks: "需重修"),
+                GradeCourse(code: "GE0001", name: "大一國文", category: .general, credits: 2, score: 0, gpa: nil, remarks: "抵免", scoreText: "抵免"),
                 GradeCourse(code: "PE1001", name: "體育：籃球", category: .physical, credits: 0, score: 90, gpa: nil, remarks: "及格")
             ]
         )
