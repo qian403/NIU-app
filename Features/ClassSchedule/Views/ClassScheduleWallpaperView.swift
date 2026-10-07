@@ -379,7 +379,8 @@ struct ClassScheduleWallpaperCanvas: View {
     }
 
     private func courseBlock(_ block: ClassScheduleWeekLayout.Block) -> some View {
-        let colour = palette[ClassScheduleWeekLayout.stableColourIndex(for: block.course.name, paletteCount: palette.count)]
+        let colour = block.course.customColor?.color
+            ?? palette[ClassScheduleWeekLayout.stableColourIndex(for: block.course.name, paletteCount: palette.count)]
         let height = CGFloat(block.rows.count) * rowHeight
         let nameSize = min(11.5, max(8.5, rowHeight * 0.3))
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)

@@ -22,6 +22,7 @@ struct CustomCourseEditorView: View {
     @State private var startRow: Int
     @State private var endRow: Int
     @State private var lastDay: Date
+    @State private var colorID: String?
     @State private var showDeleteConfirmation = false
     @FocusState private var focusedField: Field?
 
@@ -45,6 +46,7 @@ struct CustomCourseEditorView: View {
         _endRow = State(initialValue: rows?.upperBound ?? firstRow)
         _lastDay = State(initialValue: course.flatMap { CustomCourse.date(fromDay: $0.lastDay) }
                          ?? Self.defaultLastDay(from: today))
+        _colorID = State(initialValue: course?.colorID)
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -59,7 +61,8 @@ struct CustomCourseEditorView: View {
             weekdays: weekdays.sorted(),
             startPeriodID: schedule.periods[startRow].id,
             endPeriodID: schedule.periods[max(startRow, endRow)].id,
-            lastDay: CustomCourse.dayString(lastDay)
+            lastDay: CustomCourse.dayString(lastDay),
+            colorID: colorID
         )
     }
 
@@ -117,6 +120,14 @@ struct CustomCourseEditorView: View {
                     } else {
                         Text("\(CustomCourse.weekdaySummary(weekdays))・\(timeRangeLabel)")
                     }
+                }
+
+                Section {
+                    colorPicker
+                } header: {
+                    Text("顏色")
+                } footer: {
+                    Text("「自動」會依課程名稱配色；最後一格可用調色盤自選顏色。")
                 }
 
                 Section {
@@ -203,6 +214,84 @@ struct CustomCourseEditorView: View {
         .padding(.vertical, 4)
     }
 
+    private var colorPicker: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 4)], spacing: 4) {
+            colorSwatch(id: nil, title: "自動")
+            ForEach(CustomCourseColor.allCases) { color in
+                colorSwatch(id: color.rawValue, title: color.title)
+            }
+            paletteSwatch
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var pickedColor: CourseColorChoice? {
+        guard let choice = CourseColorChoice(id: colorID), case .custom = choice else { return nil }
+        return choice
+    }
+
+    /// The system colour picker; its well shows the picked colour, the ring marks it as selected.
+    private var paletteSwatch: some View {
+        let isSelected = pickedColor != nil
+        let selection = Binding<Color> {
+            pickedColor?.color ?? .blue
+        } set: { newValue in
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            guard UIColor(newValue).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return }
+            colorID = CourseColorChoice(red: red, green: green, blue: blue).id
+        }
+        return ZStack {
+            // Traits go on the picker itself so VoiceOver can still activate it.
+            ColorPicker("自選顏色", selection: selection, supportsOpacity: false)
+                .labelsHidden()
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            if isSelected {
+                Circle()
+                    .strokeBorder(Theme.Colors.label, lineWidth: 2)
+                    .frame(width: 40, height: 40)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(minWidth: 44, minHeight: 44)
+    }
+
+    private func colorSwatch(id: String?, title: String) -> some View {
+        // An unknown stored value (from a newer version) shows as unselected but is kept until changed.
+        let isSelected = colorID == id
+        let fill = id.flatMap(CustomCourseColor.init(rawValue:))?.color
+        return Button {
+            colorID = id
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(fill ?? Theme.Colors.tertiaryFill)
+                    .frame(width: 32, height: 32)
+                if fill == nil {
+                    Image(systemName: "wand.and.stars")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.Colors.secondaryLabel)
+                }
+                if isSelected {
+                    // A ring and a checkmark mark the selection without relying on colour alone.
+                    Circle()
+                        .strokeBorder(Theme.Colors.label, lineWidth: 2)
+                        .frame(width: 40, height: 40)
+                    if fill != nil {
+                        Image(systemName: "checkmark")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private func periodLabel(_ row: Int) -> String {
         let period = schedule.periods[row]
         let time = period.startTimeLabel.isEmpty ? "" : "  \(period.startTimeLabel)–\(period.endTimeLabel)"
@@ -223,5 +312,38 @@ struct CustomCourseEditorView: View {
             : month == 1 ? DateComponents(year: year, month: 1, day: 31)
             : DateComponents(year: year, month: 6, day: 30)
         return calendar.date(from: end) ?? date
+    }
+}
+
+extension CourseColorChoice {
+    /// Presets use the system colour so they adapt to dark mode; picked colours stay as chosen.
+    var color: Color {
+        switch self {
+        case .preset(let preset):
+            return preset.color
+        case .custom:
+            let (red, green, blue) = rgb
+            return Color(.sRGB, red: red, green: green, blue: blue)
+        }
+    }
+}
+
+extension CustomCourseColor {
+    /// System colour, so it adapts to dark mode in the app.
+    var color: Color {
+        switch self {
+        case .red: .red
+        case .orange: .orange
+        case .yellow: .yellow
+        case .green: .green
+        case .mint: .mint
+        case .teal: .teal
+        case .cyan: .cyan
+        case .blue: .blue
+        case .indigo: .indigo
+        case .purple: .purple
+        case .pink: .pink
+        case .brown: .brown
+        }
     }
 }
