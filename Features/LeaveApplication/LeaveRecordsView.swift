@@ -237,7 +237,7 @@ struct LeaveRecordRow: View {
                     details
                 }
             } else {
-                HStack(alignment: .top, spacing: Theme.Spacing.small) {
+                HStack(alignment: .center, spacing: Theme.Spacing.small) {
                     VStack(alignment: .leading, spacing: 4) { title; details }
                     Spacer(minLength: Theme.Spacing.xsmall)
                     LeaveStatusBadge(status: record.status)

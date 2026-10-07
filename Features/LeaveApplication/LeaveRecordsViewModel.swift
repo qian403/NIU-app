@@ -123,7 +123,7 @@ final class LeaveRecordsViewModel: ObservableObject {
                 let service = self.service ?? self.makeService()
                 let value: T
                 do { value = try await operation(service) }
-                catch let error where retriesLogin && Self.isExpired(error) {
+                catch let error where retriesLogin && Self.isExpired(error) && !service.refreshedLogin {
                     // One SSO refresh and a new page; never loop on a stale GUID.
                     guard self.current(id), await SSOSessionService.shared.requestRefresh(force: true), self.current(id) else {
                         throw LeaveApplicationError.expired

@@ -39,6 +39,8 @@ enum StorageKeys { static let authSessionID = "session" }
     var onProgress: ((LeaveLoadStage) -> Void)?
     var onConfirm: ((String, @escaping (Bool) -> Void) -> Void)?
     var closed = false
+    static var refreshesLogin = false
+    var refreshedLogin = LeaveApplicationService.refreshesLogin
     init() { Self.created += 1 }
     func load(account: String, entry: LeaveEntry) async throws -> LeavePage {
         precondition(account == "fixture")
@@ -195,6 +197,18 @@ func form(_ attachments: [String] = []) -> LeavePage {
         failed.reconnect(); await settle { !failed.isBusy }
         checkDraft(failed); precondition(!failed.needsReconnect); failed.close()
 
+        // A service that already refreshed SSO in its own GUID bridge is not refreshed again.
+        do {
+            let model = await ready()
+            LeaveApplicationService.failingScript = LeaveApplicationScript.openPeriods
+            LeaveApplicationService.refreshesLogin = true
+            LeaveApplicationService.loads = [.failure(LeaveApplicationError.expired)]
+            model.loadPeriods(); await settle { !model.isBusy }
+            LeaveApplicationService.refreshesLogin = false
+            checkDraft(model)
+            precondition(model.needsReconnect && SSOSessionService.shared.calls == 0)
+            model.close()
+        }
         // Offline and transport timeout during reconnect are not refreshed or called login failure.
         for code in [URLError.Code.notConnectedToInternet, .timedOut] {
             let model = await ready()

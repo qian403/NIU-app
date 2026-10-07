@@ -121,7 +121,8 @@ final class LeaveApplicationViewModel: ObservableObject {
         do { result = try await service.load(account: owner, entry: entry) }
         catch {
             try requireCurrent(operationID)
-            guard Self.isExpired(error) else { throw error }
+            // The service already refreshed SSO once; another refresh would only repeat it.
+            guard Self.isExpired(error), !service.refreshedLogin else { throw error }
             loadStage = .signingIn
             guard await SSOSessionService.shared.requestRefresh(force: true) else {
                 throw LeaveApplicationError.expired

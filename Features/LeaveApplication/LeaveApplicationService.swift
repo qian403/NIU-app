@@ -19,6 +19,15 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
     private var sessionExpired = false
     private var navigationFailure: Error?
     private var navigationGeneration = UUID()
+    /// When MainFrame.aspx committed; a fallback when a stuck subframe delays didFinish.
+    private var mainFrameCommittedAt: ContinuousClock.Instant?
+    /// From the start of a GUID bridge until a blank page replaces the expired document:
+    /// that document's timers, alerts and redirects report the same lapse again.
+    private var replacingDocument = false
+    private var blankNavigation: WKNavigation?
+    /// This service already refreshed the app's SSO login once; the caller must not repeat it.
+    private(set) var refreshedLogin = false
+    private let createdAt = ContinuousClock.now
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -154,28 +163,39 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
             webView.load(URLRequest(url: mainFrame, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
         }
         var opened = false
+        var openedAt = ContinuousClock.now
+        var reopens = 0
         var bridged = false
-        // 90 × 0.5 s keeps login and page lookup within a fixed budget.
-        for _ in 0..<90 {
-            try await Task.sleep(for: .milliseconds(500))
+        // Login and page lookup share one fixed 45 s budget, checked every 0.2 s.
+        let deadline = ContinuousClock.now + .seconds(45)
+        while ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(200))
             try check()
             if let failure = navigationFailure { navigationFailure = nil; throw failure }
             if sessionExpired {
                 guard !bridged else { throw LeaveApplicationError.expired }
-                bridged = true; opened = false
+                bridged = true; opened = false; reopens = 0
                 try await bridgeSession()
                 continue
             }
-            guard mainFrameReady else { continue }
+            guard mainFrameReady || mainFrameCommittedAt.map({ ContinuousClock.now - $0 > .seconds(4) }) == true else { continue }
             if !opened {
                 let result = try? await run(LeaveApplicationScript.openPage, arguments: ["path": path])
-                if result == "opened" { opened = true; report(.reading) }
+                if result == "opened" { opened = true; openedAt = .now; report(.reading) }
                 continue
             }
             switch await read() {
             case .ready(let value): return value
             case .expired: sessionExpired = true
-            case .waiting: continue
+            case .waiting:
+                // MainFrame's own scripts can replace or drop the menu navigation; send it again, bounded.
+                guard reopens < 2 else { continue }
+                let elapsed = ContinuousClock.now - openedAt
+                let target = try? await run(LeaveApplicationScript.openedPage, arguments: ["path": path])
+                if (target == "elsewhere" && elapsed > .seconds(4)) || (target == "pending" && elapsed > .seconds(10)) {
+                    log("重新開啟請假頁 state=\(target ?? "")")
+                    opened = false; reopens += 1
+                }
             }
         }
         throw URLError(.timedOut)
@@ -184,13 +204,46 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
     private func bridgeSession() async throws {
         sessionExpired = false
         mainFrameReady = false
+        mainFrameCommittedAt = nil
         navigationGeneration = UUID()
-        webView.stopLoading()
         report(.signingIn)
-        let guid = try await SSOGUIDBridge.requestGUID(account: account)
-        try check()
+        // Replace the expired document while the GUID is requested, so none of its
+        // late signals is taken for the result of the new login.
+        replacingDocument = true
+        defer { replacingDocument = false; blankNavigation = nil }
+        webView.stopLoading()
+        blankNavigation = webView.loadHTMLString("", baseURL: nil)
+        let guid: String
+        do {
+            guid = try await requestGUID()
+            try check()
+            for _ in 0..<40 where replacingDocument {
+                try await Task.sleep(for: .milliseconds(50))
+                try check()
+            }
+        } catch {
+            // The WebView is left blank: a retry on this service starts again from MainFrame.
+            started = false
+            throw error
+        }
+        replacingDocument = false; blankNavigation = nil
+        sessionExpired = false; navigationFailure = nil
         guard let login = SSOGUIDBridge.acadeLoginURL(guid: guid) else { throw LeaveApplicationError.unavailable }
         webView.load(URLRequest(url: login, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
+    }
+
+    /// A lapsed app SSO token is refreshed once here, so the same WebView continues
+    /// instead of the caller rebuilding it and reloading MainFrame.
+    private func requestGUID() async throws -> String {
+        do { return try await SSOGUIDBridge.requestGUID(account: account) }
+        catch let error as URLError where error.code == .userAuthenticationRequired && !refreshedLogin {
+            refreshedLogin = true
+            try check()
+            log("SSO 登入失效，更新登入")
+            guard await SSOSessionService.shared.requestRefresh(force: true) else { throw LeaveApplicationError.expired }
+            try check()
+            return try await SSOGUIDBridge.requestGUID(account: account)
+        }
     }
 
     func run(_ source: String, arguments: [String: Any] = [:]) async throws -> String {
@@ -234,8 +287,9 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
 
     func waitForPage(kind: String, script: String = LeaveApplicationScript.snapshot,
                      matches: (LeavePage) -> Bool = { _ in true }) async throws -> LeavePage {
-        for _ in 0..<50 {
-            try await Task.sleep(for: .milliseconds(400))
+        let deadline = ContinuousClock.now + .seconds(20)
+        while ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(200))
             try check()
             if sessionExpired { throw LeaveApplicationError.expired }
             if let failure = navigationFailure { navigationFailure = nil; throw failure }
@@ -253,8 +307,14 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     private func report(_ stage: LeaveLoadStage) {
-        print("[Leave] \(stage.title)")
+        log(stage.title)
         onProgress?(stage)
+    }
+
+    private func log(_ event: String) {
+        let elapsed = ContinuousClock.now - createdAt
+        let ms = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
+        print("[Leave] \(event) elapsed_ms=\(ms)")
     }
 
     func close() {
@@ -271,24 +331,40 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
 
     // MARK: - Navigation
 
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if navigation === blankNavigation { replacingDocument = false; blankNavigation = nil; return }
+        guard !closed, !replacingDocument, let url = webView.url else { return }
+        // A new top document replaces MainFrame until its own didFinish.
+        if Self.isMainFrame(url) { mainFrameCommittedAt = .now } else { mainFrameCommittedAt = nil; mainFrameReady = false }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard !closed, let url = webView.url else { return }
+        guard !closed, !replacingDocument, let url = webView.url else { return }
         // Only log the path: Login.aspx carries a one-use GUID in its query.
-        print("[Leave] 已載入 path=\(url.path)")
+        log("已載入 path=\(url.path)")
         if SSOGUIDBridge.isSessionExpiredURL(url) {
             sessionExpired = true
         } else if EnrollmentEndpoint.isLegacyPortalLanding(url), let mainFrame = EnrollmentEndpoint.mainFrame {
             webView.load(URLRequest(url: mainFrame, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
-        } else if url.host?.lowercased() == "acade.niu.edu.tw", url.path.lowercased() == "/niu/mainframe.aspx" {
+        } else if Self.isMainFrame(url) {
             if !mainFrameReady { report(.opening) }
             mainFrameReady = true
         }
+    }
+
+    private static func isMainFrame(_ url: URL) -> Bool {
+        url.host?.lowercased() == "acade.niu.edu.tw" && url.path.lowercased() == "/niu/mainframe.aspx"
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard !closed, let url = action.request.url else { decisionHandler(.cancel); return }
         let isMainFrame = action.targetFrame?.isMainFrame != false
+        if replacingDocument {
+            // Only the blank page may load; the expired document's own navigations are dropped.
+            decisionHandler(isMainFrame && url.scheme == "about" ? .allow : .cancel)
+            return
+        }
         if SSOGUIDBridge.isSessionExpiredURL(url) {
             if isMainFrame {
                 decisionHandler(.cancel)
@@ -327,8 +403,8 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
         // Cancelled loads and WebKit's "frame load interrupted" come from our own redirects.
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled { return }
         if nsError.domain == "WebKitErrorDomain", nsError.code == 102 { return }
-        guard !closed else { return }
-        print("[Leave] 載入失敗 domain=\(nsError.domain) code=\(nsError.code)")
+        guard !closed, !replacingDocument else { return }
+        log("載入失敗 domain=\(nsError.domain) code=\(nsError.code)")
         navigationFailure = error
     }
 
@@ -347,7 +423,7 @@ final class LeaveApplicationService: NSObject, WKNavigationDelegate, WKUIDelegat
         // 「使用時間逾時,系統已將您自動登出」is a lapsed session: sign in again on the
         // next page open instead of showing it as a message about the leave form.
         if Self.isLogoutNotice(message) {
-            if !closed { sessionExpired = true }
+            if !closed, !replacingDocument { sessionExpired = true }
             return
         }
         onDialog?(String(message.prefix(1000)))
