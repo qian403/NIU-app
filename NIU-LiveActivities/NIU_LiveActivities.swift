@@ -248,29 +248,50 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
                                    subtitle: result.notice ?? "開啟 App 更新", entries: [])
         }
         let today = CampusCalendarDate.dayKey(now)
-        let events = document.events.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
-        let active = events.filter { $0.contains(now) }.sorted {
-            if ($0.startDate == today) != ($1.startDate == today) { return $0.startDate == today }
-            return ($0.startDate, $0.id) < ($1.startDate, $1.id)
+        // Same-day events list exams first, then course selection, so the capacity cut drops the others.
+        let rank: (CampusCalendarEvent) -> Int = { $0.category == .exam ? 0 : $0.category == .registration ? 1 : 2 }
+        let order: (CampusCalendarEvent, CampusCalendarEvent) -> Bool = {
+            ($0.startDate, rank($0), $0.id) < ($1.startDate, rank($1), $1.id)
         }
-        let upcoming = events.filter { $0.startDate > today }
-        let visible = active.isEmpty ? upcoming : active
+        let pending = document.events.filter { $0.endDate >= today }.sorted(by: order)
+        // Long warning/evaluation periods must not hide the next holidays, deadlines and exams;
+        // periods that already started stay only while they still call for action (exams, course selection).
+        let important = pending.filter { event in
+            event.startDate >= today
+                ? event.category != .academic
+                : event.category == .exam || event.category == .registration
+        }
+        let filler = pending.filter { $0.startDate >= today && !important.contains($0) }
+        let visible = Array((important + filler).prefix(calendarEntryCapacity)).sorted(by: order)
         let state = result.notice != nil ? "已儲存資料" : "\(result.year) 學年度"
         if let event = visible.first {
             return CalendarSummary(state: state, title: event.title,
                                    subtitle: displayDateRange(for: event),
-                                   entries: Array(visible.prefix(3)).map(makeCalendarItem))
+                                   entries: visible.map { makeCalendarItem(from: $0, now: now) })
         }
         return CalendarSummary(state: state, title: "目前沒有後續事件", subtitle: "開啟 App 查看完整行事曆", entries: [])
     }
 
-    private func makeCalendarItem(from event: CampusCalendarEvent) -> CalendarItem {
+    private func makeCalendarItem(from event: CampusCalendarEvent, now: Date) -> CalendarItem {
         CalendarItem(
             dayText: dayLabel(for: event.start),
             monthText: monthLabel(for: event.start),
             title: event.title,
-            subtitle: displayDateRange(for: event)
+            subtitle: displayDateRange(for: event),
+            relativeText: relativeDayLabel(for: event, now: now)
         )
+    }
+
+    private func relativeDayLabel(for event: CampusCalendarEvent, now: Date) -> String {
+        let calendar = CampusCalendarDate.calendar
+        guard let start = event.start,
+              let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: start).day else { return "" }
+        switch days {
+        case ..<0: return "進行中"
+        case 0: return "今天"
+        case 1: return "明天"
+        default: return "\(days) 天後"
+        }
     }
 
     /// Includes the App's device-local custom courses active in the week of `date`.
@@ -642,11 +663,13 @@ struct NIUWidgetView: View {
 
     @ViewBuilder
     private func calendarLayout(summary: CalendarSummary) -> some View {
+        let entries = Array(summary.entries.prefix(
+            calendarEntryLimit(family: family, isAccessibilitySize: dynamicTypeSize.isAccessibilitySize)))
         if family == .systemSmall {
-            let first = summary.entries.first
+            let first = entries.first
 
             VStack(alignment: .leading, spacing: 8) {
-                widgetHeader(icon: "calendar", title: summary.state, state: smallCalendarCount(summary))
+                widgetHeader(icon: "calendar", title: summary.state, state: entries.isEmpty ? "0 件" : "\(entries.count) 件")
 
                 if let first {
                     HStack(alignment: .top, spacing: 10) {
@@ -681,8 +704,8 @@ struct NIUWidgetView: View {
 
                     compactInfoPill(label: "日期", value: first.subtitle)
 
-                    if summary.entries.count > 1 {
-                        let remaining = summary.entries.count - 1
+                    if entries.count > 1 {
+                        let remaining = entries.count - 1
                         Text(remaining == 1 ? "還有 1 個相關事件" : "還有 \(remaining) 個相關事件")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -702,28 +725,30 @@ struct NIUWidgetView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 widgetHeader(icon: "calendar", title: "校園行事曆", state: summary.state)
-                Text(summary.title)
-                    .font(.headline)
-                    .lineLimit(2)
-                Text(summary.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                if !summary.entries.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(summary.entries) { item in
+                if entries.isEmpty {
+                    Text(summary.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                    Text(summary.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                } else {
+                    let isLarge = family == .systemLarge
+                    VStack(spacing: isLarge ? 10 : 6) {
+                        ForEach(entries) { item in
                             HStack(spacing: 10) {
                                 VStack(spacing: 1) {
                                     Text(item.dayText)
-                                        .font(.subheadline.weight(.bold))
+                                        .font(isLarge ? .title3.weight(.bold) : .subheadline.weight(.bold))
                                     Text(item.monthText)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
-                                .frame(width: 34)
+                                .frame(width: isLarge ? 40 : 34)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.title)
-                                        .font(.caption.weight(.semibold))
+                                        .font(isLarge ? .subheadline.weight(.semibold) : .caption.weight(.semibold))
                                         .lineLimit(1)
                                     Text(item.subtitle)
                                         .font(.caption2)
@@ -731,9 +756,18 @@ struct NIUWidgetView: View {
                                         .lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
+                                if !item.relativeText.isEmpty {
+                                    Text(item.relativeText)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                }
                             }
+                            .accessibilityElement(children: .combine)
                         }
                     }
+                    Spacer(minLength: 0)
                 }
             }
             .padding()
@@ -1094,12 +1128,6 @@ struct NIUWidgetView: View {
         return "今天"
     }
 
-    private func smallCalendarCount(_ summary: CalendarSummary) -> String {
-        if summary.entries.isEmpty {
-            return "0 件"
-        }
-        return "\(summary.entries.count) 件"
-    }
 
     private func currentMonthDayLabel() -> String {
         let now = Date()
@@ -1242,6 +1270,13 @@ private enum WidgetPayload {
     }
 }
 
+/// The provider prepares enough events for the large widget; smaller families show a prefix.
+private let calendarEntryCapacity = 6
+
+private func calendarEntryLimit(family: WidgetFamily, isAccessibilitySize: Bool) -> Int {
+    family == .systemLarge && !isAccessibilitySize ? calendarEntryCapacity : 3
+}
+
 private func largeScheduleEntryLimit(isAccessibilitySize: Bool) -> Int {
     isAccessibilitySize ? 3 : 5
 }
@@ -1282,6 +1317,7 @@ private struct CalendarItem: Identifiable {
     let monthText: String
     let title: String
     let subtitle: String
+    var relativeText = ""
 }
 
 private struct WeekTimetableSummary {
