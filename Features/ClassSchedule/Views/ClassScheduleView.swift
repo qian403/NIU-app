@@ -532,6 +532,8 @@ private struct CourseCard: View {
     let periodLabel: String
     let isCurrent: Bool
 
+    private var customColour: Color? { course.customColor?.color }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
@@ -544,10 +546,10 @@ private struct CourseCard: View {
                 if course.customCourseID != nil {
                     Text("自訂")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(customColour ?? Color.accentColor)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                        .background((customColour ?? Color.accentColor).opacity(0.12), in: Capsule())
                         .fixedSize()
                 }
                 Text(periodLabel)
@@ -577,7 +579,7 @@ private struct CourseCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .adaptiveGlass(
-            tint: isCurrent ? Color.accentColor.opacity(0.12) : nil,
+            tint: isCurrent ? Color.accentColor.opacity(0.12) : customColour?.opacity(0.12),
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))

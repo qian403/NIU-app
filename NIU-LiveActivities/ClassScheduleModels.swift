@@ -8,6 +8,8 @@ nonisolated struct CourseInfo: Codable, Hashable {
     let classroom: String?  // Room / location (上課地點)
     /// Set only for display copies of a device-local `CustomCourse`.
     var customCourseID: UUID? = nil
+    /// `CustomCourse.colorID` of that custom course, if one was chosen.
+    var customColorID: String? = nil
 
     /// Combined detail string shown in the schedule card.
     var details: String? {
@@ -41,11 +43,13 @@ nonisolated struct CourseInfo: Codable, Hashable {
         }
     }
 
-    init(name: String, teacher: String? = nil, classroom: String? = nil, customCourseID: UUID? = nil) {
+    init(name: String, teacher: String? = nil, classroom: String? = nil, customCourseID: UUID? = nil,
+         customColorID: String? = nil) {
         self.name      = name
         self.teacher   = teacher
         self.classroom = classroom
         self.customCourseID = customCourseID
+        self.customColorID = customColorID
     }
 }
 

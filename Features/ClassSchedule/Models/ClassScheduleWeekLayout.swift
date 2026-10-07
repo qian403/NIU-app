@@ -80,7 +80,8 @@ nonisolated struct ClassScheduleWeekLayout {
                 }
                 result.append(Block(column: column.id, rows: first..<row,
                                     course: CourseInfo(name: name, teacher: course.teacher, classroom: course.classroom,
-                                                       customCourseID: course.customCourseID),
+                                                       customCourseID: course.customCourseID,
+                                                       customColorID: course.customColorID),
                                     classrooms: Self.unique(courses.compactMap(\.classroom)),
                                     teachers: Self.unique(courses.compactMap(\.teacher))))
             }

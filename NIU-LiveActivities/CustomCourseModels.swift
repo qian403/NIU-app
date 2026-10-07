@@ -17,6 +17,9 @@ nonisolated struct CustomCourse: Codable, Identifiable, Hashable, Sendable {
     var endPeriodID: String
     /// Inclusive last day in Asia/Taipei, "YYYY-MM-DD".
     var lastDay: String
+    /// `CustomCourseColor` raw value or a user-picked "#RRGGBB"; nil keeps the name-based schedule colour.
+    /// Stored as text so a value from a newer version never fails decoding.
+    var colorID: String? = nil
 
     static func dayString(_ date: Date) -> String {
         let parts = ScheduleClock.calendar.dateComponents([.year, .month, .day], from: date)
@@ -47,8 +50,100 @@ nonisolated struct CustomCourse: Codable, Identifiable, Hashable, Sendable {
             return trimmed.isEmpty ? nil : trimmed
         }
         return CourseInfo(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                          teacher: value(note), classroom: value(classroom), customCourseID: id)
+                          teacher: value(note), classroom: value(classroom), customCourseID: id,
+                          customColorID: colorID)
     }
+}
+
+// MARK: - CustomCourseColor
+
+/// Preset colours for custom courses, matching the iOS system colours.
+nonisolated enum CustomCourseColor: String, CaseIterable, Identifiable, Sendable {
+    case red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .red: "紅色"
+        case .orange: "橘色"
+        case .yellow: "黃色"
+        case .green: "綠色"
+        case .mint: "薄荷綠"
+        case .teal: "藍綠色"
+        case .cyan: "青色"
+        case .blue: "藍色"
+        case .indigo: "靛色"
+        case .purple: "紫色"
+        case .pink: "粉紅色"
+        case .brown: "棕色"
+        }
+    }
+
+    /// sRGB components of the light-appearance system colour, for fixed-colour readers such as the Widget.
+    var rgb: (red: Double, green: Double, blue: Double) {
+        switch self {
+        case .red: (1.00, 0.23, 0.19)
+        case .orange: (1.00, 0.58, 0.00)
+        case .yellow: (1.00, 0.80, 0.00)
+        case .green: (0.20, 0.78, 0.35)
+        case .mint: (0.00, 0.78, 0.75)
+        case .teal: (0.19, 0.69, 0.78)
+        case .cyan: (0.20, 0.68, 0.90)
+        case .blue: (0.00, 0.48, 1.00)
+        case .indigo: (0.35, 0.34, 0.84)
+        case .purple: (0.69, 0.32, 0.87)
+        case .pink: (1.00, 0.18, 0.33)
+        case .brown: (0.64, 0.52, 0.37)
+        }
+    }
+}
+
+/// A stored custom course colour: one of the presets or a colour picked from the palette.
+nonisolated enum CourseColorChoice: Hashable, Sendable {
+    case preset(CustomCourseColor)
+    /// 8-bit sRGB components, as stored in "#RRGGBB".
+    case custom(red: UInt8, green: UInt8, blue: UInt8)
+
+    /// nil for "自動" and for unrecognised values, which then fall back to the name-based colour.
+    init?(id: String?) {
+        guard let id else { return nil }
+        if let preset = CustomCourseColor(rawValue: id) {
+            self = .preset(preset)
+            return
+        }
+        guard id.count == 7, id.hasPrefix("#"), let value = UInt32(id.dropFirst(), radix: 16) else { return nil }
+        self = .custom(red: UInt8(value >> 16 & 0xFF), green: UInt8(value >> 8 & 0xFF), blue: UInt8(value & 0xFF))
+    }
+
+    /// Components are clamped to 0...1, e.g. for wide-gamut colours from the system picker.
+    init(red: Double, green: Double, blue: Double) {
+        func byte(_ value: Double) -> UInt8 { UInt8((min(max(value, 0), 1) * 255).rounded()) }
+        self = .custom(red: byte(red), green: byte(green), blue: byte(blue))
+    }
+
+    var id: String {
+        switch self {
+        case .preset(let preset): preset.rawValue
+        case let .custom(red, green, blue): String(format: "#%02X%02X%02X", red, green, blue)
+        }
+    }
+
+    var rgb: (red: Double, green: Double, blue: Double) {
+        switch self {
+        case .preset(let preset): preset.rgb
+        case let .custom(red, green, blue): (Double(red) / 255, Double(green) / 255, Double(blue) / 255)
+        }
+    }
+}
+
+extension CustomCourse {
+    nonisolated var color: CourseColorChoice? { CourseColorChoice(id: colorID) }
+}
+
+extension CourseInfo {
+    /// Colour chosen for a custom course; nil for school courses and "自動".
+    nonisolated var customColor: CourseColorChoice? { CourseColorChoice(id: customColorID) }
 }
 
 /// Current account's courses mirrored into the App Group for Widget/Live Activity readers.

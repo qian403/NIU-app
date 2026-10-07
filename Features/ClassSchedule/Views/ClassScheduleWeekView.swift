@@ -224,7 +224,8 @@ struct ClassScheduleWeekView: View {
     @ViewBuilder
     private func courseBlock(_ block: ClassScheduleWeekLayout.Block, layout: ClassScheduleWeekLayout,
                              height: CGFloat, width: CGFloat) -> some View {
-        let colour = palette[ClassScheduleWeekLayout.stableColourIndex(for: block.course.name, paletteCount: palette.count)]
+        let colour = block.course.customColor?.color
+            ?? palette[ClassScheduleWeekLayout.stableColourIndex(for: block.course.name, paletteCount: palette.count)]
         let compact = width < 48
         let showsRoom = height >= 40 && !block.classrooms.isEmpty
         let showsTeacher = height >= 100 && !block.teachers.isEmpty

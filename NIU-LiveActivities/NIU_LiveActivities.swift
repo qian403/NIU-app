@@ -202,7 +202,7 @@ struct NIUWidgetProvider: AppIntentTimelineProvider {
                     endMinutes: end,
                     startLabel: period.startLabel,
                     endLabel: period.endLabel,
-                    colorStyle: WeekCourseColorStyle.style(for: course.name)
+                    colorStyle: WeekCourseColorStyle.style(for: course.name, customColor: course.customColor)
                 )
             }
         }
@@ -1319,7 +1319,19 @@ private struct WeekCourseColorStyle {
     let border: Color
     let foreground: Color
 
-    static func style(for courseName: String) -> WeekCourseColorStyle {
+    static func style(for courseName: String, customColor: CourseColorChoice? = nil) -> WeekCourseColorStyle {
+        if let customColor {
+            // Same light-pastel treatment as the presets below, derived from the chosen colour.
+            let (red, green, blue) = customColor.rgb
+            func tone(_ weight: Double, lift: Double = 0) -> Color {
+                Color(red: red * weight + lift, green: green * weight + lift, blue: blue * weight + lift)
+            }
+            return WeekCourseColorStyle(
+                background: tone(0.35, lift: 0.65).opacity(0.96),
+                border: tone(0.9).opacity(0.9),
+                foreground: tone(0.4)
+            )
+        }
         let palettes: [(Color, Color, Color)] = [
             (Color(red: 0.98, green: 0.91, blue: 0.63), Color(red: 0.90, green: 0.77, blue: 0.30), Color(red: 0.39, green: 0.30, blue: 0.07)),
             (Color(red: 0.98, green: 0.80, blue: 0.63), Color(red: 0.90, green: 0.55, blue: 0.29), Color(red: 0.42, green: 0.20, blue: 0.08)),
