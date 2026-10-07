@@ -149,6 +149,8 @@ struct SemesterGrade: Identifiable, Codable {
     let creditsTaken: Double
     let creditsPassed: Double
     let classRank: String?
+    /// 系排名（名次/人數）；舊快取沒有此欄位。
+    var departmentRank: String? = nil
     let courses: [GradeCourse]
 
     var termTitle: String { "\(year) 學年度\(term == .summer ? "暑期" : "\(term.rawValue)學期")" }

@@ -74,7 +74,11 @@ final class GradeHistoryViewModel: ObservableObject {
         let owner = (account ?? cacheDefaults.string(forKey: "app.user.username") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         cacheKey = owner.isEmpty ? nil : "grade_history.term_cache.v2.\(owner)"
-        historyCacheKey = owner.isEmpty ? nil : "grade_history.history_cache.v2.\(owner)"
+        // v2 stored course credits as class rank; drop it so wrong ranks never show.
+        historyCacheKey = owner.isEmpty ? nil : "grade_history.history_cache.v3.\(owner)"
+        if !owner.isEmpty {
+            cacheDefaults.removeObject(forKey: "grade_history.history_cache.v2.\(owner)")
+        }
         if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
             semesters = Self.sampleData
             termSnapshot = Self.sampleTermSnapshot
@@ -298,6 +302,7 @@ extension GradeHistoryViewModel {
             creditsTaken: 18,
             creditsPassed: 18,
             classRank: "4 / 43",
+            departmentRank: "9 / 88",
             courses: [
                 GradeCourse(code: "CS3007", name: "作業系統", category: .required, credits: 3, score: 88, gpa: nil, remarks: nil),
                 GradeCourse(code: "CS3103", name: "人工智慧導論", category: .required, credits: 3, score: 90, gpa: nil, remarks: "優秀"),
@@ -315,6 +320,7 @@ extension GradeHistoryViewModel {
             creditsTaken: 20,
             creditsPassed: 18,
             classRank: "7 / 43",
+            departmentRank: "15 / 88",
             courses: [
                 GradeCourse(code: "CS2801", name: "演算法", category: .required, credits: 3, score: 83, gpa: nil, remarks: nil),
                 GradeCourse(code: "CS2305", name: "資料庫系統", category: .required, credits: 3, score: 87, gpa: nil, remarks: nil),
@@ -335,6 +341,7 @@ extension GradeHistoryViewModel {
             creditsTaken: 18,
             creditsPassed: 16,
             classRank: "10 / 41",
+            departmentRank: "21 / 85",
             courses: [
                 GradeCourse(code: "CS1503", name: "離散數學", category: .required, credits: 3, score: 76, gpa: nil, remarks: nil),
                 GradeCourse(code: "CS1201", name: "物件導向程式設計", category: .required, credits: 3, score: 81, gpa: nil, remarks: nil),
