@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C05701000000000000000001 /* App/CampusAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05702000000000000000001 /* App/CampusAppShortcuts.swift */; };
+		C05701000000000000000002 /* Core/Services/CampusShortcutService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05702000000000000000002 /* Core/Services/CampusShortcutService.swift */; };
+		C05701000000000000000003 /* Features/Home/Views/CampusShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05702000000000000000003 /* Features/Home/Views/CampusShortcutsView.swift */; };
 		0582D0EB51C8CB4ADCE9A96C /* Features/EventRegistration/Views/AppliedEventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30F6AE22196AB5E18E4F966 /* Features/EventRegistration/Views/AppliedEventDetailView.swift */; };
 		07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */; };
 		0CA8802A7377A2C1B84807B5 /* Features/LeaveApplication/LeaveRecordsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */; };
@@ -209,6 +212,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C05702000000000000000001 /* App/CampusAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/CampusAppShortcuts.swift; sourceTree = SOURCE_ROOT; };
+		C05702000000000000000002 /* Core/Services/CampusShortcutService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Services/CampusShortcutService.swift; sourceTree = SOURCE_ROOT; };
+		C05702000000000000000003 /* Features/Home/Views/CampusShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Views/CampusShortcutsView.swift; sourceTree = SOURCE_ROOT; };
 		0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift; sourceTree = "<group>"; };
 		0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift; sourceTree = "<group>"; };
 		10A32D662F431B8B0009BB45 /* NIU-APP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NIU-APP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -881,6 +887,9 @@
 				62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */,
 				E6C1E746953BD2709CEA33F7 /* Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift */,
 				ABCD02000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift */,
+				C05702000000000000000001 /* App/CampusAppShortcuts.swift */,
+				C05702000000000000000002 /* Core/Services/CampusShortcutService.swift */,
+				C05702000000000000000003 /* Features/Home/Views/CampusShortcutsView.swift */,
 				ABCD02000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift */,
 			);
 			name = "Recovered References";
@@ -1172,6 +1181,9 @@
 				10A32DB62F431F630009BB45 /* MinimalTextField.swift in Sources */,
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,
 				D032C001D032C001D032C001 /* NIU-LiveActivities/CampusNavigation.swift in Sources */,
+				C05701000000000000000001 /* App/CampusAppShortcuts.swift in Sources */,
+				C05701000000000000000002 /* Core/Services/CampusShortcutService.swift in Sources */,
+				C05701000000000000000003 /* Features/Home/Views/CampusShortcutsView.swift in Sources */,
 				ABCD01000000000000000001 /* Core/Services/LiveActivityRemoteClient.swift in Sources */,
 				C0DE11010000000000000001 /* AppUpdateChecker.swift in Sources */,
 				C0DE10010000000000000001 /* UsageHeartbeatClient.swift in Sources */,

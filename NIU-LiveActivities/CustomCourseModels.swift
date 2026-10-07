@@ -69,14 +69,14 @@ nonisolated struct CustomCourseSnapshot: Codable {
 }
 
 extension ClassSchedule {
-    private static func mondayIndex(_ header: String) -> Int? {
+    private nonisolated static func mondayIndex(_ header: String) -> Int? {
         ScheduleClock.weekday(header).map { ($0 + 5) % 7 }
     }
 
     /// Places active custom courses into empty slots of the Monday-based week
     /// containing `date`. School courses keep their slot; a custom course whose
     /// slot is taken is skipped for that day rather than partially shown.
-    func merging(_ customCourses: [CustomCourse], weekContaining date: Date) -> ClassSchedule {
+    nonisolated func merging(_ customCourses: [CustomCourse], weekContaining date: Date) -> ClassSchedule {
         guard !customCourses.isEmpty else { return self }
         let cal = ScheduleClock.calendar
         let midnight = cal.startOfDay(for: date)
@@ -114,7 +114,7 @@ extension ClassSchedule {
     }
 
     /// Display-only schedule with this session's mirrored custom courses. Never cache the result.
-    func withCustomCourses(from defaults: UserDefaults?, weekContaining date: Date) -> ClassSchedule {
+    nonisolated func withCustomCourses(from defaults: UserDefaults?, weekContaining date: Date) -> ClassSchedule {
         merging(CustomCourseSnapshot.courses(for: self, in: defaults), weekContaining: date)
     }
 
