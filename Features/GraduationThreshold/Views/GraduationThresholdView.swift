@@ -3,6 +3,7 @@ import SwiftUI
 struct GraduationThresholdView: View {
     @StateObject private var vm = GraduationThresholdViewModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsLearningHours = false
 
     var body: some View {
         ZStack {
@@ -40,6 +41,9 @@ struct GraduationThresholdView: View {
                     .accessibilityHidden(true)
                     .transition(.opacity)
             }
+        }
+        .sheet(isPresented: $showsLearningHours) {
+            LearningHoursView()
         }
         .navigationTitle("畢業門檻")
         .navigationBarTitleDisplayMode(.inline)
@@ -182,7 +186,18 @@ struct GraduationThresholdView: View {
         ]
 
         return sectionCard {
-            sectionHeader(icon: "clock.badge.checkmark", title: "多元時數")
+            HStack(spacing: 8) {
+                sectionHeader(icon: "clock.badge.checkmark", title: "多元時數")
+                Button {
+                    showsLearningHours = true
+                } label: {
+                    Label("時數紀錄", systemImage: "list.bullet.rectangle")
+                        .font(.subheadline.weight(.medium))
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityHint("開啟多元學習認證的活動與時數明細")
+            }
 
             VStack(spacing: 14) {
                 ForEach(rows, id: \.0) { row in

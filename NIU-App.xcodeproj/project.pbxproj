@@ -45,6 +45,10 @@
 		54315A98B0455F60883B0DF5 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03EC236A7C7A4762DB0F602 /* Features/AcademicCalendar/Models/AcademicCalendarModels.swift */; };
 		54A3EFEFEAA844D3923CD159 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */; };
 		5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */; };
+		BCED9A4EA6FF4A79851C7DAF /* Features/GraduationThreshold/Models/LearningHoursModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8012E5ADFB4CE28C8CF83E /* Features/GraduationThreshold/Models/LearningHoursModels.swift */; };
+		41BDA06C4FB2448284FBF9C1 /* Features/GraduationThreshold/Services/LearningHoursClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09AC55D00E449619CAFC67C /* Features/GraduationThreshold/Services/LearningHoursClient.swift */; };
+		FF534DF2C8C549E68FAF4099 /* Features/GraduationThreshold/ViewModels/LearningHoursViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFF8DDBCDDAE43A198893F18 /* Features/GraduationThreshold/ViewModels/LearningHoursViewModel.swift */; };
+		27ED0E8ADFED4A0AAEB3F8E2 /* Features/GraduationThreshold/Views/LearningHoursView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36145546CD7845AF912CB02A /* Features/GraduationThreshold/Views/LearningHoursView.swift */; };
 		5CCC1D48EA2F687ABDFA40C4 /* Features/EventRegistration/Views/ModifyRegistrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 261551C8DEA5051502DBB4E9 /* Features/EventRegistration/Views/ModifyRegistrationView.swift */; };
 		62AD37F2E5383849FA2B6E5D /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62D88BF4D80D06C24CDB704B /* Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift */; };
 		6837A9CFB155D3637C4AEF0C /* Features/LeaveApplication/LeaveApplicationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE8E457C20ED1050BA67747 /* Features/LeaveApplication/LeaveApplicationView.swift */; };
@@ -257,6 +261,10 @@
 		10D1F8752F80C57900034946 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		10D1F8772F80C57900034946 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/GraduationThresholdView.swift; sourceTree = "<group>"; };
+		AC8012E5ADFB4CE28C8CF83E /* Features/GraduationThreshold/Models/LearningHoursModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Models/LearningHoursModels.swift; sourceTree = "<group>"; };
+		E09AC55D00E449619CAFC67C /* Features/GraduationThreshold/Services/LearningHoursClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Services/LearningHoursClient.swift; sourceTree = "<group>"; };
+		BFF8DDBCDDAE43A198893F18 /* Features/GraduationThreshold/ViewModels/LearningHoursViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/ViewModels/LearningHoursViewModel.swift; sourceTree = "<group>"; };
+		36145546CD7845AF912CB02A /* Features/GraduationThreshold/Views/LearningHoursView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/GraduationThreshold/Views/LearningHoursView.swift; sourceTree = "<group>"; };
 		164860A25809834EAD052539 /* Features/EventRegistration/Models/EventRegistrationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/EventRegistration/Models/EventRegistrationModels.swift; sourceTree = "<group>"; };
 		192EEAE386FFE93801C10015 /* Features/LeaveApplication/LeaveRecordsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LeaveApplication/LeaveRecordsViewModel.swift; sourceTree = "<group>"; };
 		1CDAAAD7C4C04A3CAD92AF01 /* academic_calendar.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = academic_calendar.json; sourceTree = "<group>"; };
@@ -851,6 +859,10 @@
 				F8385E0612A14868AF9E80B3 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift */,
 				0007632818F54337AC583420 /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift */,
 				13F9DB7C84754D54AD782AAF /* Features/GraduationThreshold/Views/GraduationThresholdView.swift */,
+				AC8012E5ADFB4CE28C8CF83E /* Features/GraduationThreshold/Models/LearningHoursModels.swift */,
+				E09AC55D00E449619CAFC67C /* Features/GraduationThreshold/Services/LearningHoursClient.swift */,
+				BFF8DDBCDDAE43A198893F18 /* Features/GraduationThreshold/ViewModels/LearningHoursViewModel.swift */,
+				36145546CD7845AF912CB02A /* Features/GraduationThreshold/Views/LearningHoursView.swift */,
 				DEB28B5376A046BDBB7BEF97 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift */,
 				CA4A11020000000000000005 /* Features/Mail/Services/MailCaptchaRecognizer.swift */,
 				CA4A11020000000000000006 /* Features/Mail/Services/MailBrowser.swift */,
@@ -1267,6 +1279,10 @@
 				54A3EFEFEAA844D3923CD159 /* Features/GraduationThreshold/ViewModels/GraduationThresholdViewModel.swift in Sources */,
 				DE1B327C5FC7444289A1258A /* Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift in Sources */,
 				5980803889554F3D9D60EF5D /* Features/GraduationThreshold/Views/GraduationThresholdView.swift in Sources */,
+				BCED9A4EA6FF4A79851C7DAF /* Features/GraduationThreshold/Models/LearningHoursModels.swift in Sources */,
+				41BDA06C4FB2448284FBF9C1 /* Features/GraduationThreshold/Services/LearningHoursClient.swift in Sources */,
+				FF534DF2C8C549E68FAF4099 /* Features/GraduationThreshold/ViewModels/LearningHoursViewModel.swift in Sources */,
+				27ED0E8ADFED4A0AAEB3F8E2 /* Features/GraduationThreshold/Views/LearningHoursView.swift in Sources */,
 				07586D80DD784D0B98925264 /* Features/GraduationThreshold/Views/DiverseHoursProgressBar.swift in Sources */,
 				89D0768DA2A7FD7F8E7DEDC9 /* Features/EnrollmentCertificate/Views/EnrollmentCertificateView.swift in Sources */,
 				A3F92B69AB62F31CCEAE8CA7 /* Features/LeaveApplication/LeaveApplicationViewModel.swift in Sources */,
