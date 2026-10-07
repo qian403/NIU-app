@@ -97,17 +97,25 @@ enum MoodleQuestionPageScript {
                 style.display !== 'none' && style.visibility !== 'hidden' &&
                 element.getClientRects().length > 0;
         };
+        const labelledBy = element => (element.getAttribute('aria-labelledby') || '').split(/\s+/)
+            .map(id => id && document.getElementById(id)?.textContent).filter(Boolean).join(' ');
         const label = element => clean(
             element.getAttribute('aria-label') ||
+            labelledBy(element) ||
             Array.from(element.labels || []).map(l => l.textContent).join(' ') ||
             element.closest('label')?.textContent ||
             element.getAttribute('placeholder') || ''
         );
         const disabled = element => element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true';
+        // Quiz answers sit inside an inner fieldset whose legend is only "Select one".
         const contextLabel = element => {
-            const group = element.closest('.que, fieldset, [role="group"], .fitem');
-            return clean(group?.querySelector('.qtext, legend, .col-form-label, .fitemtitle')?.textContent);
+            const group = element.closest('.que') || element.closest('fieldset, [role="group"], .fitem');
+            const text = clean(group?.querySelector('.qtext, legend, .col-form-label, .fitemtitle')?.textContent);
+            const number = group?.matches('.que') ? clean(group.querySelector('.info .no')?.textContent) : '';
+            return number && text ? number + '：' + text : text;
         };
+        // Question flags and "clear my choice" are school page chrome, not answers.
+        const quizChrome = element => !!element.closest('.que .info, .questionflag, .qtype_multichoice_clearchoice');
         const safeURL = href => {
             try {
                 const url = new URL(href, document.baseURI);
@@ -278,20 +286,21 @@ enum MoodleQuestionPageScript {
             let webReason = null;
             // Timed activities may submit independently of native button taps.
             // Keep editing in the school DOM so automatic submission sees drafts.
-            if (document.querySelector(
+            // Moodle always renders a hidden quiz timer, so only a visible running one counts.
+            if (Array.from(document.querySelectorAll(
                 '[role="timer"], [id*="timer" i], [class*="timer" i], [id*="countdown" i], [class*="countdown" i]'
-            )) {
+            )).some(element => visible(element) && /\d/.test(element.textContent || ''))) {
                 webReason = '此活動包含倒數計時，請使用校方頁面作答，以確保自動交卷時保留答案。';
             }
             const unsupported = root.querySelectorAll(
                 'input[type="password"], input[type="file"], [contenteditable="true"], iframe, canvas, audio, video, math, .MathJax, .MathJax_Display, img'
             );
-            if (Array.from(unsupported).some(el => visible(el) && !(isReview && el.closest('.que')) &&
+            if (Array.from(unsupported).some(el => visible(el) && !(isReview && el.closest('.que')) && !quizChrome(el) &&
                 !(el.tagName === 'IMG' && (el.classList.contains('icon') || el.closest('.userpicture'))))) {
                 webReason = '此頁包含圖片、公式、上傳或特殊互動，請使用校方頁面，避免遺漏題目內容。';
             }
             const allInputs = Array.from(root.querySelectorAll('input, textarea, select'))
-                .filter(e => !(isReview && e.closest('.que')));
+                .filter(e => !(isReview && e.closest('.que')) && !quizChrome(e));
             if (allInputs.some(element => element.type !== 'hidden' && !disabled(element) &&
                 !visible(element) && Array.from(element.labels || []).some(visible))) {
                 webReason ||= '此頁使用特殊選項控制項，請使用校方頁面完成作答。';
@@ -324,7 +333,9 @@ enum MoodleQuestionPageScript {
                     kind: type === 'radio' || type === 'select-one' ? 'single' :
                         type === 'checkbox' || type === 'select-multiple' ? 'multiple' :
                         type === 'textarea' ? 'longText' : 'text',
-                    label: (isChoice ? contextLabel(element) : label(element) || contextLabel(element)) || '作答',
+                    label: (isChoice ? contextLabel(element) :
+                        element.closest('.que') ? contextLabel(element) || label(element) :
+                        label(element) || contextLabel(element)) || '作答',
                     values: options.length ? options.filter(o => o.selected || o.checked).map(key) : [element.value || ''],
                     options: options.map(o => ({id: key(o), label: label(o) || clean(o.textContent) || o.value || '選項',
                         disabled: disabled(o)})),
@@ -339,6 +350,7 @@ enum MoodleQuestionPageScript {
             for (const element of buttons) {
                 if (!visible(element) || element.type === 'reset') continue;
                 if (isReview && (element.closest('.que') || element.tagName !== 'A')) continue;
+                if (quizChrome(element)) continue;
                 if (element.tagName === 'A' && !safeURL(element.href)) continue;
                 if (element.closest('.activity-header, .activity-information, [data-region="activity-information"], [data-region="completion-info"], .tertiary-navigation')) continue;
                 // File-picker, navigation-menu and rich-editor controls require the web UI.
@@ -363,7 +375,9 @@ enum MoodleQuestionPageScript {
                 }).map(f => f.id);
                 const action = {id: key(element), label: text,
                     disabled: disabled(element), fieldIDs,
-                    isNavigation: element.tagName === 'A' && safeURL(element.href)};
+                    // Quiz page navigation saves drafts; finishing still needs the summary page.
+                    isNavigation: (element.tagName === 'A' && safeURL(element.href)) ||
+                        (element.matches('.mod_quiz-next-nav, .mod_quiz-prev-nav') && safeForm(element.form))};
                 actions.set(action.id, element);
                 actionList.push(action);
             }
@@ -371,8 +385,13 @@ enum MoodleQuestionPageScript {
             const copy = root.cloneNode(true);
             const originals = Array.from(root.querySelectorAll('*'));
             const copies = Array.from(copy.querySelectorAll('*'));
+            // Native fields already show these questions; keep the text only for web fallback.
+            const nativeQuestions = new Set(webReason ? [] :
+                fields.map(f => controls.get(f.id).element.closest('.que')).filter(Boolean));
             originals.forEach((element, index) => {
-                if (!visible(element) || result?.consumed.has(element) || (isReview && element.matches('.que'))) copies[index].remove();
+                if (!visible(element) || result?.consumed.has(element) || (isReview && element.matches('.que')) ||
+                    (element.matches('.que .info, .que .qtext, .que .ablock, .que .answer') &&
+                        nativeQuestions.has(element.closest('.que')))) copies[index].remove();
             });
             if (result) {
                 copy.querySelectorAll('h1, .activity-completion, [data-region="completion-info"], .tertiary-navigation').forEach(e => e.remove());

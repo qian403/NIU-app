@@ -111,6 +111,48 @@ import WebKit
         require(bridge.snapshot().fields.find(f=>f.id===text.id).values[0]==='網頁修改','read web-side edits');
         require(bridge.perform('obsolete',action.id,answers)==='changed' && window.submits===1,'stale operation');
         """#),
+        ("quiz attempt ignores hidden timer and flags, keeps option labels", #"""
+        <main id="region-main"><div id="quiz-timer-wrapper" style="display:none">
+        <div id="quiz-timer" role="timer">剩餘時間 <span id="quiz-time-left"></span></div></div>
+        <form id="responseform" action="/mod/quiz/processattempt.php" method="post"
+        onsubmit="event.preventDefault();window.submits=(window.submits||0)+1">
+        <input type="hidden" name="sesskey" value="FIXTURE_SECRET">
+        <div class="que multichoice"><div class="info"><h3 class="no">試題 <span class="qno">1</span></h3>
+        <div class="state">尚未作答</div><div class="questionflag editable">
+        <input type="checkbox" id="q1:1_:flaggedcheckbox" style="display:none">
+        <label for="q1:1_:flaggedcheckbox"><img class="questionflagimage" alt="" width="16" height="16"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3C/svg%3E">標記試題</label></div></div>
+        <div class="content"><div class="formulation"><div class="qtext"><p>哪一個是合成答案？</p></div>
+        <fieldset class="ablock"><legend class="prompt">請選擇一個：</legend><div class="answer">
+        <div class="r0"><input type="radio" name="q1:1_answer" value="0" id="q1:1_answer0" aria-labelledby="q1:1_answer0_label">
+        <div id="q1:1_answer0_label" data-region="answer-label"><span class="answernumber">a. </span>選項甲</div></div>
+        <div class="r1"><input type="radio" name="q1:1_answer" value="1" id="q1:1_answer1" aria-labelledby="q1:1_answer1_label">
+        <div id="q1:1_answer1_label" data-region="answer-label"><span class="answernumber">b. </span>選項乙</div></div>
+        </div><div class="qtype_multichoice_clearchoice">
+        <input type="radio" name="q1:1_answer" id="q1:1_answer-1" value="-1" style="display:none">
+        <label for="q1:1_answer-1">清除我的選擇</label></div></fieldset></div></div></div>
+        <div class="que shortanswer"><div class="info"><h3 class="no">試題 <span class="qno">2</span></h3></div>
+        <div class="formulation"><div class="qtext">請輸入關鍵詞。</div><div class="ablock">
+        <label for="q1:2_answer">答案：</label><input type="text" id="q1:2_answer" name="q1:2_answer"></div></div></div>
+        <div class="submitbtns"><input type="submit" name="next" value="下一頁" class="mod_quiz-next-nav"></div>
+        </form></main>
+        """#, #"""
+        const p=bridge.snapshot();
+        require(!p.webReason,'hidden timer, flag and clear-choice chrome must not force web fallback: '+p.webReason);
+        require(p.fields.length===2,'one choice field and one text field');
+        const one=p.fields[0], text=p.fields[1];
+        require(one.label==='試題 1：哪一個是合成答案？','question text instead of inner legend: '+one.label);
+        require(one.options.length===2 && one.options[1].label==='b. 選項乙','aria-labelledby option text');
+        require(text.label==='試題 2：請輸入關鍵詞。','short answer keeps question text');
+        require(!p.text.includes('合成答案') && !p.text.includes('FIXTURE_SECRET'),'no duplicated question text');
+        const next=p.actions.find(a=>a.label==='下一頁');
+        require(p.actions.length===1 && next.isNavigation,'quiz page navigation without final-submit confirmation');
+        require(bridge.perform(p.revision,next.id,{[one.id]:[one.options[1].id],[text.id]:['關鍵詞']})==='invoked','answer quiz page');
+        require(window.submits===1 && document.getElementById('q1:1_answer1').checked,'actual school form');
+        document.getElementById('quiz-timer-wrapper').style.display='block';
+        document.getElementById('quiz-time-left').textContent='0:09:59';
+        require(!!bridge.snapshot().webReason,'running timer still uses school page');
+        """#),
         ("required fields, maxlength and refreshed question", #"""
         <main id="region-main"><p class="qtext">原本題目</p>
         <form action="/mod/quiz/processattempt.php" onsubmit="event.preventDefault();window.submits=(window.submits||0)+1">
