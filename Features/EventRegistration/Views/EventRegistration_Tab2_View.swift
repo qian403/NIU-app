@@ -47,7 +47,7 @@ struct EventRegistration_Tab2_View: View {
         }
         .alert(viewModel.alert?.title ?? "", isPresented: Binding(
             get: { viewModel.alert != nil },
-            set: { if !$0 { viewModel.alert = nil } }
+            set: { if !$0 { viewModel.dismissAlert() } }
         ), presenting: viewModel.alert) { _ in
             Button("好", role: .cancel) {}
         } message: { alert in

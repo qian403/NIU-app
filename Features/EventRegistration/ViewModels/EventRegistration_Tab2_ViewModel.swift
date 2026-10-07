@@ -134,4 +134,14 @@ final class EventRegistration_Tab2_ViewModel: ObservableObject {
             NotificationCenter.default.post(name: .didChangeEventRegistration, object: nil)
         }
     }
+
+    /// SwiftUI may write the alert binding during a view update; clear it on the
+    /// next main-actor turn, and only if a newer alert has not replaced it.
+    func dismissAlert() {
+        guard let id = alert?.id else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.alert?.id == id else { return }
+            self.alert = nil
+        }
+    }
 }

@@ -40,7 +40,10 @@ def event_row(event_id, name, extra=""):
       <h3>{name}</h3>
       <div class="col-sm-3 text-center enr-list-dep-nam hidden-xs" title="主辦單位：資訊中心"></div>
       <span class="badge alert-danger">報名中</span>
-      <p>活動編號：{event_id} <span class="badge">詳細</span></p>
+      <p>
+        活動編號：{event_id}<span class="badge alert-danger">報名中</span>
+        <span class="badge alert-success">專業進取 (已認證)</span>
+      </p>
       <div><i class="fa-id-badge"></i>本校在校生</div>
       <div><i class="fa-calendar"></i>2099/10/10 10:00 ~ 2099/10/10 12:00</div>
       <div><i class="fa-map-marker"></i>綜合大樓</div>
