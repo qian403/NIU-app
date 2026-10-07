@@ -68,6 +68,13 @@ assert.match(mainFrame.location.href,/\/NIU\/Application\/SEC\/SEC20\/SEC2010_\.
 assert.equal(portal.__niuLeaveTarget,mainFrame); assert.equal(hideCalls,1);
 assert.equal(run('openPage',{path:'/NIU/Application/SEC/SEC40/SEC4030_.aspx?progcd=SEC4030'},{location:{pathname:'/NIU/MainFrame.aspx'},frames:{length:0}}),'waiting');
 assert.throws(()=>run('openPage',{path:'https://example.com/'},portal),/FORM_CHANGED/);
+// A dropped or replaced menu navigation is told apart from one still loading.
+const leavePath='/NIU/Application/SEC/SEC20/SEC2010_.aspx?progcd=SEC2010';
+assert.equal(run('openedPage',{path:leavePath},portal),'pending');
+mainFrame.document={}; assert.equal(run('openedPage',{path:leavePath},portal),'elsewhere');
+mainFrame.location.pathname='/NIU/Application/SEC/SEC20/SEC2010_.aspx';
+assert.equal(run('openedPage',{path:leavePath},portal),'arrived');
+assert.equal(run('openedPage',{path:leavePath},{location:{pathname:'/NIU/MainFrame.aspx'},frames:{length:0}}),'elsewhere');
 // An unrelated frame outside the leave target is not an expired leave session.
 const hidden={location:{pathname:'/NIU/TimeoutPage.aspx'},frames:[],document:{}};
 const target={location:{pathname:'/NIU/Blank.aspx'},frames:[],document:{}};
@@ -80,7 +87,7 @@ target.document={};
 assert.equal(JSON.parse(run('snapshot',{},shell)).kind,'expired');
 // TimeoutPage is a committed document, not an alert. Expiry wins over a still
 // readable form/list/picker elsewhere, including viewFrame outside mainFrame.
-for (const pathname of ['/NIU/TimeoutPage.aspx', '/NIU/Default.aspx', '/NIU/Login.aspx']) {
+for (const pathname of ['/NIU/TimeoutPage.aspx', '/NIU/Default.aspx', '/NIU/Logout.aspx', '/NIU/Login.aspx']) {
   for (const placement of ['mainFrame', 'viewFrame', 'picker']) {
     const expired = {location:{pathname}, document:{}, frames:[]};
     const main = placement === 'mainFrame' ? expired : {...form, frames:placement === 'picker' ? [expired] : []};

@@ -43,7 +43,7 @@ nonisolated enum LeaveApplicationScript {
     }
     // timeoutFrame (/NIU/timeout.aspx) is a permanent hidden overlay, not expiry.
     function expiredLocation(location) {
-      if (/\/(?:TimeoutPage|Default)\.aspx$/i.test(location.pathname)) return true;
+      if (/\/(?:TimeoutPage|Default|Logout)\.aspx$/i.test(location.pathname)) return true;
       return /\/Login\.aspx$/i.test(location.pathname)
         && ![...new URLSearchParams(location.search || '')].some(([key, value]) => key.toLowerCase() === 'guid' && value);
     }
@@ -82,6 +82,17 @@ nonisolated enum LeaveApplicationScript {
     frame.location.href = path;
     try { if (typeof window.hideView === 'function') window.hideView(); } catch (_) {}
     return 'opened';
+    """#
+
+    // Where the menu navigation into mainFrame ended up: still the previous document
+    // (pending), the requested page (arrived), or something the school loaded instead.
+    static let openedPage = helpers + #"""
+    const frame = window.__niuLeaveTarget;
+    if (!frame) return 'elsewhere';
+    try {
+      if (frame.document === window.__niuLeavePrevious) return 'pending';
+      return frame.location.pathname.toLowerCase() === path.split('?')[0].toLowerCase() ? 'arrived' : 'elsewhere';
+    } catch (_) { return 'elsewhere'; }
     """#
 
     // Runs the list page's own「查詢」(a partial postback) once, then parses its DataGrid.
