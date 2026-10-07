@@ -298,6 +298,46 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
         precondition(FixtureHTTP.calls == 1 && service.webView.requests.count == 1,
                      "SSO completion after cancellation must not resume the old query")
 
+        // A bridge without any response is retried once with a new GUID, then times out.
+        reset(status: 200)
+        service = EnrollmentRegistrationService(refreshSSO: { fatalError("A stall is not an SSO expiry") },
+                                                bridgeStallTimeout: .milliseconds(60))
+        var stalledDone = false
+        let stalled = Task {
+            defer { stalledDone = true }
+            do { _ = try await service.load(account: "synthetic"); fatalError("Expected timeout") }
+            catch { precondition((error as? URLError)?.code == .timedOut, "\(error)") }
+        }
+        try await settle()
+        redirect(service, "/NIU/Default.aspx")
+        try await settle()
+        precondition(FixtureHTTP.calls == 1 && service.webView.requests.count == 2)
+        try await Task.sleep(for: .milliseconds(100))
+        precondition(!stalledDone && FixtureHTTP.calls == 2 && service.webView.requests.count == 3,
+                     "A stalled bridge must not reuse its single-use GUID")
+        try await Task.sleep(for: .milliseconds(100))
+        precondition(stalledDone && FixtureHTTP.calls == 2 && service.webView.requests.count == 3,
+                     "Stall recovery is bounded to one retry")
+        await stalled.value
+
+        // A responding bridge cancels the watchdog; a later logout still gets its one SSO refresh.
+        reset(status: 200)
+        refreshes = 0
+        service = EnrollmentRegistrationService(refreshSSO: { refreshes += 1; return false },
+                                                bridgeStallTimeout: .milliseconds(60))
+        (load, completed) = expectExpiry(service)
+        try await settle()
+        redirect(service, "/NIU/Default.aspx")
+        try await settle()
+        service.webView(service.webView, didCommit: nil)
+        try await Task.sleep(for: .milliseconds(150))
+        precondition(!completed() && FixtureHTTP.calls == 1 && service.webView.requests.count == 2,
+                     "A committed bridge must not be retried")
+        redirect(service, "/NIU/logout.aspx")
+        try await settle()
+        precondition(completed() && refreshes == 1)
+        await load.value
+
         // The didFinish fallback must also detect logout without waiting for a timeout.
         reset(status: 200)
         service = EnrollmentRegistrationService(refreshSSO: { false })
@@ -310,7 +350,7 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
         try await settle()
         precondition(completed())
         await load.value
-        print("PASS: in-query SSO refresh, bounded bridges, cancellation during refresh, monotonic progress, unrelated-frame isolation")
+        print("PASS: in-query SSO refresh, bounded bridges, stalled bridge retry, cancellation during refresh, monotonic progress, unrelated-frame isolation")
     }
 }
 '''
