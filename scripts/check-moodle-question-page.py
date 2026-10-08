@@ -151,7 +151,11 @@ import WebKit
         require(window.submits===1 && document.getElementById('q1:1_answer1').checked,'actual school form');
         document.getElementById('quiz-timer-wrapper').style.display='block';
         document.getElementById('quiz-time-left').textContent='0:09:59';
-        require(!!bridge.snapshot().webReason,'running timer still uses school page');
+        const timed=bridge.snapshot();
+        require(!timed.webReason && timed.timer==='剩餘時間 0:09:59' && timed.fields.length===2,'running timer stays native: '+timed.webReason);
+        require(timed.revision===bridge.snapshot().revision,'timer text is not part of the revision');
+        require(await bridge.stage(timed.revision,{[one.id]:[one.options[0].id]})==='staged' &&
+            document.getElementById('q1:1_answer0').checked && window.submits===1,'drafts staged into school form without submitting');
         """#),
         ("required fields, maxlength and refreshed question", #"""
         <main id="region-main"><p class="qtext">原本題目</p>
@@ -229,6 +233,93 @@ import WebKit
         require(!!p.webReason,'explicit long-content fallback');
         require(bridge.perform(p.revision,p.actions[0].id,{})==='changed' && !window.submits,'no truncated-question submission');
         """#),
+        ("quiz start button inside Moodle 4+ tertiary navigation", #"""
+        <main id="region-main"><div class="activity-header"><span class="visually-hidden">完成課程所需要的條件</span>
+        <button>標示完成</button></div><div role="main"><div class="tertiary-navigation"><div class="navitem">
+        <div class="singlebutton quizstartbuttondiv"><form method="post" action="/mod/quiz/startattempt.php"
+        onsubmit="event.preventDefault();window.started=(window.started||0)+1">
+        <input type="hidden" name="cmid" value="1"><input type="hidden" name="sesskey" value="FIXTURE_SECRET">
+        <button type="submit">開始測驗</button></form></div></div>
+        <div class="navitem"><a href="/mod/quiz/report.php?id=1">報告</a></div></div>
+        <div class="box quizinfo"><p>評分方式：最高分數</p></div></div></main>
+        """#, #"""
+        const p=bridge.snapshot();
+        require(p.actions.length===1 && p.actions[0].label==='開始測驗','only the start control: '+JSON.stringify(p.actions));
+        require(!p.text.includes('完成課程所需要的條件') && !p.text.includes('FIXTURE_SECRET'),'screen-reader and hidden text');
+        require(bridge.perform(p.revision,p.actions[0].id,{})==='invoked' && window.started===1,'starts through school form');
+        """#),
+        ("picture drag-and-drop hands over before submission", #"""
+        <main id="region-main"><form action="/mod/quiz/processattempt.php" onsubmit="event.preventDefault();window.submits=1">
+        <div class="que ddimageortext"><div class="info"><h3 class="no">試題 1</h3></div>
+        <div class="qtext">把標籤拖到圖上。</div><input type="hidden" name="q1:1_p1" value=""></div>
+        <input type="submit" name="next" value="完成作答..." class="mod_quiz-next-nav"></form></main>
+        """#, #"""
+        const p=bridge.snapshot();
+        require(/圖片/.test(p.webReason||''),'picture drag question needs school page');
+        require(await bridge.perform(p.revision,p.actions[0].id,{})==='changed' && !window.submits,'no blank native submission');
+        """#),
+        ("matching stems and question context stay paired", #"""
+        <main id="region-main"><form action="/mod/quiz/processattempt.php" onsubmit="event.preventDefault();window.submits=1">
+        <div class="que match"><div class="info"><h3 class="no">試題 1</h3></div><div class="formulation">
+        <div class="qtext"><p>請替動物分類。</p></div><div class="ablock"><table class="answer"><tbody>
+        <tr class="r0"><td class="text"><p>青蛙</p></td><td class="control"><label class="accesshide" for="m1">答案 1</label>
+        <select id="m1" name="q1:1_sub0"><option value="0">選擇...</option><option value="1">兩棲類</option><option value="2">哺乳類</option></select></td></tr>
+        <tr class="r1"><td class="text"><p>貓</p></td><td class="control"><label class="accesshide" for="m2">答案 2</label>
+        <select id="m2" name="q1:1_sub1"><option value="0">選擇...</option><option value="1">兩棲類</option><option value="2">哺乳類</option></select></td></tr>
+        </tbody></table></div></div></div>
+        <input type="submit" name="next" value="完成作答..." class="mod_quiz-next-nav"></form></main>
+        """#, #"""
+        const p=bridge.snapshot();
+        require(!p.webReason && p.fields.length===2,'native matching');
+        require(p.fields[0].label==='試題 1：青蛙' && p.fields[1].label==='試題 1：貓','stems as labels: '+p.fields.map(f=>f.label));
+        require(p.fields[0].context==='請替動物分類。' && !p.fields[1].context,'question shown once');
+        require(!p.text.includes('請替動物分類'),'no duplicated question text');
+        const [a,b]=p.fields;
+        require(await bridge.perform(p.revision,p.actions[0].id,{[a.id]:[a.options[1].id],[b.id]:[b.options[2].id]})==='invoked','submit');
+        require(document.getElementById('m1').value==='1' && document.getElementById('m2').value==='2' && window.submits===1,'selects applied');
+        """#),
+        ("ordering uses school move buttons", #"""
+        <main id="region-main"><form action="/mod/quiz/processattempt.php" onsubmit="event.preventDefault();window.submits=1">
+        <div class="que ordering"><div class="info"><h3 class="no">試題 1</h3></div><div class="formulation">
+        <div class="qtext"><p>依時間排序。</p><div class="ablock"><div class="answer ordering">
+        <ul class="sortablelist active" id="list">
+        <li class="sortableitem" id="i3"><div data-itemcontent>第三</div><button type="button" data-action="move-backward" aria-label="上移"></button></li>
+        <li class="sortableitem" id="i1"><div data-itemcontent>第一</div><button type="button" data-action="move-backward" aria-label="上移"></button></li>
+        <li class="sortableitem" id="i2"><div data-itemcontent>第二</div><button type="button" data-action="move-backward" aria-label="上移"></button></li>
+        </ul></div></div></div><input type="hidden" id="resp" name="q1:1_response" value="i3,i1,i2"></div></div>
+        <input type="submit" name="next" value="完成作答..." class="mod_quiz-next-nav"></form></main>
+        <script>
+        document.getElementById('list').addEventListener('click', e => {
+            const item = e.target.closest('[data-action="move-backward"]')?.closest('li');
+            if (item?.previousElementSibling) item.parentNode.insertBefore(item, item.previousElementSibling);
+            document.getElementById('resp').value = Array.from(document.querySelectorAll('#list li')).map(l => l.id).join(',');
+        });
+        </script>
+        """#, #"""
+        const p=bridge.snapshot(), f=p.fields[0];
+        require(!p.webReason && p.fields.length===1 && f.kind==='order','native ordering: '+p.webReason);
+        require(f.options.map(o=>o.label).join()==='第三,第一,第二' && f.context==='依時間排序。','items and context');
+        const target=['第一','第二','第三'].map(l=>f.options.find(o=>o.label===l).id);
+        require(await bridge.perform(p.revision,p.actions[0].id,{[f.id]:[target[0]]})==='changed','partial order rejected');
+        require(await bridge.perform(p.revision,p.actions[0].id,{[f.id]:target})==='invoked' && window.submits===1,'submit');
+        require(document.getElementById('resp').value==='i1,i2,i3','school response updated by its own buttons');
+        """#),
+        ("multiple-answer checkboxes are one question", #"""
+        <main id="region-main"><form action="/mod/quiz/processattempt.php" onsubmit="event.preventDefault();window.submits=1">
+        <div class="que multichoice"><div class="info"><h3 class="no">試題 1</h3></div>
+        <div class="formulation"><div class="qtext">哪些是奇數？</div><fieldset class="ablock"><div class="answer">
+        <div class="r0"><input type="checkbox" name="q1:1_choice0" value="1" aria-labelledby="c0"><div id="c0">a. 一</div></div>
+        <div class="r1"><input type="checkbox" name="q1:1_choice1" value="1" aria-labelledby="c1"><div id="c1">b. 二</div></div>
+        <div class="r0"><input type="checkbox" name="q1:1_choice2" value="1" aria-labelledby="c2"><div id="c2">c. 三</div></div>
+        </div></fieldset></div></div>
+        <input type="submit" name="next" value="完成作答..." class="mod_quiz-next-nav"></form></main>
+        """#, #"""
+        const p=bridge.snapshot(), f=p.fields[0];
+        require(p.fields.length===1 && f.kind==='multiple' && f.options.length===3,'grouped checkboxes: '+JSON.stringify(p.fields));
+        require(bridge.perform(p.revision,p.actions[0].id,{[f.id]:[f.options[0].id,f.options[2].id]})==='invoked','submit');
+        require(document.querySelector('[name="q1:1_choice0"]').checked && !document.querySelector('[name="q1:1_choice1"]').checked &&
+            document.querySelector('[name="q1:1_choice2"]').checked,'selected options applied');
+        """#),
         ("custom hidden option controls require school UI", #"""
         <main id="region-main"><label for="custom">特殊選项</label>
         <input id="custom" type="radio" style="display:none"><button>確認</button></main>
@@ -269,8 +360,11 @@ import WebKit
                 let snapshot = try JSONDecoder().decode(MoodleQuestionPage.self, from: Data(json.utf8))
                 precondition(snapshot.revision != previousRevision, "Reopening must create a new document identity")
                 previousRevision = snapshot.revision
-                let test = "(function(){const bridge=window.__niuQuestionsV1;function require(v,m){if(!v)throw Error(m);}" + cases[index].2 + "return true;})()"
-                _ = try await web.evaluateJavaScript(test)
+                let test = "const bridge=window.__niuQuestionsV1;function require(v,m){if(!v)throw Error(m);}" +
+                    cases[index].2.replacingOccurrences(of: "bridge.perform(", with: "await bridge.perform(")
+                        .replacingOccurrences(of: "bridge.stage(", with: "await bridge.stage(")
+                        .replacingOccurrences(of: "await await ", with: "await ") + "return true;"
+                _ = try await web.callAsyncJavaScript(test, contentWorld: .page)
                 print("PASS: \(cases[index].0)")
                 index += 1
                 next()

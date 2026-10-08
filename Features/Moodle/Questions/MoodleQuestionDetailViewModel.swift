@@ -17,6 +17,8 @@ final class MoodleQuestionDetailViewModel: ObservableObject {
     private var isActive = false
     private var pageGeneration = 0
     private var actionTask: Task<Void, Never>?
+    private var draftTask: Task<Void, Never>?
+    private var draftPending = false
     private var submittedRevision: String?
     private var submissionStarted: Date?
     private var sessionRevision: Int?
@@ -133,7 +135,10 @@ final class MoodleQuestionDetailViewModel: ObservableObject {
         submissionStarted = Date()
         let current = generation
         let values = answers.filter { action.fieldIDs.contains($0.key) }
+        let draft = draftTask
         actionTask = Task { [weak self] in
+            // A timed-draft write must finish before the school control is clicked.
+            await draft?.value
             guard let self, !Task.isCancelled, isActive, generation == current,
                   sessionRevision == MoodleService.shared.sessionRevision,
                   page?.revision == revision else { return }
@@ -149,7 +154,7 @@ final class MoodleQuestionDetailViewModel: ObservableObject {
                     submittedRevision = nil
                     submissionStarted = nil
                     errorMessage = result == "invalid"
-                        ? "請確認必填欄位、字數與輸入格式後再送出。"
+                        ? "請確認必填欄位、字數與輸入格式，且同一個拖放字詞沒有重複使用。"
                         : "題目或操作已變更，請重新確認目前內容。"
                 }
             } catch {
@@ -228,10 +233,45 @@ final class MoodleQuestionDetailViewModel: ObservableObject {
         }
     }
 
+    /// Timed activities can be submitted by the school page when time runs out,
+    /// so every native change is written to its form immediately.
+    func answersChanged() {
+        guard isActive, page?.timer != nil, page?.webReason == nil, !isPerforming, !isSyncingPage,
+              !showsSchoolPage, answers != page?.fields.reduce(into: [:], { $0[$1.id] = $1.values }) else { return }
+        draftPending = true
+        guard draftTask == nil else { return }
+        let current = generation
+        draftTask = Task { [weak self] in
+            await self?.writeDrafts(generation: current)
+            if self?.generation == current { self?.draftTask = nil }
+        }
+    }
+
+    private func writeDrafts(generation current: Int) async {
+        while draftPending, !Task.isCancelled, isActive, generation == current, !isPerforming,
+              sessionRevision == MoodleService.shared.sessionRevision,
+              let page, page.webReason == nil {
+            draftPending = false
+            let result = try? await browser.webView.callAsyncJavaScript(
+                "return window.__niuQuestionsV1.stage(revision, answers);",
+                arguments: ["revision": page.revision, "answers": answers],
+                in: nil, contentWorld: .page
+            ) as? String
+            guard !Task.isCancelled, generation == current else { return }
+            if result != "staged" {
+                errorMessage = "答案未能即時寫入校方頁面，請改用校方頁面確認作答。"
+                return
+            }
+        }
+    }
+
     func reload() {
         guard isActive else { return }
         pageGeneration &+= 1
         actionTask?.cancel()
+        draftTask?.cancel()
+        draftTask = nil
+        draftPending = false
         page = nil
         answers = [:]
         errorMessage = nil
@@ -248,6 +288,9 @@ final class MoodleQuestionDetailViewModel: ObservableObject {
         generation &+= 1
         actionTask?.cancel()
         actionTask = nil
+        draftTask?.cancel()
+        draftTask = nil
+        draftPending = false
         isSyncingPage = false
         browser.cancel()
     }
