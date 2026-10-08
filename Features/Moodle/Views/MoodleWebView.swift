@@ -168,7 +168,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
     private var hasStarted = false
     private var loadingTask: Task<Void, Never>?
     private var questionTimeoutTask: Task<Void, Never>?
-    private var attemptedQuestionLogin = false
+    /// How far quiz-type activities have gone through automatic M 園區 login recovery.
+    private enum QuestionLoginStep { case direct, autologin, schoolSSO, formLogin, accountRefresh, refreshedSSO, manual }
+    private var questionLoginStep: QuestionLoginStep = .direct
     private var loadGeneration = 0
     private var retriedAfterLoginRedirect = false
     private var isAutologinSupported = true
@@ -202,7 +204,9 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         isPageReady = false
         self.originalTargetURL = targetURL
         questionNeedsWebInteraction = false
-        attemptedQuestionLogin = false
+        questionLoginStep = .direct
+        attendanceUsesManualLogin = false
+        attendanceLoginPageGeneration = nil
         storedWebView?.uiDelegate = isQuestionActivityTarget ? questionUIDelegate : nil
         self.errorMessage = nil
         self.attendanceOutcome = nil
@@ -302,11 +306,11 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         return MoodleQuestionActivityKind.matches(url)
     }
 
-    private func startQuestionTimeout() {
+    private func startQuestionTimeout(seconds: Int = 25) {
         questionTimeoutTask?.cancel()
         let generation = loadGeneration
         questionTimeoutTask = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(25)) }
+            do { try await Task.sleep(for: .seconds(seconds)) }
             catch { return }
             guard let self, hasStarted, generation == loadGeneration else { return }
             loadingTask?.cancel()
@@ -315,9 +319,37 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
-    private func recoverQuestionLogin() {
+    /// Called whenever a quiz-type activity lands on the M 園區 login page.
+    /// Each automatic route runs once, in order; the school login page is shown
+    /// only after the saved app account cannot sign in by any of them.
+    private func continueQuestionLogin(on webView: WKWebView) {
+        switch questionLoginStep {
+        case .direct:
+            startQuestionAutologin()
+        case .autologin:
+            startQuestionSSO(after: .schoolSSO)
+        case .schoolSSO:
+            startQuestionFormLogin(on: webView)
+        case .formLogin:
+            // Retried login pages stay within the bounded form-login attempts.
+            handleAttendanceLoginPage(webView)
+        case .accountRefresh, .refreshedSSO, .manual:
+            showQuestionLogin()
+        }
+    }
+
+    /// The saved-account form login gave up (no account, captcha or password rejected).
+    private func questionFormLoginGaveUp() {
+        if hasTriedSilentRefresh {
+            showQuestionLogin()
+        } else {
+            refreshQuestionLogin()
+        }
+    }
+
+    private func startQuestionAutologin() {
         guard let originalTargetURL else { return }
-        attemptedQuestionLogin = true
+        questionLoginStep = .autologin
         isPageReady = false
         let generation = loadGeneration
         startQuestionTimeout()
@@ -327,23 +359,25 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             do {
                 let url = try await MoodleService.shared.autologinURL(for: originalTargetURL)
                 guard !Task.isCancelled, generation == loadGeneration else { return }
-                // No private token: use the school SSO handoff like other M 園區 pages.
+                // No private token: continue with the school SSO handoff.
                 guard url.absoluteString != originalTargetURL else {
-                    startQuestionSSO(generation: generation)
+                    startQuestionSSO(after: .schoolSSO)
                     return
                 }
                 phase = .loadingTarget
                 webView.load(URLRequest(url: url, timeoutInterval: 20))
             } catch {
                 guard !Task.isCancelled, generation == loadGeneration else { return }
-                startQuestionSSO(generation: generation)
+                startQuestionSSO(after: .schoolSSO)
             }
         }
     }
 
-    /// One SSO attempt per visit. If it still lands on the M 園區 login page,
-    /// `attemptedQuestionLogin` makes didFinish show the school login instead of looping.
-    private func startQuestionSSO(generation: Int) {
+    /// School SSO into M 園區, like other M 園區 pages. A login return reopens the activity.
+    private func startQuestionSSO(after step: QuestionLoginStep) {
+        questionLoginStep = step
+        isPageReady = false
+        let generation = loadGeneration
         startQuestionTimeout()
         syncCookies { [weak self] in
             guard let self, self.hasStarted, generation == self.loadGeneration else { return }
@@ -354,15 +388,30 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
                 self.phase = .resolvingEuni
                 self.webView.load(URLRequest(url: std002, timeoutInterval: 20))
             } else {
-                self.showQuestionLogin()
+                self.continueQuestionLogin(on: self.webView)
             }
         }
     }
 
-    /// Re-login with the app's saved school account, then reopen the activity once.
+    /// Sign in on the M 園區 page itself with the saved account and captcha
+    /// recognition (shared with attendance, at most `maxAttendanceLoginAttempts`).
+    private func startQuestionFormLogin(on webView: WKWebView) {
+        questionLoginStep = .formLogin
+        isPageReady = false
+        attendanceLoginAttempts = 0
+        attendanceUsesManualLogin = false
+        attendanceLoginPageGeneration = nil
+        // Moodle may return to its home page; ssoRedirect then reopens the activity once.
+        phase = .ssoRedirect
+        startQuestionTimeout(seconds: 60)
+        handleAttendanceLoginPage(webView)
+    }
+
+    /// Re-login with the app's saved school account, then SSO into M 園區 again.
     private func refreshQuestionLogin() {
         hasTriedSilentRefresh = true
-        // The account refresh may need longer than the page timeout (captcha recognition).
+        questionLoginStep = .accountRefresh
+        // The account refresh has its own timeout and may run captcha recognition.
         questionTimeoutTask?.cancel()
         questionTimeoutTask = nil
         questionNeedsWebInteraction = false
@@ -373,18 +422,20 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         loadingTask = Task { [weak self] in
             let refreshed = await SSOSessionService.shared.requestRefresh(force: true)
             guard !Task.isCancelled, let self, self.hasStarted, generation == self.loadGeneration else { return }
-            guard refreshed, let target = self.originalTargetURL else {
+            guard refreshed else {
                 self.showQuestionLogin()
                 return
             }
+            // The previous EUNI link belonged to the expired school session.
             SSOEUNISettings.shared.clear()
-            self.phase = .idle
-            self.hasStarted = false
-            self.loadWithSSO(targetURL: target)
+            self.startQuestionSSO(after: .refreshedSSO)
         }
     }
 
     private func showQuestionLogin() {
+        questionLoginStep = .manual
+        // A manual login that returns to Moodle's home page still reopens the activity once.
+        phase = .ssoRedirect
         questionTimeoutTask?.cancel()
         questionTimeoutTask = nil
         questionNeedsWebInteraction = true
@@ -1079,6 +1130,11 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
         attendanceUsesManualLogin = true
         attendanceCaptchaTask?.cancel()
         attendanceCaptchaTask = nil
+        // Quiz-type activities reuse this saved-account login and keep recovering.
+        if isQuestionActivityTarget {
+            questionFormLoginGaveUp()
+            return
+        }
         phase = .loadingTarget
         isPageReady = true
         attendanceOutcome = MoodleAttendanceWebOutcome(
@@ -1504,15 +1560,7 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             // Keep an initial SSO handoff pending so a login that returns to
             // Moodle's home page still opens the selected activity once.
             if phase == .resolvingEuni { phase = .ssoRedirect }
-            // Cookie → autologin → school SSO → saved-account refresh; the school
-            // login page is only the last resort when the app account itself fails.
-            if !attemptedQuestionLogin {
-                recoverQuestionLogin()
-            } else if !hasTriedSilentRefresh {
-                refreshQuestionLogin()
-            } else {
-                showQuestionLogin()
-            }
+            continueQuestionLogin(on: wv)
             return
         }
         if isQuestionActivityTarget {
