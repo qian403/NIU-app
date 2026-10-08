@@ -197,23 +197,23 @@ final class WKNavigation {}
     var isPageReady = false
     var errorMessage: String?
     var targetLoads = 0
-    var attemptedQuestionLogin = false
     var questionNeedsWebInteraction = false
     var questionTimeoutTask: Task<Void, Never>?
-    var questionRecoveries = 0
     var hasTriedSilentRefresh = false
-    var questionRefreshes = 0
-    func refreshQuestionLogin() { hasTriedSilentRefresh = true; questionRefreshes += 1; isPageReady = false }
-    func recoverQuestionLogin() {
-        // Production continues to autologin or the school SSO handoff.
-        attemptedQuestionLogin = true
-        questionRecoveries += 1
-        isPageReady = false
+    var calls: [String] = []
+    // PRODUCTION_QUESTION_LOGIN
+    func startQuestionAutologin() { calls.append("autologin"); questionLoginStep = .autologin; isPageReady = false }
+    func startQuestionSSO(after step: QuestionLoginStep) { calls.append("sso"); questionLoginStep = step; isPageReady = false }
+    func startQuestionFormLogin(on web: WKWebView) {
+        calls.append("form"); questionLoginStep = .formLogin; phase = .ssoRedirect; isPageReady = false
     }
-    func showQuestionLogin() { questionNeedsWebInteraction = true; isPageReady = true }
+    func refreshQuestionLogin() { hasTriedSilentRefresh = true; calls.append("refresh"); questionLoginStep = .accountRefresh }
+    func showQuestionLogin() {
+        questionLoginStep = .manual; phase = .ssoRedirect; questionNeedsWebInteraction = true; isPageReady = true
+    }
     func isLoginPage(_ value: String) -> Bool { value.contains("/login/") }
     // PRODUCTION_EXPIRED_PAGE
-    func handleAttendanceLoginPage(_ web: WKWebView) { fatalError("Unrelated attendance path") }
+    func handleAttendanceLoginPage(_ web: WKWebView) { calls.append("formRetry") }
     var extractions = 0
     var fallbacks = 0
     var refreshes = 0
@@ -236,31 +236,47 @@ final class WKNavigation {}
         manager.storedWebView = web
         manager.phase = initialPhase
         web.url = URL(string: "https://euni.niu.edu.tw/login/index.php")
+        let order = ["autologin", "sso", "form", "formRetry", "formRetry"]
+        for (index, step) in order.enumerated() {
+            manager.webView(web, didFinish: nil)
+            precondition(manager.calls == Array(order[...index]) && !manager.questionNeedsWebInteraction,
+                         "Automatic route \(step) must run before any school login is shown")
+        }
+        precondition(manager.targetLoads == 0 && manager.refreshes == 0 && manager.fallbacks == 0)
+        // Saved-account form login gave up: refresh the school account and SSO again.
+        manager.questionFormLoginGaveUp()
+        precondition(manager.calls.last == "refresh" && !manager.questionNeedsWebInteraction)
+        manager.startQuestionSSO(after: .refreshedSSO)
         manager.webView(web, didFinish: nil)
-        precondition(manager.targetLoads == 0)
+        precondition(manager.questionNeedsWebInteraction && manager.calls.filter { $0 == "refresh" }.count == 1,
+                     "Show the school login only after every automatic route failed once")
         manager.webView(web, didFinish: nil)
-        precondition(manager.questionRecoveries == 1 && manager.questionRefreshes == 1 &&
-                     !manager.questionNeedsWebInteraction,
-                     "After autologin/SSO, re-login with the saved app account before showing the school page")
-        manager.webView(web, didFinish: nil)
-        precondition(manager.questionRecoveries == 1 && manager.questionRefreshes == 1 &&
-                     manager.questionNeedsWebInteraction,
-                     "Each recovery runs once, then exposes required school interaction")
-        web.url = URL(string: "https://euni.niu.edu.tw/")
-        manager.webView(web, didFinish: nil)
-        let needsInitialTarget = initialPhase == .ssoRedirect || initialPhase == .resolvingEuni
-        precondition(manager.targetLoads == (needsInitialTarget ? 1 : 0),
-                     "Only initial SSO login should reopen the selected activity")
-        web.url = URL(string: "https://euni.niu.edu.tw/mod/quiz/view.php?id=1")
-        manager.webView(web, didFinish: nil)
-        precondition(manager.isPageReady && manager.phase == .done)
-        precondition(manager.refreshes == 0 && manager.fallbacks == 0 && manager.uploadResolutions == 0)
-        let loads = manager.targetLoads
-        web.url = URL(string: "https://euni.niu.edu.tw/mod/quiz/summary.php?attempt=1")
-        manager.webView(web, didFinish: nil)
-        precondition(manager.targetLoads == loads, "Never replay the target during an attempt")
+        precondition(manager.calls.filter { $0 == "refresh" }.count == 1, "No refresh loop")
     }
-    print("PASS: autologin, SSO and saved-account refresh before manual login, initial SSO return target and no attempt replay")
+    // A form login that returns to Moodle's home page reopens the activity once.
+    let manager = WebFixture()
+    let web = WKWebView()
+    manager.storedWebView = web
+    manager.phase = .loadingTarget
+    manager.questionLoginStep = .schoolSSO
+    web.url = URL(string: "https://euni.niu.edu.tw/login/index.php")
+    manager.webView(web, didFinish: nil)
+    precondition(manager.calls == ["form"] && manager.phase == .ssoRedirect)
+    web.url = URL(string: "https://euni.niu.edu.tw/")
+    manager.webView(web, didFinish: nil)
+    precondition(manager.targetLoads == 1, "Return to the selected activity after login")
+    web.url = URL(string: "https://euni.niu.edu.tw/mod/quiz/view.php?id=1")
+    manager.webView(web, didFinish: nil)
+    precondition(manager.isPageReady && manager.phase == .done)
+    web.url = URL(string: "https://euni.niu.edu.tw/mod/quiz/summary.php?attempt=1")
+    manager.webView(web, didFinish: nil)
+    precondition(manager.targetLoads == 1, "Never replay the target during an attempt")
+    // Already-used account refresh goes straight to the visible login.
+    let refreshed = WebFixture()
+    refreshed.hasTriedSilentRefresh = true
+    refreshed.questionFormLoginGaveUp()
+    precondition(refreshed.questionNeedsWebInteraction && !refreshed.calls.contains("refresh"))
+    print("PASS: cookie, autologin, school SSO, saved-account M 園區 login and account refresh before manual login; return target; no loops or attempt replay")
 }
 
 @MainActor func checkExpiredSSOLanding() {
@@ -354,7 +370,12 @@ bridge_end = bridge_source.index("\n    }", bridge_start) + len("\n    }")
 CHECKS += "\nenum SSOGUIDBridge {\n" + bridge_source[bridge_start:bridge_end] + "\n}\n"
 helper_start = web_source.index("    private func isSSOSessionExpiredPage(")
 helper_end = web_source.index("\n    }", helper_start) + len("\n    }")
-CHECKS += WEB_FIXTURE.replace("    // PRODUCTION_DID_FINISH", web_source[start:end]).replace(
+step_start = web_source.index("    private enum QuestionLoginStep")
+step_end = web_source.index("\n", web_source.index("private var questionLoginStep", step_start)) + 1
+login_start = web_source.index("    /// Called whenever a quiz-type activity lands on the M 園區 login page.")
+login_end = web_source.index("    private func startQuestionAutologin()", login_start)
+CHECKS += WEB_FIXTURE.replace("    // PRODUCTION_QUESTION_LOGIN", (web_source[step_start:step_end] + web_source[login_start:login_end]).replace("    private ", "    ")
+    ).replace("    // PRODUCTION_DID_FINISH", web_source[start:end]).replace(
     "    // PRODUCTION_EXPIRED_PAGE", web_source[helper_start:helper_end])
 session_source = (ROOT / "Features/Moodle/Services/MoodleSessionManager.swift").read_text()
 CHECKS += session_source[session_source.index("private class SSOIDCoordinator:"):]
@@ -380,7 +401,8 @@ STARTUP = r'''
     var errorMessage: String?
     var attendanceOutcome: String?
     var questionNeedsWebInteraction = false
-    var attemptedQuestionLogin = false
+    enum QuestionLoginStep { case direct, autologin, schoolSSO, formLogin, accountRefresh, refreshedSSO, manual }
+    var questionLoginStep: QuestionLoginStep = .direct
     var questionUIDelegate = DialogFixture()
     var loadingTask: Task<Void, Never>?
     var questionTimeoutTask: Task<Void, Never>?
