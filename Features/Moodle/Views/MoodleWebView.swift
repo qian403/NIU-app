@@ -327,17 +327,60 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             do {
                 let url = try await MoodleService.shared.autologinURL(for: originalTargetURL)
                 guard !Task.isCancelled, generation == loadGeneration else { return }
-                // No private token means there is no automatic browser-login route.
+                // No private token: use the school SSO handoff like other M 園區 pages.
                 guard url.absoluteString != originalTargetURL else {
-                    showQuestionLogin()
+                    startQuestionSSO(generation: generation)
                     return
                 }
                 phase = .loadingTarget
                 webView.load(URLRequest(url: url, timeoutInterval: 20))
             } catch {
                 guard !Task.isCancelled, generation == loadGeneration else { return }
-                showQuestionLogin()
+                startQuestionSSO(generation: generation)
             }
+        }
+    }
+
+    /// One SSO attempt per visit. If it still lands on the M 園區 login page,
+    /// `attemptedQuestionLogin` makes didFinish show the school login instead of looping.
+    private func startQuestionSSO(generation: Int) {
+        startQuestionTimeout()
+        syncCookies { [weak self] in
+            guard let self, self.hasStarted, generation == self.loadGeneration else { return }
+            if let euniURL = SSOEUNISettings.shared.euniFullURL, let url = URL(string: euniURL) {
+                self.phase = .ssoRedirect
+                self.webView.load(URLRequest(url: url, timeoutInterval: 20))
+            } else if let std002 = URL(string: "https://ccsys.niu.edu.tw/SSO/Std002.aspx") {
+                self.phase = .resolvingEuni
+                self.webView.load(URLRequest(url: std002, timeoutInterval: 20))
+            } else {
+                self.showQuestionLogin()
+            }
+        }
+    }
+
+    /// Re-login with the app's saved school account, then reopen the activity once.
+    private func refreshQuestionLogin() {
+        hasTriedSilentRefresh = true
+        // The account refresh may need longer than the page timeout (captcha recognition).
+        questionTimeoutTask?.cancel()
+        questionTimeoutTask = nil
+        questionNeedsWebInteraction = false
+        isPageReady = false
+        errorMessage = nil
+        loadingTask?.cancel()
+        let generation = loadGeneration
+        loadingTask = Task { [weak self] in
+            let refreshed = await SSOSessionService.shared.requestRefresh(force: true)
+            guard !Task.isCancelled, let self, self.hasStarted, generation == self.loadGeneration else { return }
+            guard refreshed, let target = self.originalTargetURL else {
+                self.showQuestionLogin()
+                return
+            }
+            SSOEUNISettings.shared.clear()
+            self.phase = .idle
+            self.hasStarted = false
+            self.loadWithSSO(targetURL: target)
         }
     }
 
@@ -1461,16 +1504,23 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
             // Keep an initial SSO handoff pending so a login that returns to
             // Moodle's home page still opens the selected activity once.
             if phase == .resolvingEuni { phase = .ssoRedirect }
+            // Cookie → autologin → school SSO → saved-account refresh; the school
+            // login page is only the last resort when the app account itself fails.
             if !attemptedQuestionLogin {
                 recoverQuestionLogin()
+            } else if !hasTriedSilentRefresh {
+                refreshQuestionLogin()
             } else {
                 showQuestionLogin()
             }
             return
         }
         if isQuestionActivityTarget {
-            questionTimeoutTask?.cancel()
-            questionTimeoutTask = nil
+            // SSO handoff pages are intermediate; keep the timeout until the activity loads.
+            if phase != .ssoRedirect && phase != .resolvingEuni {
+                questionTimeoutTask?.cancel()
+                questionTimeoutTask = nil
+            }
             questionNeedsWebInteraction = false
         }
 

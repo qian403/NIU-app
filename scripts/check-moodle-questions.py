@@ -201,10 +201,14 @@ final class WKNavigation {}
     var questionNeedsWebInteraction = false
     var questionTimeoutTask: Task<Void, Never>?
     var questionRecoveries = 0
+    var hasTriedSilentRefresh = false
+    var questionRefreshes = 0
+    func refreshQuestionLogin() { hasTriedSilentRefresh = true; questionRefreshes += 1; isPageReady = false }
     func recoverQuestionLogin() {
+        // Production continues to autologin or the school SSO handoff.
         attemptedQuestionLogin = true
         questionRecoveries += 1
-        showQuestionLogin()
+        isPageReady = false
     }
     func showQuestionLogin() { questionNeedsWebInteraction = true; isPageReady = true }
     func isLoginPage(_ value: String) -> Bool { value.contains("/login/") }
@@ -233,10 +237,15 @@ final class WKNavigation {}
         manager.phase = initialPhase
         web.url = URL(string: "https://euni.niu.edu.tw/login/index.php")
         manager.webView(web, didFinish: nil)
-        precondition(manager.isPageReady && manager.targetLoads == 0)
+        precondition(manager.targetLoads == 0)
         manager.webView(web, didFinish: nil)
-        precondition(manager.questionRecoveries == 1 && manager.questionNeedsWebInteraction,
-                     "Retry login once, then expose required school interaction")
+        precondition(manager.questionRecoveries == 1 && manager.questionRefreshes == 1 &&
+                     !manager.questionNeedsWebInteraction,
+                     "After autologin/SSO, re-login with the saved app account before showing the school page")
+        manager.webView(web, didFinish: nil)
+        precondition(manager.questionRecoveries == 1 && manager.questionRefreshes == 1 &&
+                     manager.questionNeedsWebInteraction,
+                     "Each recovery runs once, then exposes required school interaction")
         web.url = URL(string: "https://euni.niu.edu.tw/")
         manager.webView(web, didFinish: nil)
         let needsInitialTarget = initialPhase == .ssoRedirect || initialPhase == .resolvingEuni
@@ -251,7 +260,7 @@ final class WKNavigation {}
         manager.webView(web, didFinish: nil)
         precondition(manager.targetLoads == loads, "Never replay the target during an attempt")
     }
-    print("PASS: visible manual login, initial SSO return target and no attempt replay")
+    print("PASS: autologin, SSO and saved-account refresh before manual login, initial SSO return target and no attempt replay")
 }
 
 @MainActor func checkExpiredSSOLanding() {
