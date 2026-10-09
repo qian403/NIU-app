@@ -99,6 +99,10 @@ struct RootView: View {
             guard newValue == .active else { return }
             Task { await updateChecker.checkIfNeeded() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            guard scenePhase == .active else { return }
+            appState.significantTimeChanged()
+        }
         .onChange(of: scenePhase) { _, newValue in
             switch newValue {
             case .active:
