@@ -297,6 +297,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The calendar day changed while the app stayed in the foreground (e.g. past midnight).
+    /// The client deduplicates by Taipei date, so other time changes send nothing extra.
+    func significantTimeChanged() {
+        guard isAuthenticated else { return }
+        Task { await UsageHeartbeatClient.shared.report() }
+    }
+
     func applicationDidEnterBackground() {
         ClassLiveActivityCoordinator.shared.setForeground(false)
         ClassLiveActivityBackgroundRefreshCoordinator.shared.scheduleIfNeeded()
