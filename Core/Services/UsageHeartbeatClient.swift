@@ -3,13 +3,13 @@ import Security
 
 /// Holds the anonymous installation UUID. Production uses a device-only Keychain item so the value
 /// survives reinstalling but never moves to another phone through a backup or device transfer.
-protocol UsageInstallationIDStore: Sendable {
+nonisolated protocol UsageInstallationIDStore: Sendable {
     func read() -> String?
     /// Returns false when the value could not be stored.
     func write(_ value: String) -> Bool
 }
 
-struct KeychainUsageInstallationIDStore: UsageInstallationIDStore {
+nonisolated struct KeychainUsageInstallationIDStore: UsageInstallationIDStore {
     let service: String
     private let account = "installation-id"
 
