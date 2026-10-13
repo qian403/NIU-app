@@ -3,7 +3,7 @@ import SwiftUI
 private enum HomeDestination: Hashable {
     case settings, moodle, classSchedule, library, academicCalendar, attendance
     case eventRegistration, gradeHistory, graduationThreshold, mail, enrollmentCertificate, postalQuery, libraryEquipment
-    case tools, leaveApplication
+    case tools, leaveApplication, campusBuildings
 
     init(_ destination: CampusDestination) {
         switch destination {
@@ -167,6 +167,7 @@ struct HomeView: View {
         case .enrollmentCertificate: EnrollmentCertificateView()
         case .postalQuery: PostalQueryView()
         case .tools: HomeToolsView()
+        case .campusBuildings: CampusBuildingsView()
         case .leaveApplication: LeaveRecordsView()
         }
     }
@@ -682,6 +683,13 @@ private struct HomeToolsView: View {
                     subtitle: "查詢收件與領取狀態",
                     color: .brown,
                     destination: .postalQuery
+                )
+                FeatureCard(
+                    icon: "building.2.fill",
+                    title: "大樓平面圖",
+                    subtitle: "教室位置與樓層配置",
+                    color: .indigo,
+                    destination: .campusBuildings
                 )
             }
             .padding(Theme.Spacing.large)
