@@ -1225,7 +1225,11 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                         }
                     }
 
-                    return records.length ? JSON.stringify(records) : '';
+                    if (records.length) return JSON.stringify(records);
+                    // A finished page whose 修課紀錄 has no tables means no grades
+                    // yet (first-term students), not a page still loading.
+                    var accordion = targetDoc.querySelector('#accordion修課紀錄');
+                    return accordion && targetDoc.readyState === 'complete' && !accordion.querySelector('table') ? '[]' : '';
                 })()
                 """
 
@@ -1236,9 +1240,12 @@ private struct GradeHistoryWebView: UIViewRepresentable {
                         return
                     }
 
-                    guard let courseRows = try? JSONDecoder().decode([GradeHistoryCourseDTO].self, from: data),
-                          !courseRows.isEmpty else {
+                    guard let courseRows = try? JSONDecoder().decode([GradeHistoryCourseDTO].self, from: data) else {
                         self.pollForHistoryCourses(webView: webView, attempt: attempt + 1)
+                        return
+                    }
+                    if courseRows.isEmpty {
+                        self.finish(.historySuccess([]))
                         return
                     }
 
