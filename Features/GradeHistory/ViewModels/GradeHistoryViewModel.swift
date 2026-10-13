@@ -190,6 +190,12 @@ final class GradeHistoryViewModel: ObservableObject {
                 fail("歷年成績資料格式異常，請稍後重試")
                 return
             }
+            // Grades do not disappear; an empty page after real records is a school-side
+            // glitch, so keep showing the cache restored by loadGrades.
+            if sorted.isEmpty, let cache = historyCache, Self.hasMeaningfulHistory(cache.semesters) {
+                fail("教務系統這次沒有回傳修課紀錄，先顯示上次的資料")
+                return
+            }
             semesters = sorted
             termSnapshot = nil
             let date = Date()

@@ -51,6 +51,17 @@ import Foundation
         precondition(model.loadState == .loaded && !model.semesters.isEmpty, "Cancellation must preserve cached grades")
         let cached = GradeHistoryViewModel(cacheDefaults: defaults, account: "synthetic")
         precondition(cached.loadState == .loaded && !cached.showWebView && !cached.semesters.isEmpty)
+        cached.refresh()
+        cached.handleWebResult(.historySuccess([]), requestID: cached.webViewID)
+        precondition(cached.loadState == .loaded && !cached.isRefreshing && !cached.semesters.isEmpty
+                     && cached.lastRefreshError != nil, "An empty result must not replace cached grades")
+        let reloaded = GradeHistoryViewModel(cacheDefaults: defaults, account: "synthetic")
+        precondition(!reloaded.semesters.isEmpty, "An empty result must not overwrite the persisted cache")
+        let fresh = GradeHistoryViewModel(cacheDefaults: defaults, account: "first-term")
+        fresh.startIfNeeded()
+        fresh.handleWebResult(.historySuccess([]), requestID: fresh.webViewID)
+        precondition(fresh.loadState == .loaded && !fresh.isRefreshing && fresh.semesters.isEmpty
+                     && fresh.lastRefreshError == nil, "Without a cache, empty means no grades yet")
         let other = GradeHistoryViewModel(cacheDefaults: defaults, account: "another")
         precondition(other.semesters.isEmpty && other.loadState == .idle, "Accounts cannot share grade caches")
 
@@ -96,7 +107,7 @@ import Foundation
         timedOut.startIfNeeded()
         precondition(timedOut.isRefreshing, "A timed-out screen must support retry on reentry")
         timedOut.cancelLoading()
-        print("PASS: deferred first load, duplicate appearance, cancellation/reentry, stale responses, account cache isolation, mode switching, SSO cancellation/retry budget, timeout")
+        print("PASS: deferred first load, duplicate appearance, cancellation/reentry, stale responses, empty result keeps cache, account cache isolation, mode switching, SSO cancellation/retry budget, timeout")
     }
 }
 '''
