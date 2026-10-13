@@ -104,6 +104,10 @@
 		C0DE90010000000000000002 /* Features/Postal/ViewModels/PostalQueryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE90020000000000000002 /* Features/Postal/ViewModels/PostalQueryViewModel.swift */; };
 		C0DE90010000000000000003 /* Features/Postal/Models/PostalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE90020000000000000003 /* Features/Postal/Models/PostalModels.swift */; };
 		C0DE90010000000000000004 /* Features/Postal/Services/PostalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE90020000000000000004 /* Features/Postal/Services/PostalService.swift */; };
+		C0DE91010000000000000001 /* Features/LunchPicker/Models/LunchPickerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE91020000000000000001 /* Features/LunchPicker/Models/LunchPickerModels.swift */; };
+		C0DE91010000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE91020000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift */; };
+		C0DE91010000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE91020000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift */; };
+		C0DE91010000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE91020000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift */; };
 		C0DE92010000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE92020000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift */; };
 		C0DE92010000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE92020000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift */; };
 		C0DE92010000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE92020000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift */; };
@@ -335,6 +339,10 @@
 		C0DE90020000000000000002 /* Features/Postal/ViewModels/PostalQueryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Postal/ViewModels/PostalQueryViewModel.swift; sourceTree = SOURCE_ROOT; };
 		C0DE90020000000000000003 /* Features/Postal/Models/PostalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Postal/Models/PostalModels.swift; sourceTree = SOURCE_ROOT; };
 		C0DE90020000000000000004 /* Features/Postal/Services/PostalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Postal/Services/PostalService.swift; sourceTree = SOURCE_ROOT; };
+		C0DE91020000000000000001 /* Features/LunchPicker/Models/LunchPickerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LunchPicker/Models/LunchPickerModels.swift; sourceTree = SOURCE_ROOT; };
+		C0DE91020000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LunchPicker/ViewModels/LunchPickerViewModel.swift; sourceTree = SOURCE_ROOT; };
+		C0DE91020000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LunchPicker/Views/LunchPickerView.swift; sourceTree = SOURCE_ROOT; };
+		C0DE91020000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LunchPicker/Services/RestaurantSearchService.swift; sourceTree = SOURCE_ROOT; };
 		C0DE92020000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusBuildings/Models/CampusBuildingModels.swift; sourceTree = SOURCE_ROOT; };
 		C0DE92020000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift; sourceTree = SOURCE_ROOT; };
 		C0DE92020000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusBuildings/Views/CampusBuildingsView.swift; sourceTree = SOURCE_ROOT; };
@@ -789,6 +797,10 @@
 				C0DE90020000000000000002 /* Features/Postal/ViewModels/PostalQueryViewModel.swift */,
 				C0DE90020000000000000003 /* Features/Postal/Models/PostalModels.swift */,
 				C0DE90020000000000000004 /* Features/Postal/Services/PostalService.swift */,
+				C0DE91020000000000000001 /* Features/LunchPicker/Models/LunchPickerModels.swift */,
+				C0DE91020000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift */,
+				C0DE91020000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift */,
+				C0DE91020000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift */,
 				C0DE92020000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift */,
 				C0DE92020000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift */,
 				C0DE92020000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift */,
@@ -1280,6 +1292,10 @@
 				C0DE90010000000000000002 /* Features/Postal/ViewModels/PostalQueryViewModel.swift in Sources */,
 				C0DE90010000000000000003 /* Features/Postal/Models/PostalModels.swift in Sources */,
 				C0DE90010000000000000004 /* Features/Postal/Services/PostalService.swift in Sources */,
+				C0DE91010000000000000001 /* Features/LunchPicker/Models/LunchPickerModels.swift in Sources */,
+				C0DE91010000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift in Sources */,
+				C0DE91010000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift in Sources */,
+				C0DE91010000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift in Sources */,
 				C0DE92010000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift in Sources */,
 				C0DE92010000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift in Sources */,
 				C0DE92010000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift in Sources */,
