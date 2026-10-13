@@ -185,7 +185,8 @@ final class GradeHistoryViewModel: ObservableObject {
             let sorted = fetched.sorted {
                 $0.year == $1.year ? $0.term.order > $1.term.order : $0.year > $1.year
             }
-            guard Self.hasMeaningfulHistory(sorted) else {
+            // Empty is a real answer (no grades yet); the view says 尚無歷年成績.
+            guard sorted.isEmpty || Self.hasMeaningfulHistory(sorted) else {
                 fail("歷年成績資料格式異常，請稍後重試")
                 return
             }
