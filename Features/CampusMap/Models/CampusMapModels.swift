@@ -33,12 +33,24 @@ nonisolated struct MapSpace: Identifiable, Hashable, Sendable {
     /// 告示上的名稱，例如 薄膜實驗室、男廁。
     let name: String?
     let note: String?
+    /// 校方也在用的其他代碼（告示上的 E505、格101）：可搜尋、課表比對，不顯示。
+    let aka: [String]
     let bounds: CGRect
 
     var isRoom: Bool { kind == .room }
 
     /// 有代碼用代碼，否則用名稱；清單與卡片以此為標題。
     var label: String? { code ?? name }
+
+    /// 去掉大樓字的代碼（教305 → 305）；E、格開頭的代碼保留原樣，回傳 nil。
+    var shortCode: String? {
+        guard let code, let first = code.unicodeScalars.first,
+              first.value >= 0x2E80, !code.hasPrefix("格") else { return nil }
+        return String(code.dropFirst())
+    }
+
+    /// 課表或搜尋可能用來稱呼這間教室的所有名稱。
+    var names: [String] { (label.map { [$0] } ?? []) + aka }
 
     /// 代碼之下的名稱與備註，或名稱之下的備註。
     var details: [String] {
@@ -57,6 +69,8 @@ nonisolated struct MapLink: Hashable, Sendable {
 nonisolated struct MapFloor: Identifiable, Hashable, Sendable {
     let id: String
     let outline: [CGPoint]
+    /// 分成幾塊的樓層（綜合教學大樓兩翼）的每一環；整層一塊時只有 `outline`。
+    let outlines: [[CGPoint]]
     let spaces: [MapSpace]
     let links: [MapLink]
     /// 樓層所屬單位，例如 環境工程學系，以及常用簡稱。
@@ -145,11 +159,12 @@ nonisolated struct CampusFloorPlans: Sendable {
         var length = 0
         for building in buildings {
             for floor in building.floors {
-                for space in floor.rooms {
-                    guard let label = space.label.map(CampusMapText.normalize),
-                          label.count > length, normalized.contains(label) else { continue }
-                    match = CampusRoomLocation(building: building, floor: floor, space: space)
-                    length = label.count
+                for space in floor.rooms where space.label != nil {
+                    for name in space.names.map(CampusMapText.normalize)
+                    where name.count > length && normalized.contains(name) {
+                        match = CampusRoomLocation(building: building, floor: floor, space: space)
+                        length = name.count
+                    }
                 }
             }
         }
@@ -163,10 +178,10 @@ nonisolated struct CampusFloorPlans: Sendable {
         guard !q.isEmpty else { return [] }
         func hit(_ space: MapSpace) -> Bool {
             if let code = space.code.map(CampusMapText.normalize),
-               code.contains(q) || code.dropFirst().hasPrefix(q) {
+               code.contains(q) || (space.shortCode.map { CampusMapText.normalize($0).hasPrefix(q) } ?? false) {
                 return true
             }
-            return [space.name, space.note].contains { text in
+            return ([space.name, space.note] + space.aka).contains { text in
                 text.map { CampusMapText.normalize($0).contains(q) } ?? false
             }
         }
@@ -264,7 +279,7 @@ nonisolated struct CampusMapData: Sendable {
     let overview: CampusOverview
     let plans: CampusFloorPlans
 
-    static let planFiles = ["jiaose", "gongxue", "shixi", "dianzi", "shihua"]
+    static let planFiles = ["jiaose", "gongxue", "shixi", "dianzi", "shihua", "gezhi", "zonghe", "tuzi", "dongwu"]
 
     /// 讀取 App 內建的地圖資料。
     static func bundled(_ bundle: Bundle = .main) throws -> CampusMapData {
@@ -375,6 +390,7 @@ private nonisolated struct SpaceJSON: Decodable {
     let code: String?
     let name: String?
     let note: String?
+    let aka: [String]?
 
     func model(id: String) -> MapSpace {
         let points: [CGPoint]
@@ -386,7 +402,7 @@ private nonisolated struct SpaceJSON: Decodable {
         }
         return MapSpace(
             id: id, kind: MapSpaceKind(json: kind), points: points, isRect: rect != nil,
-            code: code, name: name, note: note, bounds: boundingRect(points)
+            code: code, name: name, note: note, aka: aka ?? [], bounds: boundingRect(points)
         )
     }
 }
@@ -401,6 +417,7 @@ private nonisolated struct LinkJSON: Decodable {
 private nonisolated struct FloorJSON: Decodable {
     let id: String
     let outline: [[Double]]
+    let outlines: [[[Double]]]?
     let spaces: [SpaceJSON]
     let links: [LinkJSON]?
     let unit: String?
@@ -408,10 +425,12 @@ private nonisolated struct FloorJSON: Decodable {
 
     var model: MapFloor {
         let outline = outline.map(point)
+        let parts = (outlines ?? []).map { $0.map(point) }
+        let rings = parts.isEmpty ? [outline] : parts
         let spaces = spaces.enumerated().map { index, space in space.model(id: "\(id)#\(index)") }
-        let bounds = spaces.reduce(boundingRect(outline)) { $0.union($1.bounds) }
+        let bounds = (rings.map(boundingRect) + spaces.map(\.bounds)).reduce(CGRect.null) { $0.union($1) }
         return MapFloor(
-            id: id, outline: outline, spaces: spaces,
+            id: id, outline: outline, outlines: rings, spaces: spaces,
             links: (links ?? []).map { MapLink(to: $0.to, name: $0.name, at: point($0.at), toward: point($0.toward)) },
             unit: unit, aliases: aliases ?? [], bounds: bounds
         )
