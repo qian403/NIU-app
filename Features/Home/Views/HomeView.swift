@@ -3,7 +3,7 @@ import SwiftUI
 private enum HomeDestination: Hashable {
     case settings, moodle, classSchedule, library, academicCalendar, attendance
     case eventRegistration, gradeHistory, graduationThreshold, mail, enrollmentCertificate, postalQuery, libraryEquipment
-    case tools, leaveApplication, lunchPicker, campusBuildings
+    case tools, leaveApplication, lunchPicker, campusMap
 
     init(_ destination: CampusDestination) {
         switch destination {
@@ -168,7 +168,7 @@ struct HomeView: View {
         case .postalQuery: PostalQueryView()
         case .tools: HomeToolsView()
         case .lunchPicker: LunchPickerView()
-        case .campusBuildings: CampusBuildingsView()
+        case .campusMap: CampusMapView()
         case .leaveApplication: LeaveRecordsView()
         }
     }
@@ -692,14 +692,13 @@ private struct HomeToolsView: View {
                     color: .orange,
                     destination: .lunchPicker
                 )
-                // 大樓平面圖尚未完成，暫時隱藏入口；畫面與路由保留。
-                // FeatureCard(
-                //     icon: "building.2.fill",
-                //     title: "大樓平面圖",
-                //     subtitle: "教室位置與樓層配置",
-                //     color: .indigo,
-                //     destination: .campusBuildings
-                // )
+                FeatureCard(
+                    icon: "map.fill",
+                    title: "校園地圖",
+                    subtitle: "建築位置與樓層平面圖",
+                    color: .indigo,
+                    destination: .campusMap
+                )
             }
             .padding(Theme.Spacing.large)
         }

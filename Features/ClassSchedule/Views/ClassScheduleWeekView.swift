@@ -7,6 +7,8 @@ struct ClassScheduleWeekView: View {
     let cacheAgeText: String?
     let refresh: () async -> Void
     let editCustomCourse: (UUID) -> Void
+    var campusRoom: (String?) -> CampusPlanRequest? = { _ in nil }
+    var openCampusMap: (CampusPlanRequest) -> Void = { _ in }
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
@@ -285,6 +287,7 @@ struct ClassScheduleWeekView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("自訂課程，" + layout.accessibilityLabel(for: block, periods: schedule.periods))
                 .accessibilityHint("編輯自訂課程")
+                .campusRoomMenu(campusRoom(block.course.classroom), open: openCampusMap)
         } else {
             NavigationLink {
                 ClassScheduleCourseDestination(courseName: block.course.name)
@@ -292,6 +295,25 @@ struct ClassScheduleWeekView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(layout.accessibilityLabel(for: block, periods: schedule.periods))
                 .accessibilityHint("開啟 M 園區課程")
+                .campusRoomMenu(campusRoom(block.course.classroom), open: openCampusMap)
+        }
+    }
+}
+
+extension View {
+    /// 長按課程可在校園地圖上查看教室；地圖上沒有的教室不顯示選項。
+    @ViewBuilder
+    func campusRoomMenu(_ request: CampusPlanRequest?, open: @escaping (CampusPlanRequest) -> Void) -> some View {
+        if let request {
+            contextMenu {
+                Button {
+                    open(request)
+                } label: {
+                    Label("在校園地圖上查看教室", systemImage: "map")
+                }
+            }
+        } else {
+            self
         }
     }
 }
