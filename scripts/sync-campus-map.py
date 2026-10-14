@@ -14,7 +14,10 @@ import json
 import shutil
 import sys
 
-FILES = ['campus.json', 'jiaose.json', 'gongxue.json', 'shixi.json', 'dianzi.json', 'shihua.json']
+FILES = [
+    'campus.json', 'jiaose.json', 'gongxue.json', 'shixi.json', 'dianzi.json', 'shihua.json',
+    'gezhi.json', 'zonghe.json', 'tuzi.json', 'dongwu.json',
+]
 KINDS = {'room', 'corridor', 'stairs', 'elevator', 'restroom', 'void', 'terrace'}
 
 root = Path(__file__).resolve().parents[1]
@@ -32,8 +35,12 @@ def validate(folder: Path) -> None:
         assert building['floors'], name
         for floor in building['floors']:
             assert floor['outline'], (name, floor['id'])
+            # 分成幾塊的樓層（綜合教學大樓兩翼）另有 outlines，outline 是其中第一環。
+            rings = floor.get('outlines', [floor['outline']])
+            assert all(rings) and rings[0] == floor['outline'], (name, floor['id'])
             for space in floor['spaces']:
                 assert space['kind'] in KINDS, (name, floor['id'], space['kind'])
+                assert all(isinstance(a, str) and a for a in space.get('aka', [])), (name, floor['id'], space)
                 assert ('rect' in space) != ('polygon' in space), (name, floor['id'], space)
         plans.discard(building['id'])
     assert not plans, f'campus.json links plans that are not bundled: {plans}'

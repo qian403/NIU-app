@@ -59,7 +59,11 @@ struct FloorMapCanvas: View {
             let t = frame.transform.concatenating(zoom.transform)
             let k = frame.scale * zoom.scale // 每公尺的畫面點數
 
-            let outline = Path(polygon: floor.outline).applying(t)
+            var outline = Path()
+            for ring in floor.outlines {
+                outline.addPath(Path(polygon: ring))
+            }
+            outline = outline.applying(t)
             context.drawLayer { layer in
                 layer.addFilter(.shadow(color: .black.opacity(0.12), radius: 4))
                 layer.fill(outline, with: .color(Palette.surface))
@@ -164,7 +168,7 @@ struct FloorMapCanvas: View {
         }
 
         var shown: (text: GraphicsContext.ResolvedText, size: CGSize)?
-        let options = space.code != nil ? [label, String(label.dropFirst())] : [label]
+        let options = [label] + (space.shortCode.map { [$0] } ?? [])
         for (index, text) in options.enumerated() {
             let resolved = layout(text, fontSize)
             let measured = resolved.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
@@ -208,24 +212,39 @@ struct FloorMapCanvas: View {
     // MARK: Links
 
     /// 「往…」膠囊，箭頭指向另一棟大樓；膠囊留在樓內，箭頭尖端在門口。
+    /// 穿過南北牆的連通口改成直式一字一行，放得進窄走廊。
     private func drawLink(_ link: MapLink, in context: GraphicsContext, frame: FloorFrame, t: CGAffineTransform) {
-        let text = context.resolve(
-            Text("往\(link.name)").font(.system(size: fontSize, weight: .semibold)).foregroundStyle(Color.indigo)
-        )
-        let measured = text.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
-        let arrow: CGFloat = 10, pad: CGFloat = 6, gap: CGFloat = 4
-        let w = measured.width + arrow + gap + pad * 2
-        let h = max(measured.height, arrow) + pad
         var d = link.toward
         if frame.rotated { d = CGPoint(x: -d.y, y: d.x) }
         let length = max(hypot(d.x, d.y), 0.001)
         d = CGPoint(x: d.x / length, y: d.y / length)
+        let upright = abs(d.y) > abs(d.x)
+        let label = "往\(link.name)"
+        let text = context.resolve(
+            Text(upright ? label.map(String.init).joined(separator: "\n") : label)
+                .font(.system(size: fontSize, weight: .semibold))
+                .foregroundStyle(Color.indigo)
+        )
+        let measured = text.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
+        let arrow: CGFloat = 10, pad: CGFloat = 6, gap: CGFloat = 4
+        let w = upright ? max(measured.width, arrow) + pad : measured.width + arrow + gap + pad * 2
+        let h = upright ? measured.height + arrow + gap + pad * 2 : max(measured.height, arrow) + pad
         let at = link.at.applying(t)
         let centre = CGPoint(x: at.x - d.x * w / 2, y: at.y - d.y * h / 2)
         let pill = CGRect(x: centre.x - w / 2, y: centre.y - h / 2, width: w, height: h)
-        context.fill(Path(roundedRect: pill, cornerRadius: h / 2), with: .color(Color.indigo.opacity(0.15)))
-        context.draw(text, at: CGPoint(x: pill.minX + pad, y: centre.y), anchor: .leading)
-        let tip = CGPoint(x: pill.maxX - pad - arrow / 2 + d.x * arrow / 2, y: centre.y + d.y * arrow / 2)
+        context.fill(Path(roundedRect: pill, cornerRadius: min(w, h) / 2), with: .color(Color.indigo.opacity(0.15)))
+        // 文字在遠離門口的一端，箭頭在門口。
+        let towards = upright ? d.y > 0 : d.x > 0
+        let textAt: CGPoint, arrowAt: CGPoint
+        if upright {
+            textAt = CGPoint(x: centre.x, y: towards ? pill.minY + pad + measured.height / 2 : pill.maxY - pad - measured.height / 2)
+            arrowAt = CGPoint(x: centre.x, y: towards ? pill.maxY - pad - arrow / 2 : pill.minY + pad + arrow / 2)
+        } else {
+            textAt = CGPoint(x: towards ? pill.minX + pad + measured.width / 2 : pill.maxX - pad - measured.width / 2, y: centre.y)
+            arrowAt = CGPoint(x: towards ? pill.maxX - pad - arrow / 2 : pill.minX + pad + arrow / 2, y: centre.y)
+        }
+        context.draw(text, at: textAt)
+        let tip = CGPoint(x: arrowAt.x + d.x * arrow / 2, y: arrowAt.y + d.y * arrow / 2)
         let back = CGPoint(x: tip.x - d.x * arrow, y: tip.y - d.y * arrow)
         let side = CGPoint(x: -d.y * arrow * 0.45, y: d.x * arrow * 0.45)
         var head = Path()
