@@ -83,3 +83,40 @@ for (const result of results) {
 }
 console.log('PASS: history parsing works for independent and mutually exclusive accordion panels');
 console.log('PASS: class/department rank and average are read from the summary table, not course rows');
+
+// Academic menu: slow frames wait, branches are not re-clicked on every poll, leaves match by label or code.
+{
+    const menuSection = source.slice(source.indexOf('private func openAcadeMenuTarget'));
+    const menuTemplate = menuSection.match(/let js = """\n([\s\S]*?)\n\s*"""/)[1].replace(/\\\\/g, '\\');
+    const menuScript = (label, code) => menuTemplate
+        .replace(String.raw`\(targetLabel)`, label).replace(String.raw`\(targetCode)`, code);
+    const link = (text, href = '') => ({ innerText: text, clicks: 0,
+        getAttribute: name => name === 'href' ? href : null, click() { this.clicks++; } });
+    function run(script, top, now) {
+        return vm.runInNewContext(script, { window: top, Date: { now: () => now } });
+    }
+    const historyScript = menuScript('學生歷年學期成績及排名查詢', '');
+    assert.equal(run(historyScript, { frames: {} }, 0), 'missing-menu-frame');
+    const menuDoc = { readyState: 'loading', links: [] , querySelectorAll() { return this.links; } };
+    const top = { frames: { menuFrame: { document: menuDoc } } };
+    assert.equal(run(historyScript, top, 0), 'loading-menu');
+    menuDoc.readyState = 'complete';
+    const branch = link('成績查詢作業');
+    menuDoc.links = [link('成績及計分冊'), branch];
+    assert.equal(run(historyScript, top, 1000), 'clicked-branch');
+    assert.equal(run(historyScript, top, 1350), 'waiting-branch');
+    assert.equal(run(historyScript, top, 3000), 'waiting-branch');
+    assert.equal(branch.clicks, 1, 'A loading branch must not be toggled on every poll');
+    assert.equal(run(historyScript, top, 5100), 'clicked-branch');
+    const leaf = link('學生歷年學期成績\n及排名查詢');
+    menuDoc.links.push(leaf);
+    assert.equal(run(historyScript, top, 5400), 'clicked-leaf');
+    assert.equal(leaf.clicks, 1);
+    const byCode = link('期中成績', '/NIU/Application/GRD/GRD51/GRD5131_.aspx?progcd=GRD5131');
+    const codeTop = { frames: { menuFrame: { document: { readyState: 'complete',
+        querySelectorAll: () => [byCode] } } } };
+    assert.equal(run(menuScript('學生查詢期中成績', 'GRD5131'), codeTop, 0), 'clicked-leaf');
+    const emptyTop = { frames: { menuFrame: { document: { readyState: 'complete', querySelectorAll: () => [] } } } };
+    assert.equal(run(historyScript, emptyTop, 0), 'missing-target');
+    console.log('PASS: academic menu waits for slow frames, throttles branch clicks, matches wrapped labels and program codes');
+}

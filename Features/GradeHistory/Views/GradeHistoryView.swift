@@ -748,6 +748,8 @@ private struct GradeHistoryWebView: UIViewRepresentable {
         private var active = true
         private var cancelled = false
         private var acadeMenuNavigationInFlight = false
+        private var menuSearchStartedAt: Date?
+        private var lastMenuState = ""
         private var contentFrame: WKFrameInfo?
         private var bridgeTask: Task<Void, Never>?
         private var timeoutTask: Task<Void, Never>?
@@ -770,16 +772,40 @@ private struct GradeHistoryWebView: UIViewRepresentable {
 
         func start(webView: WKWebView) {
             timeoutTask = Task { [weak self] in
-                do { try await Task.sleep(for: .seconds(65)) } catch { return }
+                do { try await Task.sleep(for: .seconds(90)) } catch { return }
                 self?.finish(.failure("成績頁面載入逾時，請稍後重試"))
             }
             bridgeTask = Task { [weak self, weak webView] in
                 let account = SSOTokenStore.shared.account
                     ?? LoginRepository.shared.getSavedCredentials()?.username ?? ""
-                let guid = account.isEmpty ? nil : await SSOGUIDBridge.fetchGUID(account: account)
+                // Only a rejected login needs SSO again (and possibly human verification);
+                // offline, timeout and server errors must not trigger a re-login.
+                let guidResult: Result<String, Error>
+                if account.isEmpty {
+                    guidResult = .failure(URLError(.userAuthenticationRequired))
+                } else {
+                    do { guidResult = .success(try await SSOGUIDBridge.requestGUID(account: account)) }
+                    catch { guidResult = .failure(error) }
+                }
                 guard !Task.isCancelled, let self, self.active, let webView else { return }
-                guard let guid, let url = SSOGUIDBridge.acadeLoginURL(guid: guid) else {
+                let guid: String
+                switch guidResult {
+                case .success(let value):
+                    guid = value
+                case .failure(let error as URLError) where error.code == .userAuthenticationRequired:
+                    // The token was rejected and cleared; re-login happens through the
+                    // hidden SSO WebView, where verification usually clears by itself.
                     self.finish(.sessionExpired)
+                    return
+                case .failure(let error as URLError) where error.code == .cancelled:
+                    return
+                case .failure(let error):
+                    print("[GradeHistory] GUID request failed code=\((error as NSError).code)")
+                    self.finish(.failure("無法連線到校務系統，請檢查網路後重試"))
+                    return
+                }
+                guard let url = SSOGUIDBridge.acadeLoginURL(guid: guid) else {
+                    self.finish(.failure("無法進入教務系統"))
                     return
                 }
                 self.step = .waitForMainEntry
@@ -966,58 +992,79 @@ private struct GradeHistoryWebView: UIViewRepresentable {
 
         private func openAcadeMenuTarget(webView: WKWebView, attempt: Int) {
             guard active else { return }
-            guard attempt < 30 else {
+            guard !acadeMenuNavigationInFlight || attempt > 0 else { return }
+            if attempt == 0, menuSearchStartedAt == nil { menuSearchStartedAt = Date() }
+            // The school's menu frame can load slowly; search within a time budget, not a fixed count.
+            if let started = menuSearchStartedAt, Date().timeIntervalSince(started) >= 35 {
                 acadeMenuNavigationInFlight = false
-                finish(.failure("無法開啟成績查詢頁面"))
+                let reason = lastMenuState == "missing-target"
+                    ? "教務系統選單中找不到成績查詢項目"
+                    : "教務系統選單沒有載入完成"
+                print("[GradeHistory] menu search timed out state=\(lastMenuState)")
+                finish(.failure("無法開啟成績查詢頁面（\(reason)），請稍後重試"))
                 return
             }
-            guard !acadeMenuNavigationInFlight || attempt > 0 else { return }
 
             acadeMenuNavigationInFlight = true
 
             let targetLabel: String
+            let targetCode: String
             switch mode {
             case .midterm:
                 targetLabel = "學生查詢期中成績"
+                targetCode = "GRD5131"
             case .final:
                 targetLabel = "學生查詢當學期成績"
+                targetCode = "GRD5130"
             case .history:
                 targetLabel = "學生歷年學期成績及排名查詢"
+                targetCode = ""
             }
 
             let js = """
             (function() {
+                var targetLabel = '\(targetLabel)';
+                var targetCode = '\(targetCode)';
+                // Menu labels may wrap or gain spaces; compare without whitespace.
                 function normalize(value) {
-                    return String(value || '').replace(/\\s+/g, ' ').trim();
+                    return String(value || '').replace(/\\s+/g, '');
                 }
 
                 var menuWin = window.frames['menuFrame'];
-                if (!menuWin || !menuWin.document) return 'missing-menu-frame';
+                var menuDoc = null;
+                try { menuDoc = menuWin && menuWin.document; } catch (error) {}
+                if (!menuDoc) return 'missing-menu-frame';
+                if (menuDoc.readyState !== 'complete') return 'loading-menu';
 
-                var links = Array.from(menuWin.document.querySelectorAll('a'));
+                var links = Array.from(menuDoc.querySelectorAll('a'));
 
                 function findLink(keyword) {
+                    keyword = normalize(keyword);
                     return links.find(function(link) {
                         return normalize(link.innerText || link.textContent).indexOf(keyword) >= 0;
                     });
                 }
 
-                var leaf = findLink('\(targetLabel)');
+                var leaf = findLink(targetLabel) || (targetCode ? links.find(function(link) {
+                    return String(link.getAttribute('href') || '').toUpperCase().indexOf(targetCode) >= 0;
+                }) : null);
                 if (leaf) {
                     leaf.click();
                     return 'clicked-leaf';
                 }
 
-                var scoreQuery = findLink('成績查詢作業');
-                if (scoreQuery) {
-                    scoreQuery.click();
-                    return 'clicked-score-query';
-                }
-
-                var scoreRoot = findLink('成績及計分冊');
-                if (scoreRoot) {
-                    scoreRoot.click();
-                    return 'clicked-score-root';
+                // A branch may expand by reloading the menu. Clicking it on every poll
+                // collapses or cancels it before the leaf appears, so wait between clicks.
+                var clicks = window.__niuGradeMenuClicks || (window.__niuGradeMenuClicks = {});
+                var branches = ['成績查詢作業', '成績及計分冊'];
+                for (var i = 0; i < branches.length; i++) {
+                    var branch = findLink(branches[i]);
+                    if (!branch) continue;
+                    var last = clicks[branches[i]];
+                    if (last !== undefined && Date.now() - last < 4000) return 'waiting-branch';
+                    clicks[branches[i]] = Date.now();
+                    branch.click();
+                    return 'clicked-branch';
                 }
 
                 return 'missing-target';
@@ -1026,17 +1073,23 @@ private struct GradeHistoryWebView: UIViewRepresentable {
             webView.evaluateJavaScript(js) { [weak self, weak webView] result, _ in
                 guard let self, let webView, self.active else { return }
                 let state = (result as? String) ?? "unknown"
-                print("[GradeHistory] open menu target attempt=\(attempt) state=\(state)")
+                if state != self.lastMenuState || state == "clicked-branch" {
+                    print("[GradeHistory] open menu target attempt=\(attempt) state=\(state)")
+                }
+                // Keep the most informative state for the failure message.
+                if state != "waiting-branch" { self.lastMenuState = state }
 
                 if state == "clicked-leaf" {
                     self.acadeMenuNavigationInFlight = false
+                    self.menuSearchStartedAt = nil
                     // Wait for the destination's frame message. The previous portal
                     // may still contain a DataGrid while the target is navigating.
                     if self.step != .waitForParse { self.step = .waitForTargetPage }
                     return
                 }
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak webView] in
+                    guard let self, let webView else { return }
                     self.openAcadeMenuTarget(webView: webView, attempt: attempt + 1)
                 }
             }
