@@ -8,6 +8,7 @@ final class CampusBuildingsViewModel: ObservableObject {
     @Published private(set) var selectedBuildingID: String
     @Published private(set) var selectedFloorID: String
     @Published private(set) var highlightedSpaceID: String?
+    @Published var query = ""
 
     init() {
         let buildings = CampusBuildingCatalog.buildings
@@ -23,6 +24,14 @@ final class CampusBuildingsViewModel: ObservableObject {
 
     var floor: BuildingFloor? {
         building?.floor(id: selectedFloorID)
+    }
+
+    var isSearching: Bool {
+        !CampusBuildingCatalog.normalize(query).isEmpty
+    }
+
+    var results: [CampusRoomMatch] {
+        CampusBuildingCatalog.search(query)
     }
 
     func selectBuilding(_ id: String) {
@@ -41,5 +50,12 @@ final class CampusBuildingsViewModel: ObservableObject {
     func toggleHighlight(_ space: FloorSpace) {
         guard space.isRoom else { return }
         highlightedSpaceID = highlightedSpaceID == space.id ? nil : space.id
+    }
+
+    func show(_ match: CampusRoomMatch) {
+        selectedBuildingID = match.building.id
+        selectedFloorID = match.floor.id
+        highlightedSpaceID = match.space.id
+        query = ""
     }
 }

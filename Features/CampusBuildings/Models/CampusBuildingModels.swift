@@ -102,6 +102,14 @@ struct FloorSpace: Identifiable, Hashable {
     }
 }
 
+struct CampusRoomMatch: Identifiable, Hashable {
+    let building: CampusBuilding
+    let floor: BuildingFloor
+    let space: FloorSpace
+
+    var id: String { "\(building.id)/\(space.id)" }
+}
+
 // MARK: - Catalog
 
 /// 依教務處「教室平面圖」頁公告的 PDF 整理，只表示相對位置，不是等比例圖。
@@ -110,6 +118,32 @@ enum CampusBuildingCatalog {
     static let buildings: [CampusBuilding] = [jiaose, zonghe]
 
     private static let sourcePageURL = URL(string: "https://academic.niu.edu.tw/p/412-1003-465.php")!
+
+    static func search(_ query: String) -> [CampusRoomMatch] {
+        let keyword = normalize(query)
+        guard !keyword.isEmpty else { return [] }
+        let roomKeyword = keyword.hasSuffix("教室") && keyword.count > 2 ? String(keyword.dropLast(2)) : keyword
+
+        return buildings.flatMap { building in
+            building.floors.flatMap { floor in
+                floor.rooms.compactMap { space -> CampusRoomMatch? in
+                    let name = normalize(space.name)
+                    let note = normalize(space.note ?? "")
+                    let matches = name.contains(keyword)
+                        || name.contains(roomKeyword)
+                        || (!note.isEmpty && note.contains(keyword))
+                    return matches ? CampusRoomMatch(building: building, floor: floor, space: space) : nil
+                }
+            }
+        }
+    }
+
+    static func normalize(_ text: String) -> String {
+        text.folding(options: [.widthInsensitive, .caseInsensitive], locale: Locale(identifier: "zh_Hant_TW"))
+            .uppercased()
+            .replacingOccurrences(of: "综", with: "綜")
+            .filter { !$0.isWhitespace && $0 != "・" }
+    }
 
     // MARK: 教穡大樓
 

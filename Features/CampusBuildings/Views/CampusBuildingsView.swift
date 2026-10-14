@@ -6,7 +6,11 @@ struct CampusBuildingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.medium) {
-                if let building = model.building, let floor = model.floor {
+                if model.isSearching {
+                    CampusRoomSearchResults(results: model.results, query: model.query) { match in
+                        model.show(match)
+                    }
+                } else if let building = model.building, let floor = model.floor {
                     selectorCard(building)
                     mapCard(building: building, floor: floor)
                     roomListCard(floor)
@@ -19,6 +23,11 @@ struct CampusBuildingsView: View {
         .navigationTitle("大樓平面圖")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .searchable(
+            text: $model.query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "搜尋教室，例如 教205、綜B101"
+        )
     }
 
     // MARK: - Building & Floor
@@ -357,6 +366,75 @@ private struct FloorPlanLegend: View {
                 .frame(width: 12, height: 12)
             Text(title)
         }
+    }
+}
+
+// MARK: - Search Results
+
+private struct CampusRoomSearchResults: View {
+    let results: [CampusRoomMatch]
+    let query: String
+    let onSelect: (CampusRoomMatch) -> Void
+
+    @Environment(\.dismissSearch) private var dismissSearch
+
+    var body: some View {
+        if results.isEmpty {
+            ContentUnavailableView {
+                Label("找不到「\(query)」", systemImage: "magnifyingglass")
+            } description: {
+                Text("目前只收錄教穡大樓與綜合教學大樓。可試試輸入教室號碼，例如 205 或 B101。")
+            }
+            .padding(.top, Theme.Spacing.xlarge)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(results) { match in
+                    Button {
+                        onSelect(match)
+                        dismissSearch()
+                    } label: {
+                        row(match)
+                    }
+                    .buttonStyle(.plain)
+                    if match.id != results.last?.id {
+                        Divider().padding(.leading, Theme.Spacing.medium)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.large, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+        }
+    }
+
+    private func row(_ match: CampusRoomMatch) -> some View {
+        HStack(spacing: Theme.Spacing.small) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(match.space.name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Theme.Colors.label)
+                Text("\(match.building.name)・\(match.floor.title)")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.Colors.secondaryLabel)
+                if let note = match.space.note {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.Colors.tertiaryLabel)
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Theme.Colors.tertiaryLabel)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("在平面圖上顯示位置")
     }
 }
 
