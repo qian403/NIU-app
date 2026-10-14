@@ -166,6 +166,13 @@ struct SettingsView: View {
             VStack(spacing: Theme.Spacing.xsmall) {
                 SettingsInfoRow(icon: "info.circle.fill", title: "版本", value: appVersionText)
 
+                if let notes = WhatsNewStore.shared.currentNotes {
+                    NavigationLink(destination: WhatsNewView(notes: [notes])) {
+                        SettingsNavigationRow(icon: "sparkles", title: "本版更新內容", subtitle: "查看 \(notes.version) 新增與改善的項目")
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Button {
                     if let reportURL = URL(string: "https://forms.gle/2ok6fydShrfe6PHr5") {
                         openURL(reportURL) { accepted in

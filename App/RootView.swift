@@ -4,6 +4,7 @@ struct RootView: View {
     @StateObject private var appState = AppState()
     @StateObject private var router = CampusRouter.shared
     @StateObject private var updateChecker = AppUpdateChecker.shared
+    @StateObject private var whatsNew = WhatsNewStore.shared
     @ObservedObject private var sessionService = SSOSessionService.shared
     @AppStorage(StorageKeys.authSessionID) private var authSessionID = ""
     @AppStorage("app.appearance.mode") private var appearanceModeRaw = AppAppearanceMode.system.rawValue
@@ -85,8 +86,15 @@ struct RootView: View {
             router.open(destination)
         }
         .preferredColorScheme(currentAppearanceMode.colorScheme)
+        .sheet(isPresented: Binding(
+            get: { isWhatsNewPresented },
+            // Only a user dismissal reaches here; hiding it for login or a session refresh keeps it pending.
+            set: { if !$0 { whatsNew.markSeen() } }
+        )) {
+            WhatsNewView(notes: whatsNew.pendingNotes, onContinue: whatsNew.markSeen)
+        }
         .alert("有新版本可下載", isPresented: Binding(
-            get: { updateChecker.availableUpdate != nil },
+            get: { updateChecker.availableUpdate != nil && !isWhatsNewPresented },
             set: { if !$0 { updateChecker.dismissUpdate() } }
         ), presenting: updateChecker.availableUpdate) { update in
             Button("前往更新") {
@@ -117,6 +125,14 @@ struct RootView: View {
                 break
             }
         }
+    }
+
+    /// Introduces this version once the user reaches the home screen, never over login or school verification.
+    private var isWhatsNewPresented: Bool {
+        !whatsNew.pendingNotes.isEmpty
+            && appState.isAuthenticated
+            && !appState.isLoggingOut
+            && !sessionService.isRefreshing
     }
 
     private var currentAppearanceMode: AppAppearanceMode {
