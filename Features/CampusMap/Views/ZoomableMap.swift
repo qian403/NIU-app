@@ -35,7 +35,8 @@ struct MapZoom: Equatable {
     }
 }
 
-/// 可雙指縮放、拖曳與點選的地圖。`zoom` 用動畫改變時，畫布會逐格重畫。
+/// 可雙指縮放、拖曳與點選的地圖。手勢交給原生 UIScrollView（縮放跟著手指、拖曳有慣性與回彈），
+/// 畫布再依 `zoom` 重畫，字級不會跟著放大變糊；`zoom` 用動畫改變時，畫布會逐格重畫。
 struct ZoomableMap<Content: View>: View {
     @Binding var zoom: MapZoom
     let minScale: CGFloat
@@ -47,58 +48,171 @@ struct ZoomableMap<Content: View>: View {
     let onTap: (CGPoint) -> Void
     @ViewBuilder let content: (MapZoom) -> Content
 
-    @State private var size: CGSize = .zero
-    @State private var lastTranslation: CGSize?
-    @State private var lastMagnification: CGFloat?
-
     var body: some View {
         AnimatedZoom(zoom: zoom, content: content)
-            .contentShape(Rectangle())
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-            .gesture(
-                SpatialTapGesture().onEnded { value in
-                    onTap(zoom.toCanvas(value.location))
-                }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 4)
-                    .onChanged { value in
-                        let last = lastTranslation ?? .zero
-                        if lastTranslation == nil { onInteraction() }
-                        lastTranslation = value.translation
-                        var next = zoom
-                        next.offset.width += value.translation.width - last.width
-                        next.offset.height += value.translation.height - last.height
-                        apply(next)
-                    }
-                    .onEnded { _ in lastTranslation = nil }
-                    .simultaneously(with: MagnifyGesture()
-                        .onChanged { value in
-                            let last = lastMagnification ?? 1
-                            if lastMagnification == nil { onInteraction() }
-                            lastMagnification = value.magnification
-                            let scale = min(max(zoom.scale * value.magnification / last, minScale), maxScale)
-                            let anchor = value.startLocation
-                            let factor = scale / zoom.scale
-                            apply(MapZoom(
-                                scale: scale,
-                                offset: CGSize(
-                                    width: anchor.x - (anchor.x - zoom.offset.width) * factor,
-                                    height: anchor.y - (anchor.y - zoom.offset.height) * factor
-                                )
-                            ))
-                        }
-                        .onEnded { _ in lastMagnification = nil }
-                    )
-            )
+            .overlay {
+                MapGestureSurface(
+                    zoom: $zoom, minScale: minScale, maxScale: maxScale, margin: margin,
+                    onInteraction: onInteraction, onTap: onTap
+                )
+            }
+    }
+}
+
+/// 透明的 UIScrollView，只負責手勢；內容視圖大小等於畫布，縮放倍率與捲動位置換算成 `MapZoom`。
+private struct MapGestureSurface: UIViewRepresentable {
+    @Binding var zoom: MapZoom
+    let minScale: CGFloat
+    let maxScale: CGFloat
+    let margin: CGFloat
+    let onInteraction: () -> Void
+    let onTap: (CGPoint) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> MapScrollView {
+        let view = MapScrollView()
+        view.delegate = context.coordinator
+        view.backgroundColor = .clear
+        view.showsHorizontalScrollIndicator = false
+        view.showsVerticalScrollIndicator = false
+        view.contentInsetAdjustmentBehavior = .never
+        view.decelerationRate = .normal
+        view.bouncesZoom = true
+        view.alwaysBounceVertical = true
+        view.alwaysBounceHorizontal = true
+        view.canvas.backgroundColor = .clear
+        view.addSubview(view.canvas)
+        view.onLayout = { [weak coordinator = context.coordinator] in coordinator?.layout() }
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTapped(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.require(toFail: doubleTap)
+        view.addGestureRecognizer(doubleTap)
+        view.addGestureRecognizer(tap)
+        context.coordinator.view = view
+        return view
     }
 
-    private func apply(_ next: MapZoom) {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            zoom = next.clamped(to: size, margin: margin)
+    func updateUIView(_ view: MapScrollView, context: Context) {
+        context.coordinator.parent = self
+        view.minimumZoomScale = minScale
+        view.maximumZoomScale = maxScale
+        context.coordinator.sync()
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        var parent: MapGestureSurface
+        weak var view: MapScrollView?
+        /// 程式設定縮放／位置時不回寫 `zoom`。
+        private var applying = false
+
+        init(_ parent: MapGestureSurface) {
+            self.parent = parent
         }
+
+        private var interacting: Bool {
+            guard let view else { return false }
+            return view.isTracking || view.isDragging || view.isDecelerating || view.isZooming || view.isZoomBouncing
+        }
+
+        /// 尺寸改變時重設內容大小，再套用目前的 `zoom`。
+        func layout() {
+            guard let view, view.bounds.size != .zero else { return }
+            if view.canvas.bounds.size != view.bounds.size {
+                applying = true
+                let scale = view.zoomScale
+                view.zoomScale = 1
+                view.canvas.frame = CGRect(origin: .zero, size: view.bounds.size)
+                view.contentSize = view.bounds.size
+                view.zoomScale = scale
+                applying = false
+            }
+            sync()
+        }
+
+        /// 把 `zoom` 套到捲動視圖；使用者正在操作時以手勢為準。
+        func sync() {
+            guard let view, view.bounds.size != .zero, !interacting else { return }
+            let zoom = parent.zoom
+            let offset = CGPoint(x: -zoom.offset.width, y: -zoom.offset.height)
+            guard abs(view.zoomScale - zoom.scale) > 0.0001
+                    || abs(view.contentOffset.x - offset.x) > 0.5
+                    || abs(view.contentOffset.y - offset.y) > 0.5
+            else { return }
+            applying = true
+            view.zoomScale = min(max(zoom.scale, view.minimumZoomScale), view.maximumZoomScale)
+            updateInsets()
+            view.contentOffset = offset
+            applying = false
+        }
+
+        /// 留白隨縮放倍率等比例，與 `MapZoom.clamped` 的範圍一致。
+        private func updateInsets() {
+            guard let view else { return }
+            let m = parent.margin * view.zoomScale
+            let size = view.bounds.size
+            let content = CGSize(width: size.width * view.zoomScale, height: size.height * view.zoomScale)
+            let h = max(m, (size.width - content.width) / 2)
+            let v = max(m, (size.height - content.height) / 2)
+            view.contentInset = UIEdgeInsets(top: v, left: h, bottom: v, right: h)
+        }
+
+        private func publish() {
+            guard let view, !applying else { return }
+            let next = MapZoom(
+                scale: view.zoomScale,
+                offset: CGSize(width: -view.contentOffset.x, height: -view.contentOffset.y)
+            )
+            guard next != parent.zoom else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { parent.zoom = next }
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { view?.canvas }
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { parent.onInteraction() }
+
+        func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) { parent.onInteraction() }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) { publish() }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            if !applying { updateInsets() }
+            publish()
+        }
+
+        @objc func tapped(_ recognizer: UITapGestureRecognizer) {
+            guard let view else { return }
+            parent.onTap(recognizer.location(in: view.canvas))
+        }
+
+        /// 雙擊放大兩倍；已放到最大時恢復原狀。
+        @objc func doubleTapped(_ recognizer: UITapGestureRecognizer) {
+            guard let view else { return }
+            parent.onInteraction()
+            let point = recognizer.location(in: view.canvas)
+            if view.zoomScale * 2 > view.maximumZoomScale + 0.001 {
+                view.setZoomScale(max(1, view.minimumZoomScale), animated: true)
+            } else {
+                let scale = view.zoomScale * 2
+                let size = CGSize(width: view.bounds.width / scale, height: view.bounds.height / scale)
+                view.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
+                                     width: size.width, height: size.height), animated: true)
+            }
+        }
+    }
+}
+
+final class MapScrollView: UIScrollView {
+    let canvas = UIView()
+    var onLayout: () -> Void = {}
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout()
     }
 }
 

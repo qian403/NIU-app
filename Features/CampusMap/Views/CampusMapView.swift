@@ -68,7 +68,7 @@ struct CampusMapView: View {
     // MARK: Map
 
     private func map(_ data: CampusMapData) -> some View {
-        ZoomableMap(zoom: $zoom, minScale: 0.8, maxScale: 12, margin: 400) { metres in
+        ZoomableMap(zoom: $zoom, minScale: 1, maxScale: 12, margin: 0) { metres in
             let frame = OverviewFrame(campus: data.overview.campus, size: mapSize, padding: padding)
             model.tap(data.overview.buildingAt(frame.toMetres(metres)))
         } content: { zoom in
@@ -130,7 +130,7 @@ struct CampusMapView: View {
         let size = building.bounds.longestSide * frame.scale
         let scale = min(max(area.shortestSide * 0.45 / max(size, 1), 1), 6)
         fly(MapZoom.centring(frame.toCanvas(building.centre), at: area.center, scale: scale)
-            .clamped(to: mapSize, margin: 400))
+            .clamped(to: mapSize, margin: 0))
     }
 
     private func fly(_ target: MapZoom) {
