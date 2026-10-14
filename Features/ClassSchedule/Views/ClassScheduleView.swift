@@ -5,6 +5,8 @@ struct ClassScheduleView: View {
     @State private var showSettings = false
     @State private var editorRequest: CustomCourseEditorRequest?
     @State private var pagerSelection: Int = 1
+    @State private var campusPlans: CampusFloorPlans?
+    @State private var campusMapRequest: CampusPlanRequest?
     @AppStorage("classSchedule.displayMode") private var displayMode = "day"
 
     init() {}
@@ -122,6 +124,16 @@ struct ClassScheduleView: View {
             }
         }
         .onDisappear { vm.cancelLoading() }
+        .task { campusPlans = try? await CampusMapLoader.shared.load().plans }
+        .navigationDestination(item: $campusMapRequest) { request in
+            BuildingMapView(buildingID: request.building, room: request.room)
+        }
+    }
+
+    /// 校園地圖上找得到的上課教室。
+    private func campusRoom(_ classroom: String?) -> CampusPlanRequest? {
+        guard let classroom, let found = campusPlans?.locate(classroom) else { return nil }
+        return CampusPlanRequest(building: found.building.id, room: found.space.label)
     }
 
     // MARK: - Full-screen loading
@@ -215,7 +227,9 @@ struct ClassScheduleView: View {
                         isRefreshing: vm.isFetchingInBackground,
                         cacheAgeText: vm.cacheAgeText,
                         refresh: refreshSchedule,
-                        editCustomCourse: editCustomCourse
+                        editCustomCourse: editCustomCourse,
+                        campusRoom: campusRoom,
+                        openCampusMap: { campusMapRequest = $0 }
                     )
                 }
             }
@@ -434,7 +448,9 @@ struct ClassScheduleView: View {
                             period: period,
                             scheduleColumnIndex: scheduleColumnIndex,
                             isCurrent: isToday && period.isCurrentPeriod,
-                            editCustomCourse: editCustomCourse
+                            editCustomCourse: editCustomCourse,
+                            campusRoom: campusRoom,
+                            openCampusMap: { campusMapRequest = $0 }
                         )
                         .id(period.id)
                     }
@@ -478,6 +494,8 @@ private struct PeriodRowView: View {
     let scheduleColumnIndex: Int
     let isCurrent: Bool
     let editCustomCourse: (UUID) -> Void
+    let campusRoom: (String?) -> CampusPlanRequest?
+    let openCampusMap: (CampusPlanRequest) -> Void
 
     private var course: CourseInfo? { period.course(for: scheduleColumnIndex) }
 
@@ -507,6 +525,7 @@ private struct PeriodRowView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(period.displayPeriodLabel)，\(period.startTimeLabel)到\(period.endTimeLabel)，自訂課程，\(course.name)，\(course.details ?? "")")
                 .accessibilityHint("編輯自訂課程")
+                .campusRoomMenu(campusRoom(course.classroom), open: openCampusMap)
             } else if let course = course {
                 NavigationLink {
                     ClassScheduleCourseDestination(courseName: course.name)
@@ -520,6 +539,7 @@ private struct PeriodRowView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(period.displayPeriodLabel)，\(period.startTimeLabel)到\(period.endTimeLabel)，\(course.name)，\(course.details ?? "")")
                 .accessibilityHint("開啟 M 園區課程")
+                .campusRoomMenu(campusRoom(course.classroom), open: openCampusMap)
             }
         }
     }

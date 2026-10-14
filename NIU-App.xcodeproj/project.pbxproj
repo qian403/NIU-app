@@ -109,9 +109,14 @@
 		C0DE91010000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE91020000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift */; };
 		C0DE91010000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE91020000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift */; };
 		C0DE91010000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE91020000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift */; };
-		C0DE92010000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE92020000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift */; };
-		C0DE92010000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE92020000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift */; };
-		C0DE92010000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE92020000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift */; };
+		C0DE95000000000000000001 /* Features/CampusMap/Models/CampusMapModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE96000000000000000001 /* Features/CampusMap/Models/CampusMapModels.swift */; };
+		C0DE95000000000000000002 /* Features/CampusMap/ViewModels/CampusMapViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE96000000000000000002 /* Features/CampusMap/ViewModels/CampusMapViewModels.swift */; };
+		C0DE95000000000000000003 /* Features/CampusMap/Views/CampusMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE96000000000000000003 /* Features/CampusMap/Views/CampusMapView.swift */; };
+		C0DE95000000000000000004 /* Features/CampusMap/Views/BuildingMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE96000000000000000004 /* Features/CampusMap/Views/BuildingMapView.swift */; };
+		C0DE95000000000000000005 /* Features/CampusMap/Views/FloorMapCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE96000000000000000005 /* Features/CampusMap/Views/FloorMapCanvas.swift */; };
+		C0DE95000000000000000006 /* Features/CampusMap/Views/CampusOverviewCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE96000000000000000006 /* Features/CampusMap/Views/CampusOverviewCanvas.swift */; };
+		C0DE95000000000000000007 /* Features/CampusMap/Views/ZoomableMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE96000000000000000007 /* Features/CampusMap/Views/ZoomableMap.swift */; };
+		C0DE95100000000000000001 /* Resources/CampusMap in Resources */ = {isa = PBXBuildFile; fileRef = C0DE96100000000000000001 /* Resources/CampusMap */; };
 		C0DEA001C0DEA001C0DEA001 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA002C0DEA002C0DEA002 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift */; };
 		C0DEA011C0DEA011C0DEA011 /* Features/Moodle/Repositories/MoodleRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA012C0DEA012C0DEA012 /* Features/Moodle/Repositories/MoodleRepositories.swift */; };
 		C0DEA013C0DEA013C0DEA013 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEA014C0DEA014C0DEA014 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift */; };
@@ -345,9 +350,14 @@
 		C0DE91020000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LunchPicker/ViewModels/LunchPickerViewModel.swift; sourceTree = SOURCE_ROOT; };
 		C0DE91020000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LunchPicker/Views/LunchPickerView.swift; sourceTree = SOURCE_ROOT; };
 		C0DE91020000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/LunchPicker/Services/RestaurantSearchService.swift; sourceTree = SOURCE_ROOT; };
-		C0DE92020000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusBuildings/Models/CampusBuildingModels.swift; sourceTree = SOURCE_ROOT; };
-		C0DE92020000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift; sourceTree = SOURCE_ROOT; };
-		C0DE92020000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusBuildings/Views/CampusBuildingsView.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96000000000000000001 /* Features/CampusMap/Models/CampusMapModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusMap/Models/CampusMapModels.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96000000000000000002 /* Features/CampusMap/ViewModels/CampusMapViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusMap/ViewModels/CampusMapViewModels.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96000000000000000003 /* Features/CampusMap/Views/CampusMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusMap/Views/CampusMapView.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96000000000000000004 /* Features/CampusMap/Views/BuildingMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusMap/Views/BuildingMapView.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96000000000000000005 /* Features/CampusMap/Views/FloorMapCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusMap/Views/FloorMapCanvas.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96000000000000000006 /* Features/CampusMap/Views/CampusOverviewCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusMap/Views/CampusOverviewCanvas.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96000000000000000007 /* Features/CampusMap/Views/ZoomableMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CampusMap/Views/ZoomableMap.swift; sourceTree = SOURCE_ROOT; };
+		C0DE96100000000000000001 /* Resources/CampusMap */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/CampusMap; sourceTree = SOURCE_ROOT; };
 		C0DEA002C0DEA002C0DEA002 /* Features/Moodle/Views/MoodleAttendanceScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Views/MoodleAttendanceScannerView.swift; sourceTree = "<group>"; };
 		C0DEA012C0DEA012C0DEA012 /* Features/Moodle/Repositories/MoodleRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Repositories/MoodleRepositories.swift; sourceTree = "<group>"; };
 		C0DEA014C0DEA014C0DEA014 /* Features/Moodle/Attendance/MoodleAttendanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Moodle/Attendance/MoodleAttendanceModels.swift; sourceTree = "<group>"; };
@@ -804,9 +814,14 @@
 				C0DE91020000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift */,
 				C0DE91020000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift */,
 				C0DE91020000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift */,
-				C0DE92020000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift */,
-				C0DE92020000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift */,
-				C0DE92020000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift */,
+				C0DE96000000000000000001 /* Features/CampusMap/Models/CampusMapModels.swift */,
+				C0DE96000000000000000002 /* Features/CampusMap/ViewModels/CampusMapViewModels.swift */,
+				C0DE96000000000000000003 /* Features/CampusMap/Views/CampusMapView.swift */,
+				C0DE96000000000000000004 /* Features/CampusMap/Views/BuildingMapView.swift */,
+				C0DE96000000000000000005 /* Features/CampusMap/Views/FloorMapCanvas.swift */,
+				C0DE96000000000000000006 /* Features/CampusMap/Views/CampusOverviewCanvas.swift */,
+				C0DE96000000000000000007 /* Features/CampusMap/Views/ZoomableMap.swift */,
+				C0DE96100000000000000001 /* Resources/CampusMap */,
 				8F37487BF4102AFFDD8877BB /* Features/AcademicCalendar/ViewModels/CalendarDataSourceConfig.swift */,
 				9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */,
 				0E182347FA814B44AC09A922 /* Features/AcademicCalendar/Views/AcademicCalendarPDFView.swift */,
@@ -1131,6 +1146,7 @@
 				F1BA01000000000000000001 /* GoogleService-Info.plist in Resources */,
 				10A32DB12F431F630009BB45 /* Assets.xcassets in Resources */,
 				CA1E00010000000000000002 /* Resources/AcademicCalendar in Resources */,
+				C0DE95100000000000000001 /* Resources/CampusMap in Resources */,
 				C0ED00010000000000000004 /* app-content/credits.json in Resources */,
 				0E182345FA814B44AC09A920 /* Settings.bundle in Resources */,
 				A9F0C1D2E3F4A5B6C7D8E9F0 /* PrivacyInfo.xcprivacy in Resources */,
@@ -1300,9 +1316,13 @@
 				C0DE91010000000000000002 /* Features/LunchPicker/ViewModels/LunchPickerViewModel.swift in Sources */,
 				C0DE91010000000000000003 /* Features/LunchPicker/Views/LunchPickerView.swift in Sources */,
 				C0DE91010000000000000004 /* Features/LunchPicker/Services/RestaurantSearchService.swift in Sources */,
-				C0DE92010000000000000001 /* Features/CampusBuildings/Models/CampusBuildingModels.swift in Sources */,
-				C0DE92010000000000000002 /* Features/CampusBuildings/ViewModels/CampusBuildingsViewModel.swift in Sources */,
-				C0DE92010000000000000003 /* Features/CampusBuildings/Views/CampusBuildingsView.swift in Sources */,
+				C0DE95000000000000000001 /* Features/CampusMap/Models/CampusMapModels.swift in Sources */,
+				C0DE95000000000000000002 /* Features/CampusMap/ViewModels/CampusMapViewModels.swift in Sources */,
+				C0DE95000000000000000003 /* Features/CampusMap/Views/CampusMapView.swift in Sources */,
+				C0DE95000000000000000004 /* Features/CampusMap/Views/BuildingMapView.swift in Sources */,
+				C0DE95000000000000000005 /* Features/CampusMap/Views/FloorMapCanvas.swift in Sources */,
+				C0DE95000000000000000006 /* Features/CampusMap/Views/CampusOverviewCanvas.swift in Sources */,
+				C0DE95000000000000000007 /* Features/CampusMap/Views/ZoomableMap.swift in Sources */,
 				AA02BC01AA02BC01AA02BC01 /* SettingsView.swift in Sources */,
 				10A32DBD2F431F630009BB45 /* LoginView.swift in Sources */,
 				10A32DBE2F431F630009BB45 /* LoginViewModel.swift in Sources */,
