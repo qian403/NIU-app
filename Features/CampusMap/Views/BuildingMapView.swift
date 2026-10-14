@@ -280,18 +280,22 @@ private struct FloorDrawer: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { open.toggle() }
-        // 標題列直接改變抽屜高度，不受清單捲動位置影響。
+        // 標題列直接改變抽屜高度，不受清單捲動位置影響。標題列會跟著抽屜移動，
+        // 以全域座標量拖曳距離，才不會因自身位移而來回抖動。
         .gesture(
-            DragGesture(minimumDistance: 4)
+            DragGesture(minimumDistance: 4, coordinateSpace: .global)
                 .onChanged { drag = $0.translation.height }
                 .onEnded { value in
                     let velocity = value.predictedEndTranslation.height - value.translation.height
                     let current = height
-                    drag = 0
-                    if abs(velocity) > 120 {
-                        open = velocity < 0
-                    } else {
-                        open = current > (peek + maxHeight) / 2
+                    // 開關狀態沒變時也要滑回定位，不直接跳回去。
+                    withAnimation(reduceMotion ? nil : Theme.Animation.standard) {
+                        drag = 0
+                        if abs(velocity) > 120 {
+                            open = velocity < 0
+                        } else {
+                            open = current > (peek + maxHeight) / 2
+                        }
                     }
                 }
         )
@@ -318,7 +322,7 @@ private struct FloorDrawer: View {
                         .font(.footnote)
                         .foregroundStyle(Theme.Colors.secondaryLabel)
                 } else {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(numbered) { room in
                             Button {
                                 onPick(room)
