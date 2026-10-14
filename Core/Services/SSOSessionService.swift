@@ -25,6 +25,9 @@ final class SSOSessionService: ObservableObject {
     /// Only interactive recovery covers the current screen.
     @Published private(set) var showRefreshWebView = false
     @Published private(set) var isRefreshPageReadyForInteraction = false
+    /// The page is visible only for pending human verification, so the saved,
+    /// untouched credentials may be submitted once the school enables sign-in.
+    @Published private(set) var resumesAfterVerification = false
     @Published private(set) var refreshID = UUID()
     @Published private(set) var lastFailureMessage: String?
 
@@ -72,7 +75,8 @@ final class SSOSessionService: ObservableObject {
         },
         tokenIsValid: @escaping @MainActor () -> Bool = { SSOTokenStore.shared.isLikelyValid },
         onRefreshSuccess: @escaping @MainActor () -> Void = { MoodleSessionManager.shared.fetchEUNILink() },
-        backgroundTimeout: Duration = .seconds(15),
+        // Turnstile usually clears on its own; reveal only after it clearly stalls.
+        backgroundTimeout: Duration = .seconds(25),
         refreshTimeout: Duration = .seconds(180)
     ) {
         self.credentialsProvider = credentialsProvider
@@ -100,6 +104,7 @@ final class SSOSessionService: ObservableObject {
         refreshDeadline = nil
         showRefreshWebView = false
         isRefreshPageReadyForInteraction = false
+        resumesAfterVerification = false
         isRefreshing = false
         consecutiveFailures = 0
         lastRefreshAttemptAt = nil
@@ -199,6 +204,7 @@ final class SSOSessionService: ObservableObject {
         isRefreshing = true
         showRefreshWebView = false
         isRefreshPageReadyForInteraction = false
+        resumesAfterVerification = false
         refreshDeadline = ContinuousClock.now + refreshTimeout
         scheduleRefreshTimeout()
         scheduleBackgroundTimeout()
@@ -252,23 +258,31 @@ final class SSOSessionService: ObservableObject {
             success = false
         }
         guard success else {
-            requireInteraction(requestID: requestID)
+            requireInteraction(requestID: requestID, afterVerification: false)
             return
         }
         completeRefresh(success: true)
     }
 
-    func requireInteraction(requestID: UUID) {
+    /// `afterVerification` is false when the school rejected the attempt;
+    /// the user must then correct and submit the form themselves.
+    func requireInteraction(requestID: UUID, afterVerification: Bool = true) {
         guard isRefreshing, requestID == refreshID else { return }
         backgroundTimeoutTask?.cancel()
         backgroundTimeoutTask = nil
-        if !showRefreshWebView { trace("需要互動驗證") }
+        if !showRefreshWebView {
+            trace("需要互動驗證")
+            resumesAfterVerification = afterVerification
+        } else if !afterVerification {
+            resumesAfterVerification = false
+        }
         showRefreshWebView = true
     }
 
     func retryInteractiveLogin() {
         guard isRefreshing, showRefreshWebView else { return }
         isRefreshPageReadyForInteraction = false
+        resumesAfterVerification = false
         refreshID = UUID()
         lastFailureMessage = nil
         scheduleRefreshTimeout()
@@ -294,6 +308,7 @@ final class SSOSessionService: ObservableObject {
         refreshDeadline = nil
         showRefreshWebView = false
         isRefreshPageReadyForInteraction = false
+        resumesAfterVerification = false
         isRefreshing = false
         refreshID = UUID()
         refreshPassword = ""

@@ -47,6 +47,7 @@ final class AppState: ObservableObject {
         NotificationScheduler.shared.invalidateSession()
         EventRegistrationClient.shared.reset()
         // A new login replaces the session, including any pending refresh/EUNI work.
+        SSOTokenRenewer.shared.cancel()
         SSOSessionService.shared.disableAutoRefresh()
         MoodleSessionManager.shared.reset()
         MailViewModel.shared.reset()
@@ -84,6 +85,7 @@ final class AppState: ObservableObject {
         didExplicitlyLogout = true
         clearAuthState()
         LoginRepository.shared.clearCredentials()
+        SSOTokenRenewer.shared.cancel()
         SSOTokenStore.shared.clear()
         clearPersonalCaches()
         SSOSessionService.shared.disableAutoRefresh()
@@ -287,6 +289,11 @@ final class AppState: ObservableObject {
         LiveActivityRemoteClient.shared.retryCleanup()
         if isAuthenticated {
             Task { await UsageHeartbeatClient.shared.report() }
+            // Renew through the school's refresh endpoint before the token expires.
+            // Never open the login WebView here: a Turnstile failure would start the
+            // refresh cooldown and block every feature (see 8c0aede). Features
+            // re-login on their own once the school actually rejects the token.
+            Task { _ = await SSOTokenRenewer.shared.renewIfNeeded() }
         }
         ClassLiveActivityCoordinator.shared.setForeground(true)
         await refreshClassLiveActivitiesIfNeeded()

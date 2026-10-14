@@ -20,11 +20,22 @@ enum SSOGUIDBridge {
     }
 
     /// Throwing variant for callers that distinguish offline/timeout from expired login.
+    // Reads the renewer and token store together, so it runs on the main actor.
+    @MainActor
     static func requestGUID(account: String) async throws -> String {
-        guard let token = SSOTokenStore.shared.token else {
+        let acnt = account.lowercased()
+        // Silent sliding renewal first, so long sessions rarely reach the login page.
+        let session = SSOTokenRenewer.shared.sessionGeneration
+        _ = await SSOTokenRenewer.shared.renewIfNeeded()
+        try Task.checkCancellation()
+        // A login or logout during renewal (even of the same account) replaced the
+        // session; this request belongs to the old one and must not use or clear it.
+        guard SSOTokenRenewer.shared.sessionGeneration == session else { throw URLError(.cancelled) }
+        // A rejected renewal cleared the session: log in again. Never pair another
+        // account's token with this account's GUID request.
+        guard let token = SSOTokenStore.shared.token, SSOTokenStore.shared.account == acnt else {
             throw URLError(.userAuthenticationRequired)
         }
-        let acnt = account.lowercased()
         guard let url = URL(string: "https://ccsys1.niu.edu.tw/SSO/API/GUID/\(acnt)") else {
             throw URLError(.badURL)
         }
