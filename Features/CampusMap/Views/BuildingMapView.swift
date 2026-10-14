@@ -84,7 +84,7 @@ struct BuildingMapView: View {
     }
 
     private func plan(_ building: MapBuilding, _ floor: MapFloor) -> some View {
-        ZoomableMap(zoom: $zoom, minScale: 1, maxScale: 6, margin: 200) {
+        ZoomableMap(zoom: $zoom, minScale: 1, maxScale: 6, margin: 0) {
             aimed = nil
         } onTap: { canvas in
             let frame = FloorFrame(bounds: building.bounds, size: mapSize, padding: padding)
@@ -142,7 +142,7 @@ struct BuildingMapView: View {
         }
         let frame = FloorFrame(bounds: building.bounds, size: mapSize, padding: padding)
         let target = MapZoom.centring(frame.toCanvas(space.bounds.center), at: frame.area.center, scale: 2.4)
-            .clamped(to: mapSize, margin: 200)
+            .clamped(to: mapSize, margin: 0)
         if animated { fly(target) } else { zoom = target }
         aimed = space
     }
