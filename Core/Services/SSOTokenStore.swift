@@ -74,10 +74,33 @@ final class SSOTokenStore {
         return formatter.date(from: raw)
     }
 
+    /// Reads the `exp` claim of a JWT as ISO 8601. Login and renewal share this
+    /// so both store expirations that `expiration` can read back.
+    static func jwtExpiration(_ token: String) -> String? {
+        let parts = token.split(separator: ".")
+        guard parts.count > 1 else { return nil }
+        var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+")
+                                      .replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+              let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let seconds = claims["exp"] as? TimeInterval else { return nil }
+        return ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: seconds))
+    }
+
     var isLikelyValid: Bool {
         guard token != nil else { return false }
         guard let expiration else { return true }
         return expiration.timeIntervalSinceNow > 30
+    }
+
+    /// Renew before expiry so the school's sliding-refresh endpoint can keep the
+    /// session alive without ever opening the login page (and its human
+    /// verification). The hour-wide window keeps daily users' tokens from ever
+    /// dying; unknown expirations defer to the GUID 401 path.
+    var needsRenewal: Bool {
+        guard token != nil, let expiration else { return false }
+        return expiration.timeIntervalSinceNow < 3600
     }
 
     private func readSession() -> Session? {

@@ -10,6 +10,7 @@ view = (root / "Features/Authentication/Services/SSOLoginWebView.swift").read_te
 result_types = view[view.index("public struct StudentInfo"):view.index("private func sso_percentEncodeForm")]
 moodle_source = (root / "Features/Moodle/Services/MoodleSessionManager.swift").read_text()
 moodle_manager = moodle_source[moodle_source.index("@MainActor\nfinal class MoodleSessionManager"):moodle_source.index("// MARK: - Coordinator")]
+
 fixture = r'''
 import Foundation
 @MainActor enum UIApplication {
@@ -97,16 +98,23 @@ import Foundation
         let recovering = Task { await recovery.requestRefresh() }
         try await settle()
         let backgroundID = recovery.refreshID
+        recovery.requireInteraction(requestID: backgroundID)
+        precondition(recovery.showRefreshWebView && recovery.resumesAfterVerification,
+                     "Pending verification may resume automatic submit")
         recovery.handleRefreshResult(.credentialsFailed(message: "Synthetic rejection"), requestID: backgroundID)
         precondition(recovery.isRefreshing && recovery.showRefreshWebView && recovery.refreshID == backgroundID,
                      "Failed automation must reveal the same attempt and keep callers waiting")
+        precondition(!recovery.resumesAfterVerification, "A rejected login must not be resubmitted automatically")
+        recovery.requireInteraction(requestID: backgroundID)
+        precondition(!recovery.resumesAfterVerification, "A later stall must not re-enable resubmission")
         recovery.handleRefreshResult(.systemError, requestID: backgroundID)
         precondition(recovery.isRefreshing && recovery.showRefreshWebView)
         recovery.markInteractionReady(requestID: backgroundID)
         precondition(recovery.isRefreshPageReadyForInteraction)
         recovery.retryInteractiveLogin()
         let manualID = recovery.refreshID
-        precondition(manualID != backgroundID && recovery.showRefreshWebView && !recovery.isRefreshPageReadyForInteraction)
+        precondition(manualID != backgroundID && recovery.showRefreshWebView && !recovery.isRefreshPageReadyForInteraction
+                     && !recovery.resumesAfterVerification)
         recovery.markInteractionReady(requestID: backgroundID)
         precondition(!recovery.isRefreshPageReadyForInteraction)
         recovery.markInteractionReady(requestID: manualID)

@@ -42,6 +42,22 @@ private func sso_formURLEncodedDataOrdered(_ items: [(String, String)]) -> Data?
 }
 
 private let ssoModernLoginURLString = "https://ccsys1.niu.edu.tw/SSO/login"
+/// Cloudflare Turnstile reads WKWebView's default user agent (no `Safari/`
+/// token) as a non-browser client and falls back to interactive human
+/// verification far more often. Identify as the device's own mobile Safari
+/// (desktop Safari on macOS) so managed verification usually clears silently.
+private let ssoLoginSafariUserAgent: String = {
+    #if os(macOS)
+    return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    #else
+    let version = ProcessInfo.processInfo.operatingSystemVersion
+    let os = "\(version.majorVersion)_\(version.minorVersion)"
+    return "Mozilla/5.0 (iPhone; CPU iPhone OS \(os) like Mac OS X) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+        + "Version/\(version.majorVersion).\(version.minorVersion) Mobile/15E148 Safari/604.1"
+    #endif
+}()
 private let ssoLegacyDefaultURLString = "https://ccsys.niu.edu.tw/SSO/Default.aspx"
 private let ssoLegacyMainURLString = "https://ccsys.niu.edu.tw/SSO/StdMain.aspx"
 
@@ -105,6 +121,8 @@ public struct SSOLoginWebView: SSOViewRepresentable {
     public let account: String
     public let password: String
     public let automaticallySubmits: Bool
+    /// In manual mode, still submit untouched saved credentials once verification passes.
+    public let submitsAfterVerification: Bool
     public let onInteractionRequired: (() -> Void)?
     public let onInteractionReady: (() -> Void)?
     public let isAttemptCurrent: (() -> Bool)?
@@ -113,6 +131,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
     @EnvironmentObject var appState: AppState
 
     public init(account: String, password: String, automaticallySubmits: Bool = true,
+                submitsAfterVerification: Bool = false,
                 onInteractionRequired: (() -> Void)? = nil,
                 onInteractionReady: (() -> Void)? = nil,
                 isAttemptCurrent: (() -> Bool)? = nil,
@@ -120,6 +139,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         self.account = account
         self.password = password
         self.automaticallySubmits = automaticallySubmits
+        self.submitsAfterVerification = submitsAfterVerification
         self.onInteractionRequired = onInteractionRequired
         self.onInteractionReady = onInteractionReady
         self.isAttemptCurrent = isAttemptCurrent
@@ -139,6 +159,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         config.websiteDataStore = .default()
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.customUserAgent = ssoLoginSafariUserAgent
         webView.navigationDelegate = context.coordinator
 
         if let url = URL(string: ssoModernLoginURLString) {
@@ -149,7 +170,8 @@ public struct SSOLoginWebView: SSOViewRepresentable {
     }
 
     public func updateNSView(_ nsView: WKWebView, context: Context) {
-        context.coordinator.updateAutomation(automaticallySubmits, in: nsView)
+        context.coordinator.updateAutomation(automaticallySubmits,
+                                             submitsAfterVerification: submitsAfterVerification, in: nsView)
     }
 
     public static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
@@ -164,6 +186,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         config.websiteDataStore = .default()
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.customUserAgent = ssoLoginSafariUserAgent
         webView.navigationDelegate = context.coordinator
 
         if let url = URL(string: ssoModernLoginURLString) {
@@ -174,7 +197,8 @@ public struct SSOLoginWebView: SSOViewRepresentable {
     }
 
     public func updateUIView(_ uiView: WKWebView, context: Context) {
-        context.coordinator.updateAutomation(automaticallySubmits, in: uiView)
+        context.coordinator.updateAutomation(automaticallySubmits,
+                                             submitsAfterVerification: submitsAfterVerification, in: uiView)
     }
 
     public static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
@@ -210,6 +234,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
         private var modernPageGeneration = 0
         private var authorizationTask: Task<Void, Never>?
         private var automaticSubmissionEnabled: Bool
+        private var submitsAfterVerification: Bool
         private var verificationWaitStartedAt: Date?
         private var lastReportedModernError: String?
         private var rejectedModernToken: String?
@@ -248,16 +273,21 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             self.appState = appState
             self.parent = parent
             automaticSubmissionEnabled = parent.automaticallySubmits
+            submitsAfterVerification = parent.submitsAfterVerification
         }
 
-        fileprivate func updateAutomation(_ enabled: Bool, in webView: WKWebView) {
-            guard !cancelled, automaticSubmissionEnabled != enabled else { return }
+        fileprivate func updateAutomation(_ enabled: Bool, submitsAfterVerification: Bool, in webView: WKWebView) {
+            guard !cancelled else { return }
+            self.submitsAfterVerification = submitsAfterVerification
+            guard automaticSubmissionEnabled != enabled else { return }
             automaticSubmissionEnabled = enabled
             guard !enabled else { return }
             // Keep the current challenge/page and stop editing or submitting its form.
             modernFormHasBeenFilled = true
             modernLoginDeadline = nil
-            notifyInteractionReady()
+            // Called from updateUIView/updateNSView; the callback publishes SwiftUI state,
+            // so report readiness after the current view update. Guards re-run then.
+            DispatchQueue.main.async { [weak self] in self?.notifyInteractionReady() }
             if modernLoginFinished, authorizationTask == nil {
                 modernLoginFinished = false
                 isProcessingCaptcha = true
@@ -568,7 +598,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
 
         private func fillModernLoginForm(in webView: WKWebView) {
             guard isAttemptActive, pendingFormEvaluations.isEmpty, !modernLoginFinished, !modernSubmitTriggered,
-                  automaticSubmissionEnabled || !modernFormHasBeenFilled else { return }
+                  automaticSubmissionEnabled || submitsAfterVerification || !modernFormHasBeenFilled else { return }
             let generation = modernPageGeneration
             guard let credentials = try? JSONSerialization.data(withJSONObject: [parent.account, parent.password]),
                   let json = String(data: credentials, encoding: .utf8) else {
@@ -577,6 +607,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             }
             let shouldFill = modernFormHasBeenFilled ? "false" : "true"
             let shouldSubmit = automaticSubmissionEnabled ? "true" : "false"
+            let shouldSubmitAfterVerification = submitsAfterVerification ? "true" : "false"
 
             let script = """
             (function() {
@@ -594,7 +625,10 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     form.addEventListener('submit', () => { window.__niuAppSubmitObserved = true; });
                 }
                 if (window.__niuAppSubmitObserved) return 'submitted';
-                if (\(shouldFill)) {
+                // A page reloaded during verification has never been filled; user-cleared fields stay blank.
+                const freshPage = !window.__niuAppFormFilled && !usernameField.value && !passwordField.value;
+                if (\(shouldFill) || (\(shouldSubmitAfterVerification) && freshPage)) {
+                    window.__niuAppFormFilled = true;
                     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
                     for (const [field, value] of [[usernameField, account], [passwordField, password]]) {
                         setter.call(field, value);
@@ -602,9 +636,24 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                         field.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
-                if (!\(shouldSubmit)) return 'manual';
+                if (!\(shouldSubmit)) {
+                    // The user may have edited the form; only resume with untouched saved credentials.
+                    if (!\(shouldSubmitAfterVerification)
+                        || usernameField.value !== account || passwordField.value !== password) return 'manual';
+                }
                 if (!usernameField.checkValidity() || !passwordField.checkValidity()) return 'invalid_credentials';
-                if (submit.disabled) return 'waiting_verification';
+                if (submit.disabled) {
+                    // Visible page: center the school's verification widget so one tap is enough.
+                    // Only scrolls; the user still completes the verification themselves.
+                    if (!\(shouldSubmit) && !window.__niuAppVerificationShown) {
+                        const widget = document.querySelector('.cf-turnstile, iframe[src*="challenges.cloudflare.com"]');
+                        if (widget && typeof widget.scrollIntoView === 'function') {
+                            window.__niuAppVerificationShown = true;
+                            widget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                        }
+                    }
+                    return 'waiting_verification';
+                }
                 submit.click();
                 return 'submitted';
             })();
@@ -629,7 +678,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 if state == "waiting_verification" {
                     if self.verificationWaitStartedAt == nil { self.verificationWaitStartedAt = Date() }
                     if let started = self.verificationWaitStartedAt,
-                       Date().timeIntervalSince(started) >= 8 {
+                       Date().timeIntervalSince(started) >= 15 {
                         self.parent.onInteractionRequired?()
                     }
                 } else {
@@ -773,18 +822,6 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             }
         }
 
-        private func tokenExpiration(_ token: String) -> String? {
-            let parts = token.split(separator: ".")
-            guard parts.count > 1 else { return nil }
-            var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+")
-                                          .replacingOccurrences(of: "_", with: "/")
-            payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
-            guard let data = Data(base64Encoded: payload),
-                  let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let seconds = claims["exp"] as? TimeInterval else { return nil }
-            return ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: seconds))
-        }
-
         private func finishModernLogin(token: String?, in webView: WKWebView) {
             guard let token, !token.isEmpty else {
                 self.trace("新版登入成功但缺少 token")
@@ -816,7 +853,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                     return
                 }
                 guard self.isAttemptActive, !self.appState.isLoggingOut else { return }
-                SSOTokenStore.shared.save(token: token, exp: self.tokenExpiration(token), account: self.parent.account)
+                SSOTokenStore.shared.save(token: token, exp: SSOTokenStore.jwtExpiration(token), account: self.parent.account)
                 self.appState.updateProfileFromSSO(info)
                 self.trace("登入憑證驗證完成")
                 self.parent.onResult(.success(info: info))

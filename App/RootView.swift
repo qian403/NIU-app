@@ -32,6 +32,7 @@ struct RootView: View {
                     account: sessionService.refreshAccount,
                     password: sessionService.refreshPassword,
                     automaticallySubmits: !sessionService.showRefreshWebView,
+                    submitsAfterVerification: sessionService.resumesAfterVerification,
                     onInteractionRequired: {
                         sessionService.requireInteraction(requestID: refreshID)
                     },
@@ -55,7 +56,10 @@ struct RootView: View {
                                 Button("取消", action: sessionService.cancelRefresh)
                                     .frame(minHeight: 44)
                             }
-                            Text(sessionService.lastFailureMessage ?? "無法自動完成登入，請在下方完成校方驗證。")
+                            Text(sessionService.lastFailureMessage
+                                 ?? (sessionService.resumesAfterVerification
+                                     ? "點一下下方的驗證框，通過後會自動登入。"
+                                     : "無法自動完成登入，請在下方完成校方驗證。"))
                                 .font(.footnote).foregroundStyle(.secondary)
                             if !sessionService.isRefreshPageReadyForInteraction {
                                 ProgressView("正在準備登入頁…").font(.footnote)

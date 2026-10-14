@@ -16,7 +16,13 @@ enum SSOTokenStore {
 }
 struct SSOTokenStoreStub {
     var token: String? { nil }
+    var account: String? { nil }
     func clear(ifMatching: String) { fatalError("No Keychain in fixture") }
+}
+@MainActor final class SSOTokenRenewer {
+    static let shared = SSOTokenRenewer()
+    var sessionGeneration: Int { 0 }
+    func renewIfNeeded() async -> Bool { fatalError("No token renewal in fixture") }
 }
 extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 @MainActor enum StorageKeys { static let authSessionID = "test-only" }
@@ -151,7 +157,20 @@ extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 final class SSOTokenStore {
     static let shared = SSOTokenStore()
     var token: String? = "synthetic-token"
-    func clear(ifMatching value: String) { if token == value { token = nil } }
+    var account: String? = "synthetic"
+    func clear(ifMatching value: String) { if token == value { token = nil; account = nil } }
+}
+@MainActor final class SSOTokenRenewer {
+    static let shared = SSOTokenRenewer()
+    var calls = 0
+    var sessionGeneration = 0
+    var onRenew: (() -> Void)?
+    func renewIfNeeded() async -> Bool {
+        calls += 1
+        await Task.yield()
+        onRenew?()
+        return false
+    }
 }
 @MainActor final class SSOSessionService {
     static let shared = SSOSessionService()
@@ -191,6 +210,14 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
 }
 @main struct BridgeChecks {
     @MainActor static func settle() async throws { try await Task.sleep(for: .milliseconds(20)) }
+    /// Polls a timing-dependent condition in small steps; fails only after a generous bound.
+    @MainActor static func waitFor(_ reason: String, _ condition: () -> Bool) async throws {
+        for _ in 0..<1000 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        preconditionFailure("Timed out waiting: " + reason)
+    }
     @MainActor static func redirect(_ service: EnrollmentRegistrationService, _ path: String) {
         let url = URL(string: "https://acade.niu.edu.tw" + path)!
         service.webView(service.webView, decidePolicyFor: WKNavigationAction(url)) { policy in
@@ -201,6 +228,10 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
         FixtureHTTP.status = status
         FixtureHTTP.calls = 0
         SSOTokenStore.shared.token = "synthetic-token"
+        SSOTokenStore.shared.account = "synthetic"
+        SSOTokenRenewer.shared.calls = 0
+        SSOTokenRenewer.shared.sessionGeneration = 0
+        SSOTokenRenewer.shared.onRenew = nil
     }
     /// Starts a load that must end in sessionExpired; `completed` flips when it does.
     @MainActor static func expectExpiry(_ service: EnrollmentRegistrationService) -> (Task<Void, Never>, () -> Bool) {
@@ -233,6 +264,7 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
         service = EnrollmentRegistrationService(refreshSSO: {
             refreshes += 1
             SSOTokenStore.shared.token = "fresh-token"
+            SSOTokenStore.shared.account = "synthetic"
             FixtureHTTP.status = 200
             return true
         })
@@ -310,13 +342,13 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
         }
         try await settle()
         redirect(service, "/NIU/Default.aspx")
-        try await settle()
-        precondition(FixtureHTTP.calls == 1 && service.webView.requests.count == 2)
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitFor("first bridge") { service.webView.requests.count == 2 }
+        precondition(FixtureHTTP.calls == 1)
+        try await waitFor("stall retry") { service.webView.requests.count == 3 || stalledDone }
         precondition(!stalledDone && FixtureHTTP.calls == 2 && service.webView.requests.count == 3,
                      "A stalled bridge must not reuse its single-use GUID")
-        try await Task.sleep(for: .milliseconds(100))
-        precondition(stalledDone && FixtureHTTP.calls == 2 && service.webView.requests.count == 3,
+        try await waitFor("stall timeout") { stalledDone }
+        precondition(FixtureHTTP.calls == 2 && service.webView.requests.count == 3,
                      "Stall recovery is bounded to one retry")
         await stalled.value
 
@@ -350,6 +382,41 @@ final class WKWebViewConfiguration { var websiteDataStore = WKWebsiteDataStore.d
         try await settle()
         precondition(completed())
         await load.value
+        // Bridge: one renewal per GUID request.
+        reset(status: 200)
+        let guid = try await SSOGUIDBridge.requestGUID(account: "SYNTHETIC")
+        precondition(guid == "synthetic" && SSOTokenRenewer.shared.calls == 1 && FixtureHTTP.calls == 1)
+
+        // Login during renewal (another account, or the same one again): no request,
+        // and the new session stays intact.
+        for (newToken, newAccount) in [("token-b", "other"), ("token-same", "synthetic")] {
+            reset(status: 401)
+            SSOTokenRenewer.shared.onRenew = {
+                SSOTokenRenewer.shared.sessionGeneration += 1
+                SSOTokenStore.shared.token = newToken
+                SSOTokenStore.shared.account = newAccount
+            }
+            do { _ = try await SSOGUIDBridge.requestGUID(account: "synthetic"); fatalError("Expected cancellation") }
+            catch { precondition((error as? URLError)?.code == .cancelled, "\(error)") }
+            precondition(FixtureHTTP.calls == 0 && SSOTokenStore.shared.token == newToken,
+                         "A stale bridge request must not use or clear the new session")
+        }
+
+        // Renewal rejected (401 cleared the whole session): log in again, no GUID request.
+        reset(status: 200)
+        SSOTokenRenewer.shared.onRenew = { SSOTokenStore.shared.clear(ifMatching: "synthetic-token") }
+        do { _ = try await SSOGUIDBridge.requestGUID(account: "synthetic"); fatalError("Expected auth required") }
+        catch { precondition((error as? URLError)?.code == .userAuthenticationRequired, "\(error)") }
+        precondition(FixtureHTTP.calls == 0, "A rejected renewal must lead to login, not cancellation")
+
+        // Stored token belongs to another account: re-login, never send it.
+        reset(status: 401)
+        SSOTokenStore.shared.account = "other"
+        do { _ = try await SSOGUIDBridge.requestGUID(account: "synthetic"); fatalError("Expected auth required") }
+        catch { precondition((error as? URLError)?.code == .userAuthenticationRequired, "\(error)") }
+        precondition(FixtureHTTP.calls == 0 && SSOTokenStore.shared.token == "synthetic-token")
+
+        print("PASS: bridge renews once, rejected renewal → login, ignores sessions replaced during renewal (same or other account), never sends another account's token")
         print("PASS: in-query SSO refresh, bounded bridges, stalled bridge retry, cancellation during refresh, monotonic progress, unrelated-frame isolation")
     }
 }

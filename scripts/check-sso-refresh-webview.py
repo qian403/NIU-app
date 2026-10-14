@@ -96,6 +96,7 @@ import Combine
     static let shared = SSOTokenStore()
     var isLikelyValid = false
     func save(token: String, exp: String?, account: String) { Fixture.tokenWrites += 1 }
+    static func jwtExpiration(_ token: String) -> String? { nil }
 }
 @MainActor final class MoodleSessionManager {
     static let shared = MoodleSessionManager()
@@ -116,7 +117,9 @@ extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
     func updateProfileFromSSO(_ info: StudentInfo) { Fixture.profileWrites += 1 }
     func applicationDidBecomeActive() async {}
     func applicationDidEnterBackground() {}
+    func significantTimeChanged() {}
 }
+enum StorageKeys { static let authSessionID = "app.auth.sessionID" }
 struct HomeView: UIViewRepresentable {
     func makeUIView(context: Context) -> UIButton {
         let button = UIButton(type: .system)
@@ -262,6 +265,21 @@ struct CheckFailure: Error { let reason: String }
             try require(manualResult && !service.isRefreshing && !service.showRefreshWebView, "Manual success did not resume the query")
             try await reset()
 
+            Fixture.phase = "resume after verification"
+            Fixture.mode = .challenge
+            let verifying = Task { await service.requestRefresh() }
+            let verifyingBrowser = try await pageReady()
+            try await waitFor { service.showRefreshWebView && service.resumesAfterVerification }
+            let pendingSubmits = try await verifyingBrowser.evaluateJavaScript("window.fixtureSubmits") as? Int
+            try require(pendingSubmits == 0, "Submitted before verification completed")
+            _ = try await verifyingBrowser.evaluateJavaScript(
+                "window.allowLoginSuccess = true; document.querySelector('button').disabled = false;")
+            let resumedResult = await verifying.value
+            let resumedSubmits = try await verifyingBrowser.evaluateJavaScript("window.fixtureSubmits") as? Int
+            try require(resumedResult && resumedSubmits == 1 && !service.showRefreshWebView,
+                        "Passing verification did not submit saved credentials once")
+            try await reset()
+
             Fixture.phase = "queued automatic script handoff"
             Fixture.mode = .hold
             Fixture.holdFormEvaluation = true
@@ -352,7 +370,7 @@ struct CheckFailure: Error { let reason: String }
             try require(!logoutResult && !service.isRefreshing && !service.showRefreshWebView && service.refreshPassword.isEmpty,
                         "Logout left a refresh page or credentials active")
             result = ["status": "passed", "checks":
-                "background touch availability, silent success, same-WebView challenge reveal, queued-script handoff, manual edits/no auto-submit, rejection/reload recovery, rejected-token recovery, cancellation before dismantle, logout cleanup"]
+                "background touch availability, silent success, same-WebView challenge reveal, resume after verification, queued-script handoff, manual edits/no auto-submit, rejection/reload recovery, rejected-token recovery, cancellation before dismantle, logout cleanup"]
         } catch {
             service.disableAutoRefresh()
             result = ["status": "failed", "reason": String(describing: error)]
