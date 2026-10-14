@@ -692,13 +692,14 @@ private struct HomeToolsView: View {
                     color: .orange,
                     destination: .lunchPicker
                 )
-                FeatureCard(
-                    icon: "building.2.fill",
-                    title: "大樓平面圖",
-                    subtitle: "教室位置與樓層配置",
-                    color: .indigo,
-                    destination: .campusBuildings
-                )
+                // 大樓平面圖尚未完成，暫時隱藏入口；畫面與路由保留。
+                // FeatureCard(
+                //     icon: "building.2.fill",
+                //     title: "大樓平面圖",
+                //     subtitle: "教室位置與樓層配置",
+                //     color: .indigo,
+                //     destination: .campusBuildings
+                // )
             }
             .padding(Theme.Spacing.large)
         }
