@@ -162,7 +162,7 @@ struct CampusOverviewCanvas: View {
                     var y = spot.minY
                     for (line, measured) in zip(lines, sizes) {
                         drawHalo(line, in: context, at: CGPoint(x: spot.midX, y: y + measured.height / 2), size: size,
-                                 color: on ? Theme.Colors.accent : Theme.Colors.label)
+                                 color: Theme.Colors.label)
                         y += measured.height
                     }
                     break
@@ -172,7 +172,8 @@ struct CampusOverviewCanvas: View {
     }
 
     private func labelText(_ text: String, size: CGFloat, on: Bool, plan: Bool) -> Text {
-        Text(text).font(.system(size: size, weight: on || plan ? .bold : .medium))
+        // 選取的建築底色已是強調色，名稱改用深色加粗，不會藍字壓在藍底上。
+        Text(text).font(.system(size: size, weight: on ? .heavy : plan ? .bold : .medium))
     }
 
     /// 文字四周描一圈畫布底色，壓在道路與建築上也看得清楚。

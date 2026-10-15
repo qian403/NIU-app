@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// 把大樓的公尺座標對到畫布。寬的大樓放在直向畫布時順時針轉 90 度（西側朝上）；
-/// 同一棟的每層樓共用同一個框，切換樓層不跳動。
+/// 同一棟的每層樓共用同一個框，切換樓層不跳動。比整棟小很多的樓層（學生活動中心
+/// 只在一端的上層）例外，單獨填滿畫面。
 struct FloorFrame {
     let size: CGSize
     /// 留給浮在平面圖上的控制項的空間。
@@ -11,15 +12,18 @@ struct FloorFrame {
     let scale: CGFloat
     let transform: CGAffineTransform
 
-    init(bounds: CGRect, size: CGSize, padding: EdgeInsets) {
+    init(bounds: CGRect, floor: CGRect? = nil, size: CGSize, padding: EdgeInsets) {
         self.size = size
         self.padding = padding
         let area = Self.area(size, padding)
+        let region = floor.flatMap { own in
+            own.width < bounds.width * 0.85 || own.height < bounds.height * 0.85 ? own : nil
+        } ?? bounds
         rotated = bounds.width > bounds.height && area.height > area.width
-        let w = rotated ? bounds.height : bounds.width
-        let h = rotated ? bounds.width : bounds.height
+        let w = rotated ? region.height : region.width
+        let h = rotated ? region.width : region.height
         scale = max(min(area.width / max(w, 0.01), area.height / max(h, 0.01)), 0.01)
-        transform = CGAffineTransform(translationX: -bounds.midX, y: -bounds.midY)
+        transform = CGAffineTransform(translationX: -region.midX, y: -region.midY)
             .concatenating(CGAffineTransform(rotationAngle: rotated ? .pi / 2 : 0))
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(CGAffineTransform(translationX: area.midX, y: area.midY))
@@ -55,7 +59,7 @@ struct FloorMapCanvas: View {
 
     var body: some View {
         Canvas { context, size in
-            let frame = FloorFrame(bounds: building.bounds, size: size, padding: padding)
+            let frame = FloorFrame(bounds: building.bounds, floor: floor.bounds, size: size, padding: padding)
             let t = frame.transform.concatenating(zoom.transform)
             let k = frame.scale * zoom.scale // 每公尺的畫面點數
 
@@ -70,16 +74,28 @@ struct FloorMapCanvas: View {
             }
             context.stroke(outline, with: .color(Theme.Colors.separator), lineWidth: 1)
 
+            // 區域的地板加灰，走廊看起來才不像和其他部分相通。
+            for zone in floor.zones {
+                context.fill(Path(polygon: zone.points).applying(t), with: .color(Theme.Colors.tertiaryLabel.opacity(0.1)))
+            }
             for kind in Self.order {
                 for space in floor.spaces where space.kind == kind {
                     drawSpace(space, in: context, t: t, k: k)
                 }
             }
-            for link in floor.links {
+            // 區域邊界用虛線，看起來是範圍而不是牆。
+            for zone in floor.zones {
+                context.stroke(Path(polygon: zone.points).applying(t), with: .color(Theme.Colors.secondaryLabel),
+                               style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+            }
+            for link in floor.links + floor.zones.compactMap(\.entrance) {
                 drawLink(link, in: context, frame: frame, t: t)
             }
             for space in floor.spaces where space.kind == .room || space.kind == .restroom {
                 drawLabel(space, in: context, frame: frame, t: t, k: k)
+            }
+            for zone in floor.zones {
+                drawZoneTag(zone, in: context, t: t)
             }
         }
     }
@@ -150,7 +166,7 @@ struct FloorMapCanvas: View {
     /// 只有名稱的房間最多換三行。長名稱留在抽屜裡。
     private func drawLabel(_ space: MapSpace, in context: GraphicsContext, frame: FloorFrame, t: CGAffineTransform, k: CGFloat) {
         guard let label = space.label else { return }
-        let box = space.bounds
+        let box = space.labelBox
         let width = (frame.rotated ? box.height : box.width) * k - 4
         let height = (frame.rotated ? box.width : box.height) * k - 2
         guard width > 0, height > 0 else { return }
@@ -219,7 +235,7 @@ struct FloorMapCanvas: View {
         let length = max(hypot(d.x, d.y), 0.001)
         d = CGPoint(x: d.x / length, y: d.y / length)
         let upright = abs(d.y) > abs(d.x)
-        let label = "往\(link.name)"
+        let label = link.text
         let text = context.resolve(
             Text(upright ? label.map(String.init).joined(separator: "\n") : label)
                 .font(.system(size: fontSize, weight: .semibold))
@@ -253,6 +269,22 @@ struct FloorMapCanvas: View {
         head.addLine(to: CGPoint(x: back.x - side.x, y: back.y - side.y))
         head.closeSubpath()
         context.fill(head, with: .color(Color.indigo))
+    }
+
+    /// 區域名稱的小標籤，放在避開房間的最大空地。
+    private func drawZoneTag(_ zone: MapZone, in context: GraphicsContext, t: CGAffineTransform) {
+        let text = context.resolve(
+            Text(zone.name).font(.system(size: fontSize, weight: .semibold)).foregroundStyle(Theme.Colors.secondaryLabel)
+        )
+        let measured = text.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
+        let pad: CGFloat = 4
+        let centre = zone.labelBox.center.applying(t)
+        let pill = CGRect(
+            x: centre.x - (measured.width + pad * 3) / 2, y: centre.y - (measured.height + pad) / 2,
+            width: measured.width + pad * 3, height: measured.height + pad
+        )
+        context.fill(Path(roundedRect: pill, cornerRadius: pill.height / 2), with: .color(Palette.surface.opacity(0.9)))
+        context.draw(text, at: centre)
     }
 
     private enum Palette {

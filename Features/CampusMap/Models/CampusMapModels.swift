@@ -36,6 +36,8 @@ nonisolated struct MapSpace: Identifiable, Hashable, Sendable {
     /// 校方也在用的其他代碼（告示上的 E505、格101）：可搜尋、課表比對，不顯示。
     let aka: [String]
     let bounds: CGRect
+    /// 標籤的位置：房間內最大的正立矩形，L 形辦公室的名稱才不會落在缺角。
+    let labelBox: CGRect
 
     var isRoom: Bool { kind == .room }
 
@@ -64,6 +66,33 @@ nonisolated struct MapLink: Hashable, Sendable {
     let name: String
     let at: CGPoint
     let toward: CGPoint
+
+    /// 標示上的文字：往另一棟大樓，或區域自己的入口（`to` 為空）。
+    var text: String { to.isEmpty ? name : "往\(name)" }
+}
+
+/// 樓層裡與其他部分隔開的範圍，例如圖書資訊中心只能從 1 樓獨立入口進出的一翼，
+/// 或不對外開放的辦公區。
+nonisolated struct MapZone: Hashable, Sendable {
+    /// 獨立區域、行政區域。
+    let name: String
+    /// 怎麼進去，或不能進去。
+    let note: String?
+    let points: [CGPoint]
+    let bounds: CGRect
+    /// 區域自己的入口，畫成「獨立入口」標示。
+    let entrance: MapLink?
+    /// 區域名稱的位置：避開房間的最大空地。
+    let labelBox: CGRect
+
+    /// 「獨立區域，由 1 樓獨立入口進出」。
+    var description: String { [name, note].compactMap { $0 }.joined(separator: "，") }
+
+    /// 以標籤中心判斷房間是否在區域內。
+    func holds(_ space: MapSpace) -> Bool {
+        let c = space.labelBox.center
+        return bounds.contains(c) && polygonContains(points, c)
+    }
 }
 
 nonisolated struct MapFloor: Identifiable, Hashable, Sendable {
@@ -73,6 +102,7 @@ nonisolated struct MapFloor: Identifiable, Hashable, Sendable {
     let outlines: [[CGPoint]]
     let spaces: [MapSpace]
     let links: [MapLink]
+    let zones: [MapZone]
     /// 樓層所屬單位，例如 環境工程學系，以及常用簡稱。
     let unit: String?
     let aliases: [String]
@@ -87,6 +117,11 @@ nonisolated struct MapFloor: Identifiable, Hashable, Sendable {
 
     func space(id: String) -> MapSpace? {
         spaces.first { $0.id == id }
+    }
+
+    /// 房間所在的區域。
+    func zone(of space: MapSpace) -> MapZone? {
+        zones.first { $0.holds(space) }
     }
 
     /// `query`（已正規化）是否指這層的單位：環工、機械系、化學工程。
@@ -279,7 +314,10 @@ nonisolated struct CampusMapData: Sendable {
     let overview: CampusOverview
     let plans: CampusFloorPlans
 
-    static let planFiles = ["jiaose", "gongxue", "shixi", "dianzi", "shihua", "gezhi", "zonghe", "tuzi", "dongwu"]
+    static let planFiles = [
+        "jiaose", "gongxue", "shixi", "dianzi", "shihua", "gezhi", "zonghe", "tuzi", "dongwu",
+        "shengzi", "tiyu", "xingzheng", "jingde", "tongshi", "yuyan", "huodong", "shipin"
+    ]
 
     /// 讀取 App 內建的地圖資料。
     static func bundled(_ bundle: Bundle = .main) throws -> CampusMapData {
@@ -371,6 +409,38 @@ nonisolated func boundingRect(_ points: [CGPoint]) -> CGRect {
     return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
 }
 
+/// `points` 內、`bounds` 範圍中最大的正立矩形，並避開 `holes`。以 32×32 格取樣，
+/// 逐列累計向上連續的格數，再找每列直方圖下的最大矩形。
+nonisolated func largestBox(_ points: [CGPoint], bounds b: CGRect, holes: [MapSpace] = []) -> CGRect {
+    let n = 32
+    let cw = b.width / CGFloat(n), ch = b.height / CGFloat(n)
+    var heights = [Int](repeating: 0, count: n)
+    var best = CGRect.zero
+    for row in 0..<n {
+        for col in 0..<n {
+            let at = CGPoint(x: b.minX + (CGFloat(col) + 0.5) * cw, y: b.minY + (CGFloat(row) + 0.5) * ch)
+            let inside = polygonContains(points, at) && !holes.contains { hole in
+                hole.bounds.contains(at) && polygonContains(hole.points, at)
+            }
+            heights[col] = inside ? heights[col] + 1 : 0
+        }
+        for col in 0..<n {
+            var h = heights[col]
+            var end = col
+            while end < n, h > 0 {
+                h = min(h, heights[end])
+                let r = CGRect(
+                    x: b.minX + CGFloat(col) * cw, y: b.minY + CGFloat(row + 1 - h) * ch,
+                    width: CGFloat(end - col + 1) * cw, height: CGFloat(h) * ch
+                )
+                if r.width * r.height > best.width * best.height { best = r }
+                end += 1
+            }
+        }
+    }
+    return best.isEmpty ? b : best
+}
+
 nonisolated extension CGRect {
     var shortestSide: CGFloat { min(width, height) }
     var longestSide: CGFloat { max(width, height) }
@@ -400,9 +470,11 @@ private nonisolated struct SpaceJSON: Decodable {
         } else {
             points = (polygon ?? []).map(point)
         }
+        let bounds = boundingRect(points)
         return MapSpace(
             id: id, kind: MapSpaceKind(json: kind), points: points, isRect: rect != nil,
-            code: code, name: name, note: note, aka: aka ?? [], bounds: boundingRect(points)
+            code: code, name: name, note: note, aka: aka ?? [], bounds: bounds,
+            labelBox: rect != nil ? bounds : largestBox(points, bounds: bounds)
         )
     }
 }
@@ -414,12 +486,36 @@ private nonisolated struct LinkJSON: Decodable {
     let toward: [Double]
 }
 
+private nonisolated struct ZoneJSON: Decodable {
+    struct Entrance: Decodable {
+        let at: [Double]
+        let toward: [Double]
+    }
+
+    let name: String
+    let note: String?
+    let polygon: [[Double]]
+    let entrance: Entrance?
+
+    func model(among spaces: [MapSpace]) -> MapZone {
+        let points = polygon.map(point)
+        let bounds = boundingRect(points)
+        let free = largestBox(points, bounds: bounds, holes: spaces.filter { $0.kind != .corridor })
+        return MapZone(
+            name: name, note: note, points: points, bounds: bounds,
+            entrance: entrance.map { MapLink(to: "", name: "獨立入口", at: point($0.at), toward: point($0.toward)) },
+            labelBox: free.shortestSide > 0 ? free : largestBox(points, bounds: bounds)
+        )
+    }
+}
+
 private nonisolated struct FloorJSON: Decodable {
     let id: String
     let outline: [[Double]]
     let outlines: [[[Double]]]?
     let spaces: [SpaceJSON]
     let links: [LinkJSON]?
+    let zones: [ZoneJSON]?
     let unit: String?
     let aliases: [String]?
 
@@ -432,6 +528,7 @@ private nonisolated struct FloorJSON: Decodable {
         return MapFloor(
             id: id, outline: outline, outlines: rings, spaces: spaces,
             links: (links ?? []).map { MapLink(to: $0.to, name: $0.name, at: point($0.at), toward: point($0.toward)) },
+            zones: (zones ?? []).map { $0.model(among: spaces) },
             unit: unit, aliases: aliases ?? [], bounds: bounds
         )
     }

@@ -87,7 +87,7 @@ struct BuildingMapView: View {
         ZoomableMap(zoom: $zoom, minScale: 1, maxScale: 6, margin: 0) {
             aimed = nil
         } onTap: { canvas in
-            let frame = FloorFrame(bounds: building.bounds, size: mapSize, padding: padding)
+            let frame = FloorFrame(bounds: building.bounds, floor: floor.bounds, size: mapSize, padding: padding)
             model.tap(floor.roomAt(frame.toMetres(canvas)))
         } content: { zoom in
             FloorMapCanvas(building: building, floor: floor, selectedID: model.selectedID, padding: padding, zoom: zoom)
@@ -140,7 +140,7 @@ struct BuildingMapView: View {
             aimed = space
             return
         }
-        let frame = FloorFrame(bounds: building.bounds, size: mapSize, padding: padding)
+        let frame = FloorFrame(bounds: building.bounds, floor: model.floor?.bounds, size: mapSize, padding: padding)
         let target = MapZoom.centring(frame.toCanvas(space.bounds.center), at: frame.area.center, scale: 2.4)
             .clamped(to: mapSize, margin: 0)
         if animated { fly(target) } else { zoom = target }
@@ -305,7 +305,8 @@ private struct FloorDrawer: View {
 
     private var subtitle: String? {
         if let selected {
-            return ([floor.title] + selected.details).joined(separator: "・")
+            return ([floor.title] + selected.details + [floor.zone(of: selected)?.description].compactMap { $0 })
+                .joined(separator: "・")
         }
         return floor.unit
     }
