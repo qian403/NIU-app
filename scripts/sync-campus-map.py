@@ -17,6 +17,8 @@ import sys
 FILES = [
     'campus.json', 'jiaose.json', 'gongxue.json', 'shixi.json', 'dianzi.json', 'shihua.json',
     'gezhi.json', 'zonghe.json', 'tuzi.json', 'dongwu.json',
+    'shengzi.json', 'tiyu.json', 'xingzheng.json', 'jingde.json',
+    'tongshi.json', 'yuyan.json', 'huodong.json', 'shipin.json',
 ]
 KINDS = {'room', 'corridor', 'stairs', 'elevator', 'restroom', 'void', 'terrace'}
 
@@ -41,6 +43,11 @@ def validate(folder: Path) -> None:
             for space in floor['spaces']:
                 assert space['kind'] in KINDS, (name, floor['id'], space['kind'])
                 assert all(isinstance(a, str) and a for a in space.get('aka', [])), (name, floor['id'], space)
+            # 獨立區域、行政區域等劃開的範圍；entrance 是該區自己的入口。
+            for zone in floor.get('zones', []):
+                assert zone['name'] and len(zone['polygon']) >= 3, (name, floor['id'], zone)
+                if 'entrance' in zone:
+                    assert len(zone['entrance']['at']) == 2 and len(zone['entrance']['toward']) == 2, (name, floor['id'])
                 assert ('rect' in space) != ('polygon' in space), (name, floor['id'], space)
         plans.discard(building['id'])
     assert not plans, f'campus.json links plans that are not bundled: {plans}'
