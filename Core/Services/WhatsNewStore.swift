@@ -19,7 +19,7 @@ struct ReleaseNotes: Identifiable, Equatable {
     static let catalog: [ReleaseNotes] = [
         ReleaseNotes(version: "1.5.0", items: [
             Item(icon: "map.fill", title: "校園地圖全面更新",
-                 detail: "地圖內容與 Android 版同步，改用原生手勢縮放與拖曳，也不會再拖出地圖範圍，還有部分地區待解鎖。"),
+                 detail: "新增 17 棟大樓的樓層平面圖，改用原生手勢縮放與拖曳，也不會再拖出地圖範圍。"),
             Item(icon: "fork.knife", title: "新增「午餐吃什麼」",
                  detail: "不知道吃什麼時，讓 App 幫你挑一間。"),
             Item(icon: "person.badge.key.fill", title: "校務登入自動續期",
