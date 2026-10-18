@@ -40,6 +40,15 @@ struct CampusShortcutsView: View {
             }
 
             Section {
+                action("查詢校園郵件包裹", symbol: "shippingbox",
+                       detail: "對象可選「自己」或「指定收件人」，指定時填寫姓名或手機號碼，並可選未領取、已領取或退件。傳回符合的郵件清單。")
+            } header: {
+                Text("郵件查詢")
+            } footer: {
+                Text("查詢自己需先登入，使用目前帳號的姓名；姓名比對依校方郵務系統規則，可能包含同名或部分相符的收件者。此動作在鎖定時也能執行，若不想在鎖定畫面顯示郵件內容，可在系統設定將通知預覽設為「解鎖時」。")
+            }
+
+            Section {
                 action("開啟校園頁面", symbol: "arrow.up.forward.app",
                        detail: "可選課表、行事曆、快速點名、圖書館 QR Code、校園信箱或 M 園區。尚未登入時，完成登入後繼續前往。")
             } header: {
@@ -51,12 +60,14 @@ struct CampusShortcutsView: View {
             Section {
                 action("上課前更新", symbol: "alarm",
                        detail: "先啟用課表即時動態，再設定時間自動化執行「更新課表即時動態」，即可更新或重新啟動動態。")
+                action("有包裹時通知我", symbol: "bell.badge",
+                       detail: "設定時間自動化執行「查詢校園郵件包裹」，加入「如果」判斷結果「有任何值」，再接「顯示通知」。")
                 action("早上朗讀課表", symbol: "speaker.wave.2",
                        detail: "依序加入「取得今天的課表」及「朗讀文字」，將課表結果作為朗讀內容。")
             } header: {
                 Text("自動化範例")
             } footer: {
-                Text("涉及個人課表的動作需解鎖裝置。自動化能否直接執行及背景更新時機依 iOS 設定與排程決定。")
+                Text("課表與郵件動作在鎖定時也能執行，結果會出現在通知或 Siri 回應中；可在系統設定將通知預覽設為「解鎖時」。自動化能否直接執行及背景更新時機依 iOS 設定與排程決定。")
             }
         }
         .navigationTitle("Siri 與捷徑")

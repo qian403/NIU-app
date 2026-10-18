@@ -139,6 +139,86 @@ enum CampusShortcutService {
     }
 }
 
+enum PostalShortcutError: LocalizedError {
+    case nameRequired, recipientRequired, failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .nameRequired: "尚未取得目前帳號的姓名，請開啟 NIU-Life 的郵件查詢確認個人資料後再試。"
+        case .recipientRequired: "請填寫收件人姓名或手機號碼其中一項。"
+        case .failed(let message): message
+        }
+    }
+}
+
+@MainActor
+enum PostalShortcutService {
+    static let maxPages = 5
+
+    /// `ownMail` searches the signed-in account's name; otherwise the given name or phone.
+    static func search(ownMail: Bool, name: String?, phone: String?,
+                       status: PostalStatus) async throws -> (records: [PostalRecord], query: PostalQuery, truncated: Bool) {
+        var session: String?
+        let query: PostalQuery
+        if ownMail {
+            session = try CampusShortcutService.authenticatedSession()
+            query = PostalQuery(name: try ownName(), status: status)
+        } else {
+            query = PostalQuery(name: name ?? "", phone: phone ?? "", status: status).normalized
+            guard query.canSearch else { throw PostalShortcutError.recipientRequired }
+        }
+        let service = await PostalService.make()
+        defer { service.invalidate() }
+        do {
+            var page = try await service.search(query)
+            var records = page.records
+            var pages = 1
+            while page.nextForm != nil, pages < maxPages {
+                try Task.checkCancellation()
+                page = try await service.nextPage(after: page)
+                let known = Set(records.map(\.id))
+                records += page.records.filter { !known.contains($0.id) }
+                pages += 1
+            }
+            try Task.checkCancellation()
+            // A logout or account switch during the request must not reveal the previous user's mail.
+            if let session, (try CampusShortcutService.authenticatedSession()) != session {
+                throw CampusShortcutError.sessionChanged
+            }
+            return (records, query, page.nextForm != nil)
+        } catch let error as CampusShortcutError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw PostalShortcutError.failed(PostalQueryViewModel.message(for: error))
+        }
+    }
+
+    static func ownName() throws -> String {
+        let defaults = UserDefaults.standard
+        let account = defaults.string(forKey: StorageKeys.username)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = defaults.string(forKey: StorageKeys.name)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty, name.lowercased() != account.lowercased() else { throw PostalShortcutError.nameRequired }
+        return name
+    }
+
+    static func summary(_ records: [PostalRecord], query: PostalQuery, truncated: Bool) -> String {
+        let target = query.name.isEmpty ? "指定手機號碼" : query.name
+        guard !records.isEmpty else { return "查無\(target)的\(query.status.title)郵件。" }
+        let shown = records.prefix(10).map { record in
+            var parts = ["\(record.receivedDate) 收件", record.category, record.recipient]
+            if !record.trackingNumber.isEmpty { parts.append("號碼 \(record.trackingNumber)") }
+            if !record.unit.isEmpty { parts.append(record.unit) }
+            if !record.note.isEmpty { parts.append(record.note) }
+            return "• " + parts.filter { !$0.isEmpty }.joined(separator: "・")
+        }
+        var lines = ["\(target)有 \(records.count)\(truncated ? " 筆以上" : " 筆")\(query.status.title)郵件："] + shown
+        if records.count > shown.count { lines.append("其餘 \(records.count - shown.count) 筆請在 App 的郵件查詢查看。") }
+        return lines.joined(separator: "\n")
+    }
+}
+
 extension Notification.Name {
     static let classLiveActivitySettingDidChange = Notification.Name("classLiveActivitySettingDidChange")
 }
