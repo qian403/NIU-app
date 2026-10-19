@@ -17,6 +17,12 @@ struct ReleaseNotes: Identifiable, Equatable {
 
     /// Newest first. Patch releases with nothing worth announcing need no entry.
     static let catalog: [ReleaseNotes] = [
+        ReleaseNotes(version: "1.6.0", items: [
+            Item(icon: "shippingbox.fill", title: "捷徑查詢郵件包裹",
+                 detail: "新增「查詢校園郵件包裹」捷徑，可搭配自動化在有包裹時通知你；郵件與課表捷徑在鎖定時也能執行。"),
+            Item(icon: "map.fill", title: "校園地圖新增平面圖",
+                 detail: "新增人文管理學院及外文系 1F–4F 樓層平面圖，斜向樓梯的階梯線也更準確。")
+        ]),
         ReleaseNotes(version: "1.5.0", items: [
             Item(icon: "map.fill", title: "校園地圖全面更新",
                  detail: "新增 17 棟大樓的樓層平面圖，改用原生手勢縮放與拖曳，也不會再拖出地圖範圍。"),
