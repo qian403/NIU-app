@@ -18,7 +18,7 @@ FILES = [
     'campus.json', 'jiaose.json', 'gongxue.json', 'shixi.json', 'dianzi.json', 'shihua.json',
     'gezhi.json', 'zonghe.json', 'tuzi.json', 'dongwu.json',
     'shengzi.json', 'tiyu.json', 'xingzheng.json', 'jingde.json',
-    'tongshi.json', 'yuyan.json', 'huodong.json', 'shipin.json',
+    'tongshi.json', 'yuyan.json', 'huodong.json', 'shipin.json', 'renguan.json',
 ]
 KINDS = {'room', 'corridor', 'stairs', 'elevator', 'restroom', 'void', 'terrace'}
 

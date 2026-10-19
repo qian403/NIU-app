@@ -316,7 +316,7 @@ nonisolated struct CampusMapData: Sendable {
 
     static let planFiles = [
         "jiaose", "gongxue", "shixi", "dianzi", "shihua", "gezhi", "zonghe", "tuzi", "dongwu",
-        "shengzi", "tiyu", "xingzheng", "jingde", "tongshi", "yuyan", "huodong", "shipin"
+        "shengzi", "tiyu", "xingzheng", "jingde", "tongshi", "yuyan", "huodong", "shipin", "renguan"
     ]
 
     /// 讀取 App 內建的地圖資料。

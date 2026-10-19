@@ -138,6 +138,24 @@ struct FloorMapCanvas: View {
         let b = space.bounds
         var lines = Path()
         switch space.kind {
+        case .stairs where !space.isRect:
+            // 畫出來的梯段可能是斜的：踏階垂直於最長邊，裁在梯段牆內。
+            let (origin, along) = Self.longestSide(space.points)
+            let normal = CGPoint(x: -along.y, y: along.x)
+            let reach = max(b.width, b.height) * 2
+            let ts = space.points.map { ($0.x - origin.x) * along.x + ($0.y - origin.y) * along.y }
+            guard let lo = ts.min(), let hi = ts.max() else { return }
+            var p = lo + 0.8
+            while p < hi - 0.8 {
+                let at = CGPoint(x: origin.x + along.x * p, y: origin.y + along.y * p)
+                lines.move(to: CGPoint(x: at.x - normal.x * reach, y: at.y - normal.y * reach))
+                lines.addLine(to: CGPoint(x: at.x + normal.x * reach, y: at.y + normal.y * reach))
+                p += 0.45
+            }
+            var clipped = context
+            clipped.clip(to: Path(polygon: space.points).applying(t))
+            clipped.stroke(lines.applying(t), with: .color(Theme.Colors.tertiaryLabel.opacity(0.35)), lineWidth: 1)
+            return
         case .stairs:
             let across = b.width >= b.height
             var p = (across ? b.minX : b.minY) + 0.8
@@ -158,6 +176,22 @@ struct FloorMapCanvas: View {
             return
         }
         context.stroke(lines.applying(t), with: .color(Theme.Colors.tertiaryLabel.opacity(0.35)), lineWidth: 1)
+    }
+
+    /// 多邊形的最長邊：起點與單位方向。
+    private static func longestSide(_ points: [CGPoint]) -> (CGPoint, CGPoint) {
+        var best = (points.first ?? .zero, CGPoint(x: 1, y: 0))
+        var length: CGFloat = 0
+        for (i, a) in points.enumerated() {
+            let b = points[(i + 1) % points.count]
+            let d = CGPoint(x: b.x - a.x, y: b.y - a.y)
+            let distance = hypot(d.x, d.y)
+            if distance > length {
+                length = distance
+                best = (a, CGPoint(x: d.x / distance, y: d.y / distance))
+            }
+        }
+        return best
     }
 
     // MARK: Labels
