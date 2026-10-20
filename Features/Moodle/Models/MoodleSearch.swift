@@ -15,7 +15,7 @@ nonisolated enum MoodleSearch {
 
     static func plainText(_ html: String) -> String {
         // Preserve block boundaries, but allow words split by inline emphasis.
-        var text = html.replacingOccurrences(
+        let text = html.replacingOccurrences(
             of: "(?is)<!--.*?-->|<(script|style)\\b[^>]*>.*?</\\1\\s*>",
             with: "", options: .regularExpression
         ).replacingOccurrences(
@@ -23,10 +23,18 @@ nonisolated enum MoodleSearch {
             with: " ", options: .regularExpression
         ).replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
         // Decode only after removing markup so escaped <text> stays visible.
+        return decodeEntities(text).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    static func decodeEntities(_ html: String) -> String {
         let entities = ["nbsp": " ", "amp": "&", "lt": "<", "gt": ">", "quot": "\"",
                         "apos": "'", "ndash": "–", "mdash": "—", "hellip": "…",
-                        "lsquo": "‘", "rsquo": "’", "ldquo": "“", "rdquo": "”", "copy": "©"]
-        let pattern = try? NSRegularExpression(pattern: "&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);")
+                        "lsquo": "‘", "rsquo": "’", "ldquo": "“", "rdquo": "”", "copy": "©",
+                        "sup1": "¹", "sup2": "²", "sup3": "³", "deg": "°", "plusmn": "±",
+                        "times": "×", "divide": "÷", "minus": "−", "middot": "·", "micro": "µ",
+                        "le": "≤", "ge": "≥", "ne": "≠"]
+        var text = html
+        let pattern = try? NSRegularExpression(pattern: "&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z0-9]+);")
         let matches = pattern?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? []
         for match in matches.reversed() {
             guard let range = Range(match.range, in: text),
@@ -42,7 +50,121 @@ nonisolated enum MoodleSearch {
             }
             if let decoded { text.replaceSubrange(range, with: decoded) }
         }
-        return text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return text
+    }
+}
+
+/// Moodle rich text reduced to readable runs. Superscript and subscript survive,
+/// so x<sup>2</sup> does not turn into x2.
+nonisolated enum MoodleRichText {
+    enum Position: Equatable { case normal, superscript, `subscript` }
+
+    struct Run: Equatable {
+        var text: String
+        var position: Position
+    }
+
+    private static let blockTags: Set<String> = [
+        "p", "div", "ul", "ol", "tr", "table", "h1", "h2", "h3", "h4", "h5", "h6",
+        "section", "blockquote", "pre",
+    ]
+
+    static func runs(_ html: String) -> [Run] {
+        let source = html.replacingOccurrences(
+            of: "(?is)<!--.*?-->|<(script|style)\\b[^>]*>.*?</\\1\\s*>",
+            with: "", options: .regularExpression
+        )
+        let tag = try? NSRegularExpression(pattern: "<(/?)([a-zA-Z][a-zA-Z0-9]*)\\b[^>]*>")
+        let matches = tag?.matches(in: source, range: NSRange(source.startIndex..., in: source)) ?? []
+        var runs: [Run] = []
+        var superscriptDepth = 0
+        var subscriptDepth = 0
+
+        func append(_ text: String, _ position: Position) {
+            guard !text.isEmpty else { return }
+            if runs.last?.position == position {
+                runs[runs.count - 1].text += text
+            } else {
+                runs.append(Run(text: text, position: position))
+            }
+        }
+        func appendText(_ raw: Substring) {
+            // Collapse source whitespace first; decoded &nbsp; and escaped <text> stay visible.
+            let collapsed = raw.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            let position: Position = superscriptDepth > 0 ? .superscript
+                : subscriptDepth > 0 ? .subscript : .normal
+            append(MoodleSearch.decodeEntities(collapsed), position)
+        }
+
+        var cursor = source.startIndex
+        for match in matches {
+            guard let range = Range(match.range, in: source),
+                  let nameRange = Range(match.range(at: 2), in: source) else { continue }
+            appendText(source[cursor..<range.lowerBound])
+            cursor = range.upperBound
+            let closing = match.range(at: 1).length > 0
+            switch source[nameRange].lowercased() {
+            case "sup": superscriptDepth = max(0, superscriptDepth + (closing ? -1 : 1))
+            case "sub": subscriptDepth = max(0, subscriptDepth + (closing ? -1 : 1))
+            case "br": append("\n", .normal)
+            case "li": if !closing { append("\n• ", .normal) }
+            case "td", "th": if closing { append(" ", .normal) }
+            case let name where blockTags.contains(name): append("\n", .normal)
+            default: break
+            }
+        }
+        appendText(source[cursor...])
+        return normalized(runs)
+    }
+
+    /// Unicode superscript/subscript form, or nil when any character has none.
+    static func scripted(_ text: String, _ position: Position) -> String? {
+        let map: [Character: Character]
+        switch position {
+        case .normal: return text
+        case .superscript: map = superscripts
+        case .subscript: map = subscripts
+        }
+        var result = ""
+        for character in text {
+            guard let mapped = map[character] else { return nil }
+            result.append(mapped)
+        }
+        return result
+    }
+
+    private static let superscripts: [Character: Character] = [
+        "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+        "+": "⁺", "-": "⁻", "−": "⁻", "=": "⁼", "(": "⁽", ")": "⁾", "n": "ⁿ", "i": "ⁱ", " ": " ",
+    ]
+    private static let subscripts: [Character: Character] = [
+        "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+        "+": "₊", "-": "₋", "−": "₋", "=": "₌", "(": "₍", ")": "₎", "a": "ₐ", "e": "ₑ", "o": "ₒ", "x": "ₓ",
+        "h": "ₕ", "k": "ₖ", "l": "ₗ", "m": "ₘ", "n": "ₙ", "p": "ₚ", "s": "ₛ", "t": "ₜ", " ": " ",
+    ]
+
+    private static func normalized(_ runs: [Run]) -> [Run] {
+        var result = runs.map { run -> Run in
+            guard run.position == .normal else { return run }
+            let text = run.text
+                .replacingOccurrences(of: "[ \\t]*\\n[ \\t]*", with: "\n", options: .regularExpression)
+                .replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
+            return Run(text: text, position: run.position)
+        }
+        while let first = result.first {
+            let trimmed = String(first.text.drop(while: \.isWhitespace))
+            if trimmed.isEmpty { result.removeFirst(); continue }
+            result[0].text = trimmed
+            break
+        }
+        while let last = result.last {
+            var text = last.text
+            while text.last?.isWhitespace == true { text.removeLast() }
+            if text.isEmpty { result.removeLast(); continue }
+            result[result.count - 1].text = text
+            break
+        }
+        return result
     }
 }
 

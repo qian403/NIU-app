@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct MoodleAssignmentView: View {
     let assignment: MoodleAssignment
+    private let introText: AttributedString
     private let repository: any MoodleSubmissionRepositoryProtocol
     private let sessionRevision: Int
     private let onSubmissionChange: ((Bool) -> Void)?
@@ -12,6 +13,7 @@ struct MoodleAssignmentView: View {
          onSubmissionChange: ((Bool) -> Void)? = nil) {
         self.onSubmissionChange = onSubmissionChange
         self.assignment = assignment
+        self.introText = Self.introText(assignment.intro)
         let repository = repository ?? MoodleSubmissionRepository()
         self.repository = repository
         self.sessionRevision = repository.sessionRevision
@@ -63,13 +65,13 @@ struct MoodleAssignmentView: View {
                 }
                 
                 // Description
-                if !assignment.plainIntro.isEmpty {
+                if !introText.characters.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("作業說明")
                             .font(.headline.weight(.semibold))
                             .foregroundColor(.primary)
                         
-                        Text(assignment.plainIntro)
+                        Text(introText)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                             .textSelection(.enabled)
@@ -301,6 +303,22 @@ struct MoodleAssignmentView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// Keeps Moodle <sup>/<sub>; uses Unicode scripts when every character has one.
+    private static func introText(_ html: String) -> AttributedString {
+        var text = AttributedString()
+        for run in MoodleRichText.runs(html) {
+            if let scripted = MoodleRichText.scripted(run.text, run.position) {
+                text += AttributedString(scripted)
+                continue
+            }
+            var part = AttributedString(run.text)
+            part.font = .caption2
+            part.baselineOffset = run.position == .superscript ? 5 : -2
+            text += part
+        }
+        return text
     }
 
     private func submissionStatusText(_ status: String?) -> String {

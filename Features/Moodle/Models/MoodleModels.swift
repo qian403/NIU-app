@@ -404,11 +404,6 @@ struct MoodleAssignment: Codable, Identifiable {
         guard let due = dueDateValue else { return false }
         return Date() > due
     }
-    
-    var plainIntro: String {
-        intro.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
 extension MoodleAssignment {
