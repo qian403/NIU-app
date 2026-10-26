@@ -23,6 +23,8 @@ assert info['ITSAppUsesNonExemptEncryption'] is False
 assert 'NSAppTransportSecurity' not in info  # No broad insecure-transport exception.
 for key in ['NSCameraUsageDescription', 'NSCalendarsWriteOnlyUsageDescription']:
     assert info.get(key, '').strip(), key
+# iPhone Duo resizes the app between its outer and inner displays.
+assert 'UILaunchScreen' in info and not info.get('UIRequiresFullScreen'), 'iPhone Duo needs a resizable scene'
 
 icons = root / 'Resources/Assets.xcassets/AppIcon.appiconset'
 for entry in json.loads((icons / 'Contents.json').read_text())['images']:
@@ -63,6 +65,9 @@ if args.archive:
     assert built['CFBundleIdentifier'] == 'dev.chienniuapp'
     assert built['CFBundleDisplayName'] == 'NIU-Life'
     assert built['ITSAppUsesNonExemptEncryption'] is False
+    # The iOS 27.0 SDK leaves iPhone Duo without full-screen layout and vertical bars.
+    sdk = tuple(int(part) for part in built['DTPlatformVersion'].split('.'))
+    assert sdk >= (27, 1), f"Archive built with iOS {built['DTPlatformVersion']} SDK; iPhone Duo needs 27.1+"
     assert (app / 'PrivacyInfo.xcprivacy').is_file()
     extensions = list((app / 'PlugIns').glob('*.appex'))
     assert len(extensions) == 1
@@ -76,4 +81,4 @@ if args.archive:
     assert '模擬 QR Code 過期'.encode() not in executable
     assert b'scanner allocated' not in executable
     print(f"PASS: archive {built['CFBundleShortVersionString']} ({built['CFBundleVersion']}), "
-          f"iOS {built['MinimumOSVersion']}, embedded extension/manifests, no DEBUG attendance controls")
+          f"iOS {built['MinimumOSVersion']}, SDK {built['DTPlatformVersion']}, embedded extension/manifests, no DEBUG attendance controls")
