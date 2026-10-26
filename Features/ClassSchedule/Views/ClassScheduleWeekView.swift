@@ -9,6 +9,10 @@ struct ClassScheduleWeekView: View {
     let editCustomCourse: (UUID) -> Void
     var campusRoom: (String?) -> CampusPlanRequest? = { _ in nil }
     var openCampusMap: (CampusPlanRequest) -> Void = { _ in }
+    /// A classmate's table: courses are not linked to the user's M 園區 and there is nothing to refresh.
+    var isReadOnly = false
+    /// Slots, keyed `mondayBasedDay * 100 + row`, highlighted as free for both people.
+    var freeSlots: Set<Int>? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
@@ -42,7 +46,7 @@ struct ClassScheduleWeekView: View {
                                     .padding(20)
                                     .background(Theme.Colors.accentSoft, in: RoundedRectangle(cornerRadius: 24))
                                 Text("這週沒有課").font(.headline)
-                                Text("下拉即可更新課表")
+                                Text(isReadOnly ? "這份課表沒有任何課程" : "下拉即可更新課表")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
@@ -64,7 +68,7 @@ struct ClassScheduleWeekView: View {
                     .padding(.vertical, 8)
                 }
                 .scrollBounceBehavior(.always, axes: .vertical)
-                .refreshable { await refresh() }
+                .refreshable { if !isReadOnly { await refresh() } }
             }
         }
     }
@@ -163,6 +167,17 @@ struct ClassScheduleWeekView: View {
                             }
                         }
                         .overlay(alignment: .leading) { gridRule.frame(width: 0.5) }
+                        if let freeSlots, let weekday = ScheduleClock.weekday(column.header) {
+                            let day = (weekday + 5) % 7
+                            ForEach(Array(layout.visibleRows), id: \.self) { row in
+                                if freeSlots.contains(day * 100 + row) {
+                                    freeCell
+                                        .frame(width: max(1, metrics.columnWidth - 6), height: max(0, metrics.rowHeight - 6))
+                                        .offset(x: 3, y: CGFloat(row - layout.visibleRows.lowerBound) * metrics.rowHeight + 3)
+                                        .accessibilityLabel("\(column.header) \(schedule.periods[row].displayPeriodLabel)，你們都沒課")
+                                }
+                            }
+                        }
                         ForEach(layout.blocks.filter { $0.column == column.id }) { block in
                             let inset: CGFloat = metrics.columnWidth < 48 ? 2 : 3
                             let height = max(0, CGFloat(block.rows.count) * metrics.rowHeight - inset * 2)
@@ -195,6 +210,23 @@ struct ClassScheduleWeekView: View {
                 .strokeBorder(gridRule, lineWidth: 0.5)
                 .allowsHitTesting(false)
         }
+    }
+
+    private var freeCell: some View {
+        RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
+            .fill(Color(.systemGreen).opacity(colorScheme == .dark ? 0.3 : 0.18))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
+                    .strokeBorder(Color(.systemGreen).opacity(0.55), lineWidth: 1)
+            }
+            .overlay {
+                Text("都沒課")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color(.systemGreen))
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                    .padding(.horizontal, 2)
+            }
     }
 
     private func header(_ column: ClassScheduleWeekLayout.Column, isToday: Bool, height: CGFloat) -> some View {
@@ -282,7 +314,12 @@ struct ClassScheduleWeekView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall))
             .clipped()
             .contentShape(Rectangle())
-        if let customID = block.course.customCourseID {
+        if isReadOnly {
+            label
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(layout.accessibilityLabel(for: block, periods: schedule.periods))
+                .campusRoomMenu(campusRoom(block.course.classroom), open: openCampusMap)
+        } else if let customID = block.course.customCourseID {
             Button { editCustomCourse(customID) } label: { label }
                 .buttonStyle(.plain)
                 .accessibilityLabel("自訂課程，" + layout.accessibilityLabel(for: block, periods: schedule.periods))

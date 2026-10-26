@@ -3,7 +3,7 @@ import SwiftUI
 private enum HomeDestination: Hashable {
     case settings, moodle, classSchedule, library, academicCalendar, attendance
     case eventRegistration, gradeHistory, graduationThreshold, mail, enrollmentCertificate, postalQuery, libraryEquipment
-    case tools, leaveApplication, lunchPicker, campusMap
+    case tools, leaveApplication, lunchPicker, campusMap, scheduleExchange
 
     init(_ destination: CampusDestination) {
         switch destination {
@@ -153,6 +153,7 @@ struct HomeView: View {
         case .settings: SettingsView()
         case .moodle: MoodleView()
         case .classSchedule: ClassScheduleView()
+        case .scheduleExchange: ClassScheduleView(opensClassmates: true)
         case .library: LibraryCodeView()
         case .libraryEquipment: LibraryEquipmentView()
         case .academicCalendar: AcademicCalendarView()
@@ -584,6 +585,14 @@ struct HomeView: View {
                     subtitle: "查看每週課程安排",
                     color: .purple,
                     destination: .classSchedule
+                )
+
+                FeatureCard(
+                    icon: "person.2.fill",
+                    title: "課表交換",
+                    subtitle: "看同學課表、找共同空堂",
+                    color: .pink,
+                    destination: .scheduleExchange
                 )
 
                 FeatureCard(

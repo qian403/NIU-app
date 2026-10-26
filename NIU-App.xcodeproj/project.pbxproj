@@ -202,6 +202,10 @@
 		C1A550010000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */; };
 		C1A550010000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */; };
 		C1A550010000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */; };
+		C1A5E0010000000000000001 /* Features/ClassSchedule/Models/ScheduleShareModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A5E0020000000000000001 /* Features/ClassSchedule/Models/ScheduleShareModels.swift */; };
+		C1A5E0010000000000000002 /* Features/ClassSchedule/Services/ScheduleExchangeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A5E0020000000000000002 /* Features/ClassSchedule/Services/ScheduleExchangeStore.swift */; };
+		C1A5E0010000000000000003 /* Features/ClassSchedule/ViewModels/ScheduleExchangeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A5E0020000000000000003 /* Features/ClassSchedule/ViewModels/ScheduleExchangeViewModel.swift */; };
+		C1A5E0010000000000000004 /* Features/ClassSchedule/Views/ScheduleExchangeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A5E0020000000000000004 /* Features/ClassSchedule/Views/ScheduleExchangeView.swift */; };
 		C1A550010000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift */; };
 		C1A550010000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550020000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift */; };
 /* End PBXBuildFile section */
@@ -441,6 +445,10 @@
 		C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/CustomCourseStore.swift; sourceTree = "<group>"; };
 		C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleSettingsView.swift; sourceTree = "<group>"; };
 		C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/CustomCourseEditorView.swift; sourceTree = "<group>"; };
+		C1A5E0020000000000000001 /* Features/ClassSchedule/Models/ScheduleShareModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Models/ScheduleShareModels.swift; sourceTree = "<group>"; };
+		C1A5E0020000000000000002 /* Features/ClassSchedule/Services/ScheduleExchangeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/ScheduleExchangeStore.swift; sourceTree = "<group>"; };
+		C1A5E0020000000000000003 /* Features/ClassSchedule/ViewModels/ScheduleExchangeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/ViewModels/ScheduleExchangeViewModel.swift; sourceTree = "<group>"; };
+		C1A5E0020000000000000004 /* Features/ClassSchedule/Views/ScheduleExchangeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ScheduleExchangeView.swift; sourceTree = "<group>"; };
 		C1A550020000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift; sourceTree = "<group>"; };
 		C1A550020000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -866,6 +874,10 @@
 				C1A550020000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift */,
 				C1A550020000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift */,
 				C1A550020000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift */,
+				C1A5E0020000000000000001 /* Features/ClassSchedule/Models/ScheduleShareModels.swift */,
+				C1A5E0020000000000000002 /* Features/ClassSchedule/Services/ScheduleExchangeStore.swift */,
+				C1A5E0020000000000000003 /* Features/ClassSchedule/ViewModels/ScheduleExchangeViewModel.swift */,
+				C1A5E0020000000000000004 /* Features/ClassSchedule/Views/ScheduleExchangeView.swift */,
 				C1A550020000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift */,
 				C1A550020000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift */,
 				AA01BC15AA01BC15AA01BC15 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift */,
@@ -1269,6 +1281,10 @@
 				C1A550010000000000000005 /* Features/ClassSchedule/Services/CustomCourseStore.swift in Sources */,
 				C1A550010000000000000006 /* Features/ClassSchedule/Views/ClassScheduleSettingsView.swift in Sources */,
 				C1A550010000000000000007 /* Features/ClassSchedule/Views/CustomCourseEditorView.swift in Sources */,
+				C1A5E0010000000000000001 /* Features/ClassSchedule/Models/ScheduleShareModels.swift in Sources */,
+				C1A5E0010000000000000002 /* Features/ClassSchedule/Services/ScheduleExchangeStore.swift in Sources */,
+				C1A5E0010000000000000003 /* Features/ClassSchedule/ViewModels/ScheduleExchangeViewModel.swift in Sources */,
+				C1A5E0010000000000000004 /* Features/ClassSchedule/Views/ScheduleExchangeView.swift in Sources */,
 				C1A550010000000000000008 /* Features/ClassSchedule/Services/ClassScheduleWallpaperService.swift in Sources */,
 				C1A550010000000000000009 /* Features/ClassSchedule/Views/ClassScheduleWallpaperView.swift in Sources */,
 				AA01BC05AA01BC05AA01BC05 /* Features/ClassSchedule/Services/ClassScheduleExportService.swift in Sources */,

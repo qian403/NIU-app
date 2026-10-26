@@ -44,6 +44,7 @@ final class AppState: ObservableObject {
     func login(user: User) {
         guard !isLoggingOut else { return }
         EventFavoritesStore.shared.clear()
+        ScheduleExchangeStore.shared.clearMemory()
         NotificationScheduler.shared.invalidateSession()
         EventRegistrationClient.shared.reset()
         // A new login replaces the session, including any pending refresh/EUNI work.
@@ -74,6 +75,7 @@ final class AppState: ObservableObject {
     func logout() {
         guard !isLoggingOut else { return }
         EventFavoritesStore.shared.clear()
+        ScheduleExchangeStore.shared.clearMemory()
         MailViewModel.shared.reset()
         NativeMailViewModel.shared.reset()
         LiveActivityRemoteClient.shared.disable()
