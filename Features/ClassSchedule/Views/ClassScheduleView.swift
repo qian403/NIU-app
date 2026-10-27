@@ -539,13 +539,18 @@ struct ClassScheduleView: View {
                         refresh: refreshSchedule,
                         editCustomCourse: editCustomCourse,
                         campusRoom: campusRoom,
-                        openCampusMap: { campusMapRequest = $0 }
+                        openCampusMap: { campusMapRequest = $0 },
+                        showsAcademicWeek: true,
+                        academicCalendar: vm.academicCalendar
                     )
                 }
             }
         }
         .onAppear {
             syncPagerSelection(with: vm.selectedDayIndex, animated: false)
+        }
+        .task {
+            await vm.loadAcademicCalendar()
         }
         .onChange(of: vm.selectedDayIndex) { _, newValue in
             syncPagerSelection(with: newValue, animated: true)

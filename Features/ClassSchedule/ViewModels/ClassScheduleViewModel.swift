@@ -29,6 +29,9 @@ final class ClassScheduleViewModel: ObservableObject {
     @Published var isFetchingInBackground = false  // background refresh while showing cache
     @Published private(set) var isRefreshing = false
 
+    /// Public campus calendar for "第幾週"; no student data, kept across logout.
+    @Published private(set) var academicCalendar: CampusCalendarDocument?
+
     // Controls whether the invisible WebView is in the hierarchy
     @Published var showWebView = false
 
@@ -136,6 +139,13 @@ final class ClassScheduleViewModel: ObservableObject {
             loadState = .loading
             showWebView = true
         }
+    }
+
+    /// Loads the bundled/cached campus calendar for the current academic year so the week
+    /// view can label "第幾週". Reads locally only (no network); nil keeps the week blank.
+    func loadAcademicCalendar() async {
+        let year = CampusCalendarDate.academicYear(at: referenceDate)
+        academicCalendar = await AcademicCalendarStore.shared.cached(year: year).document
     }
 
     func cancelLoading() {

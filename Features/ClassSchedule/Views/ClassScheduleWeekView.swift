@@ -13,6 +13,10 @@ struct ClassScheduleWeekView: View {
     var isReadOnly = false
     /// Slots, keyed `mondayBasedDay * 100 + row`, highlighted as free for both people.
     var freeSlots: Set<Int>? = nil
+    /// Shows the「學年度・學期・第幾週」row above the grid. Only the user's own week view sets this.
+    var showsAcademicWeek = false
+    /// Public campus calendar used to resolve「第幾週」; nil leaves the week blank.
+    var academicCalendar: CampusCalendarDocument? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
@@ -38,6 +42,9 @@ struct ClassScheduleWeekView: View {
                 )
                 ScrollView(.vertical) {
                     VStack(spacing: 8) {
+                        if showsAcademicWeek {
+                            academicWeekHeader(now: now)
+                        }
                         if layout.blocks.isEmpty {
                             VStack(spacing: Theme.Spacing.small) {
                                 Image(systemName: "calendar.badge.checkmark")
@@ -78,6 +85,32 @@ struct ClassScheduleWeekView: View {
         if ClassScheduleUIFixture.requested { return ClassScheduleUIFixture.now }
         #endif
         return date
+    }
+
+    /// 學年度・學期恆顯示（由日期推得）；第幾週僅在逐週資料可查到時附上，否則留白。
+    private func academicWeekHeader(now: Date) -> some View {
+        let term = ScheduleShareTerm(containing: now)
+        let week = AcademicWeekResolver.week(for: now, in: academicCalendar)
+        return HStack(spacing: Theme.Spacing.xsmall) {
+            Image(systemName: "calendar")
+                .font(.caption2)
+                .foregroundStyle(Theme.Colors.accent)
+            Text(term.title)
+                .foregroundStyle(Theme.Colors.secondaryLabel)
+            if let week {
+                Text("・").foregroundStyle(Theme.Colors.tertiaryLabel)
+                Text(week.weekText)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.Colors.label)
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.caption)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(week.map { "\(term.title)，\($0.weekText)" } ?? term.title)
     }
 
     private func updateStatus(layout: ClassScheduleWeekLayout) -> some View {
