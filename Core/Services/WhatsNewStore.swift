@@ -17,6 +17,12 @@ struct ReleaseNotes: Identifiable, Equatable {
 
     /// Newest first. Patch releases with nothing worth announcing need no entry.
     static let catalog: [ReleaseNotes] = [
+        ReleaseNotes(version: "1.7.0", items: [
+            Item(icon: "person.2.fill", title: "課表交換與共同空堂",
+                 detail: "用 QR Code 和同學交換課表，一起找出大家都沒課的時間。"),
+            Item(icon: "calendar", title: "整週課表顯示第幾週",
+                 detail: "整週課表上方會顯示目前的學年度、學期與第幾週，寒暑假和預備週也會標示。")
+        ]),
         ReleaseNotes(version: "1.6.0", items: [
             Item(icon: "shippingbox.fill", title: "捷徑查詢郵件包裹",
                  detail: "新增「查詢校園郵件包裹」捷徑，可搭配自動化在有包裹時通知你；郵件與課表捷徑在鎖定時也能執行。"),
