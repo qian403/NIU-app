@@ -148,6 +148,7 @@
 		C0ED00010000000000000004 /* app-content/credits.json in Resources */ = {isa = PBXBuildFile; fileRef = C0ED00020000000000000004 /* app-content/credits.json */; };
 		C77CCBED4BDC0A50ED31765A /* Features/AcademicCalendar/Views/CalendarEventCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA8B4D9DCD926050361DB7 /* Features/AcademicCalendar/Views/CalendarEventCard.swift */; };
 		CA1E00010000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift */; };
+		CA1E00030000000000000001 /* NIU-LiveActivities/AcademicWeekResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1E00030000000000000002 /* NIU-LiveActivities/AcademicWeekResolver.swift */; };
 		CA1E00010000000000000002 /* Resources/AcademicCalendar in Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* Resources/AcademicCalendar */; };
 		CA1E00010000000000000003 /* Resources/AcademicCalendar in Resources */ = {isa = PBXBuildFile; fileRef = CA1E00020000000000000002 /* Resources/AcademicCalendar */; };
 		CA4A11010000000000000001 /* Features/Mail/Models/MailModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */; };
@@ -394,6 +395,7 @@
 		C0ED00020000000000000003 /* Features/Home/Views/SpecialThanksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Home/Views/SpecialThanksView.swift; sourceTree = SOURCE_ROOT; };
 		C0ED00020000000000000004 /* app-content/credits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "app-content/credits.json"; sourceTree = SOURCE_ROOT; };
 		CA1E00020000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/AcademicCalendarStore.swift"; sourceTree = SOURCE_ROOT; };
+		CA1E00030000000000000002 /* NIU-LiveActivities/AcademicWeekResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NIU-LiveActivities/AcademicWeekResolver.swift"; sourceTree = SOURCE_ROOT; };
 		CA1E00020000000000000002 /* Resources/AcademicCalendar */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/AcademicCalendar; sourceTree = SOURCE_ROOT; };
 		CA4A11020000000000000001 /* Features/Mail/Models/MailModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Models/MailModels.swift; sourceTree = SOURCE_ROOT; };
 		CA4A11020000000000000002 /* Features/Mail/Services/MailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Mail/Services/MailService.swift; sourceTree = SOURCE_ROOT; };
@@ -509,6 +511,7 @@
 				10D1F8792F80C57900034946 /* NIU-LiveActivities */,
 				D032C002D032C002D032C002 /* NIU-LiveActivities/CampusNavigation.swift */,
 				CA1E00020000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift */,
+				CA1E00030000000000000002 /* NIU-LiveActivities/AcademicWeekResolver.swift */,
 				CA1E00020000000000000002 /* Resources/AcademicCalendar */,
 				C0ED00020000000000000004 /* app-content/credits.json */,
 				C0ED00020000000000000003 /* Features/Home/Views/SpecialThanksView.swift */,
@@ -1264,6 +1267,7 @@
 				C01100010000000000000002 /* Features/Home/ViewModels/SettingsConnectionViewModel.swift in Sources */,
 				ABCD01000000000000000000 /* NIU-LiveActivities/ClassLiveActivityAttributes.swift in Sources */,
 				CA1E00010000000000000001 /* NIU-LiveActivities/AcademicCalendarStore.swift in Sources */,
+				CA1E00030000000000000001 /* NIU-LiveActivities/AcademicWeekResolver.swift in Sources */,
 				C0ED00010000000000000003 /* Features/Home/Views/SpecialThanksView.swift in Sources */,
 				C0ED00010000000000000002 /* Features/Home/ViewModels/CreditsViewModel.swift in Sources */,
 				C0ED00010000000000000001 /* Features/Home/Services/CreditsStore.swift in Sources */,
@@ -1521,7 +1525,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1546,7 +1550,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.0;
 				NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				OTHER_LDFLAGS = (
@@ -1577,7 +1581,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "App/NIU-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				ENABLE_APP_SANDBOX = YES;
@@ -1602,7 +1606,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.0;
 				NIU_ACTIVITY_API_BASE_URL = "https://niu-api.chien.dev";
 				NIU_USAGE_API_BASE_URL = "https://niu-api.chien.dev";
 				OTHER_LDFLAGS = (
@@ -1631,7 +1635,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
@@ -1643,7 +1647,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.chienniuapp.NIU-LiveActivities";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1664,7 +1668,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "NIU-LiveActivities/NIU-LiveActivities.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = G4LXL97NF9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NIU-LiveActivities/Info.plist";
@@ -1676,7 +1680,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.chienniuapp.NIU-LiveActivities";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
