@@ -153,7 +153,7 @@ struct HomeView: View {
         case .settings: SettingsView()
         case .moodle: MoodleView()
         case .classSchedule: ClassScheduleView()
-        case .scheduleExchange: ClassScheduleView(opensClassmates: true)
+        case .scheduleExchange: ClassScheduleView(opensFriends: true)
         case .library: LibraryCodeView()
         case .libraryEquipment: LibraryEquipmentView()
         case .academicCalendar: AcademicCalendarView()
@@ -589,8 +589,8 @@ struct HomeView: View {
 
                 FeatureCard(
                     icon: "person.2.fill",
-                    title: "課表交換",
-                    subtitle: "看同學課表、找共同空堂",
+                    title: "課表好友",
+                    subtitle: "看好友有沒有空、揪團找空堂",
                     color: .pink,
                     destination: .scheduleExchange
                 )

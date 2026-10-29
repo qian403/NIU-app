@@ -9,33 +9,19 @@ struct ClassScheduleView: View {
     @State private var campusMapRequest: CampusPlanRequest?
     @AppStorage("classSchedule.displayMode") private var displayMode = "day"
 
-    // Classmates' timetables, shown in place of the user's own.
+    // Friends added by QR code; their page is pushed over the user's own timetable.
     @ObservedObject private var exchangeStore: ScheduleExchangeStore
     @StateObject private var exchange: ScheduleExchangeViewModel
-    @State private var viewingID: UUID?
-    @State private var marksFreeTime = true
-    @State private var showsClassmates = false
-    @State private var showsMyCode = false
-    @State private var showsScanner = false
-    @State private var afterClassmates: ClassmateAction?
-    @State private var exchangeToast: String?
-    /// Classmates compared together on the user's own timetable; empty when not comparing.
-    @State private var comparingIDs: Set<UUID> = []
-    @State private var compareSetup: CompareSetupRequest?
+    @State private var showsFriends = false
+    /// Set by the home-screen shortcut; pushes the friends page once the timetable has appeared.
+    @State private var opensFriendsOnAppear = false
 
-    private enum ClassmateAction { case scan, myCode, compare }
-
-    private struct CompareSetupRequest: Identifiable {
-        let id = UUID()
-        let selected: Set<UUID>
-    }
-
-    /// `opensClassmates` shows the classmate picker on arrival, for the home-screen shortcut.
-    init(opensClassmates: Bool = false) {
+    /// `opensFriends` pushes the friends page on arrival, for the home-screen shortcut.
+    init(opensFriends: Bool = false) {
         let store = ScheduleExchangeStore.shared
         exchangeStore = store
         _exchange = StateObject(wrappedValue: ScheduleExchangeViewModel(schedule: nil, store: store))
-        _showsClassmates = State(initialValue: opensClassmates)
+        _opensFriendsOnAppear = State(initialValue: opensFriends)
     }
 
     #if DEBUG
@@ -50,33 +36,11 @@ struct ClassScheduleView: View {
         let store = ClassScheduleUIFixture.exchangeStore
         exchangeStore = store
         _exchange = StateObject(wrappedValue: ScheduleExchangeViewModel(schedule: fixtureSchedule, store: store))
-        _showsClassmates = State(initialValue: ClassScheduleUIFixture.scenario == "exchange")
-        _showsMyCode = State(initialValue: ClassScheduleUIFixture.scenario == "exchange-share")
+        _opensFriendsOnAppear = State(initialValue: ClassScheduleUIFixture.scenario.hasPrefix("exchange"))
     }
     #endif
 
     private var showsWeek: Bool { displayMode == "week" }
-
-    /// The classmate being viewed; nil shows the user's own timetable.
-    private var viewing: ExchangedSchedule? {
-        viewingID.flatMap { id in exchangeStore.schedules.first { $0.id == id } }
-    }
-
-    /// Classmates in the group comparison that still exist and belong to the current term.
-    private var comparing: [ExchangedSchedule] {
-        let term = exchange.currentTerm
-        return exchangeStore.schedules
-            .filter { comparingIDs.contains($0.id) && $0.payload.term == term }
-            .sorted { $0.displayName < $1.displayName }
-    }
-
-    /// The user's timetable as shown, custom courses included, so their own commitments count as busy.
-    /// Only for local comparison; nothing built here is shared.
-    private func myComparisonPayload(for term: ScheduleShareTerm) -> ScheduleSharePayload? {
-        guard term == exchange.currentTerm, let schedule = vm.displaySchedule else { return nil }
-        return ScheduleSharePayload(schedule: schedule, shareID: UUID(), term: term, nickname: "我",
-                                    includeRooms: false, includeTeachers: false, createdAt: Date())
-    }
 
     private func refreshSchedule() async {
         #if DEBUG
@@ -90,11 +54,6 @@ struct ClassScheduleView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                if let viewing {
-                    classmateContent(viewing)
-                } else if !comparing.isEmpty, let schedule = vm.displaySchedule {
-                    groupContent(schedule: schedule, classmates: comparing)
-                } else {
                 switch vm.loadState {
                 case .idle:
                     EmptyView()
@@ -110,7 +69,6 @@ struct ClassScheduleView: View {
                 case .error(let msg):
                     errorView(message: msg)
                 }
-                }
             }
 
             // Invisible WebView for background data fetching
@@ -124,14 +82,21 @@ struct ClassScheduleView: View {
                 .allowsHitTesting(false)
             }
         }
-        .navigationTitle(titleText)
+        .navigationTitle("我的課表")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                titleSwitcher
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    showsFriends = true
+                } label: {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 16, weight: .medium))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("課表好友")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                if vm.schedule != nil, viewingID == nil {
+                if vm.schedule != nil {
                     Button {
                         #if DEBUG
                         if ClassScheduleUIFixture.requested { return }
@@ -146,7 +111,7 @@ struct ClassScheduleView: View {
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                if vm.schedule != nil, viewingID == nil {
+                if vm.schedule != nil {
                     Button {
                         showSettings = true
                     } label: {
@@ -157,7 +122,7 @@ struct ClassScheduleView: View {
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                if viewingID == nil, !showsWeek, vm.schedule != nil, let today = vm.actualTodayDayIndex,
+                if !showsWeek, vm.schedule != nil, let today = vm.actualTodayDayIndex,
                    vm.selectedDayIndex != today {
                     Button {
                         vm.selectedDayIndex = today
@@ -186,257 +151,25 @@ struct ClassScheduleView: View {
             }
         }
         .onDisappear {
+            // Pushing the friends page keeps loading, so a first-time schedule can still be shared.
+            guard !showsFriends else { return }
             vm.cancelLoading()
             exchange.cancelAll()
         }
         .task(id: vm.schedule?.fetchedAt) { exchange.schedule = vm.schedule }
         .onAppear {
             exchangeStore.reload()
-            #if DEBUG
-            if ClassScheduleUIFixture.scenario == "exchange-friend", viewingID == nil {
-                viewingID = exchangeStore.schedules.sorted { $0.displayName < $1.displayName }.first?.id
-            }
-            if ClassScheduleUIFixture.scenario == "exchange-group", comparingIDs.isEmpty {
-                comparingIDs = Set(exchangeStore.schedules.filter { $0.payload.term == exchange.currentTerm }
-                    .sorted { $0.displayName < $1.displayName }.prefix(3).map(\.id))
-            }
-            #endif
-        }
-        .sheet(isPresented: $showsClassmates, onDismiss: runClassmateAction) {
-            ClassmatePickerSheet(store: exchangeStore, current: viewingID, canShare: vm.schedule != nil,
-                                 select: { viewingID = $0; comparingIDs = []; showsClassmates = false },
-                                 compare: { afterClassmates = .compare; showsClassmates = false },
-                                 scan: { afterClassmates = .scan; showsClassmates = false },
-                                 showMyCode: { afterClassmates = .myCode; showsClassmates = false },
-                                 periods: exchange.myPayload(for: exchange.currentTerm)?.periods ?? [])
-        }
-        .sheet(item: $compareSetup) { request in
-            CompareSetupSheet(store: exchangeStore, term: exchange.currentTerm, initial: request.selected) { ids in
-                comparingIDs = ids
-                viewingID = nil
-                compareSetup = nil
+            if opensFriendsOnAppear {
+                opensFriendsOnAppear = false
+                showsFriends = true
             }
         }
-        .sheet(isPresented: $showsMyCode) {
-            MyScheduleCodeSheet(vm: exchange, store: exchangeStore)
-        }
-        .fullScreenCover(isPresented: $showsScanner, onDismiss: exchange.cancelAll) {
-            ScheduleScanView(vm: exchange) { id, name in
-                viewingID = id
-                marksFreeTime = true
-                exchangeToast = "已加入「\(name)」"
-                showsScanner = false
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if let exchangeToast {
-                Label(exchangeToast, systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, Theme.Spacing.medium)
-                    .padding(.vertical, Theme.Spacing.small)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom, Theme.Spacing.large)
-                    .onAppear { UIAccessibility.post(notification: .announcement, argument: exchangeToast) }
-            }
-        }
-        .task(id: exchangeToast) {
-            guard exchangeToast != nil else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            exchangeToast = nil
+        .navigationDestination(isPresented: $showsFriends) {
+            ScheduleFriendsView(exchange: exchange, store: exchangeStore, mySchedule: vm.displaySchedule)
         }
         .task { campusPlans = try? await CampusMapLoader.shared.load().plans }
         .navigationDestination(item: $campusMapRequest) { request in
             BuildingMapView(buildingID: request.building, room: request.room)
-        }
-    }
-
-    // MARK: - Classmates
-
-    private var titleText: String {
-        if let viewing { return "\(viewing.displayName) 的課表" }
-        return comparing.isEmpty ? "我的課表" : "共同空堂"
-    }
-
-    private func runClassmateAction() {
-        switch afterClassmates {
-        case .scan: showsScanner = true
-        case .myCode: showsMyCode = true
-        case .compare: compareSetup = CompareSetupRequest(selected: comparingIDs)
-        case nil: break
-        }
-        afterClassmates = nil
-    }
-
-    /// The user's own week view with every selected classmate; green where nobody has class.
-    private func groupContent(schedule: ClassSchedule, classmates: [ExchangedSchedule]) -> some View {
-        let mine = myComparisonPayload(for: exchange.currentTerm)
-        let slots: Set<Int> = mine.map { mine in
-            // `mine` skips periods whose times did not parse, so map its rows back by period ID.
-            let rows = mine.periods.map { period in schedule.periods.firstIndex { $0.id == period.id } }
-            return Set(mine.freeSlots(with: classmates.map(\.payload)).compactMap { key in
-                rows[key % 100].map { key / 100 * 100 + $0 }
-            })
-        } ?? []
-        return VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
-                HStack(spacing: Theme.Spacing.small) {
-                    HStack(spacing: -10) {
-                        ForEach(Array((["我"] + classmates.map(\.displayName)).prefix(4).enumerated()), id: \.offset) { index, name in
-                            Text(String(name.prefix(1)))
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(index == 0 ? Theme.Colors.accent : Color(.systemPurple), in: Circle())
-                                .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 2))
-                        }
-                    }
-                    .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("\(classmates.count + 1) 人一起比對")
-                            .font(.subheadline.weight(.semibold))
-                        Text((["我"] + classmates.map(\.displayName)).joined(separator: "、"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: Theme.Spacing.xsmall)
-                    Button("結束") { comparingIDs = [] }
-                        .font(.subheadline.weight(.semibold))
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
-                }
-                HStack {
-                    Text("綠色是大家都沒課的時間。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        compareSetup = CompareSetupRequest(selected: comparingIDs)
-                    } label: {
-                        Label("調整人選", systemImage: "person.2.badge.gearshape")
-                            .font(.subheadline)
-                            .frame(minHeight: 36)
-                    }
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.medium)
-            .padding(.vertical, Theme.Spacing.small)
-            .background(Color(.secondarySystemGroupedBackground))
-
-            ClassScheduleWeekView(
-                schedule: schedule,
-                displayDayHeaders: vm.displayDayHeaders,
-                isRefreshing: vm.isFetchingInBackground,
-                cacheAgeText: vm.cacheAgeText,
-                refresh: refreshSchedule,
-                editCustomCourse: editCustomCourse,
-                campusRoom: campusRoom,
-                openCampusMap: { campusMapRequest = $0 },
-                freeSlots: slots
-            )
-        }
-    }
-
-    /// The title doubles as the switch between the user's and classmates' timetables.
-    private var titleSwitcher: some View {
-        Button {
-            showsClassmates = true
-        } label: {
-            HStack(spacing: 5) {
-                Text(titleText)
-                    .font(.headline)
-                    .foregroundStyle(Theme.Colors.label)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down.circle.fill")
-                    .font(.subheadline)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Theme.Colors.accent)
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(viewing.map { "正在看\($0.displayName)的課表" }
-                            ?? (comparing.isEmpty ? "我的課表" : "正在和 \(comparing.count) 位同學比對"))
-        .accessibilityHint("切換成同學的課表，或新增同學")
-    }
-
-    private func classmateContent(_ entry: ExchangedSchedule) -> some View {
-        let payload = entry.payload
-        let mine = myComparisonPayload(for: payload.term)
-        let headers = CustomCourse.weekdayHeaders.enumerated()
-            .filter { $0.offset < 5 || payload.days.contains($0.offset) }.map(\.element)
-        return VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
-                HStack(spacing: Theme.Spacing.small) {
-                    Text(String(entry.displayName.prefix(1)))
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Color(.systemPurple), in: Circle())
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(entry.displayName)
-                            .font(.subheadline.weight(.semibold))
-                        Text(entry.isExpired(at: Date()) ? "\(payload.term.title)・已過期" : payload.term.title)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: Theme.Spacing.xsmall)
-                    Button {
-                        viewingID = nil
-                    } label: {
-                        Label("回到我的", systemImage: "arrow.uturn.backward")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(minHeight: 36)
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                }
-                if mine != nil {
-                    Toggle(isOn: $marksFreeTime) {
-                        Label("標出我們都沒課的時間", systemImage: "checkmark.circle")
-                            .font(.subheadline)
-                    }
-                    .tint(Color(.systemGreen))
-                    HStack {
-                        if marksFreeTime {
-                            Text("綠色是你們都沒課；空白的時段是你有課。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button {
-                            compareSetup = CompareSetupRequest(selected: [entry.id])
-                        } label: {
-                            Label("加人比對", systemImage: "person.badge.plus")
-                                .font(.subheadline)
-                                .frame(minHeight: 36)
-                        }
-                    }
-                } else {
-                    Text(vm.schedule == nil ? "你的課表載入後，就能標出你們都沒課的時間。"
-                                            : "這份課表不是本學期的，無法和你的課表比對。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.medium)
-            .padding(.vertical, Theme.Spacing.small)
-            .background(Color(.secondarySystemGroupedBackground))
-
-            ClassScheduleWeekView(
-                schedule: payload.classSchedule,
-                displayDayHeaders: headers,
-                isRefreshing: false,
-                cacheAgeText: nil,
-                refresh: {},
-                editCustomCourse: { _ in },
-                campusRoom: campusRoom,
-                openCampusMap: { campusMapRequest = $0 },
-                isReadOnly: true,
-                freeSlots: marksFreeTime ? mine.map { payload.freeSlots(with: [$0]) } : nil
-            )
         }
     }
 

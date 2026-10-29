@@ -207,7 +207,7 @@ struct ClassScheduleWeekView: View {
                                     freeCell
                                         .frame(width: max(1, metrics.columnWidth - 6), height: max(0, metrics.rowHeight - 6))
                                         .offset(x: 3, y: CGFloat(row - layout.visibleRows.lowerBound) * metrics.rowHeight + 3)
-                                        .accessibilityLabel("\(column.header) \(schedule.periods[row].displayPeriodLabel)，你們都沒課")
+                                        .accessibilityLabel("\(column.header) \(schedule.periods[row].displayPeriodLabel)，大家都有空")
                                 }
                             }
                         }
@@ -245,20 +245,13 @@ struct ClassScheduleWeekView: View {
         }
     }
 
+    /// A tint and border only; repeating a label in every free cell made the grid hard to scan.
     private var freeCell: some View {
         RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
             .fill(Color(.systemGreen).opacity(colorScheme == .dark ? 0.3 : 0.18))
             .overlay {
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.xsmall)
                     .strokeBorder(Color(.systemGreen).opacity(0.55), lineWidth: 1)
-            }
-            .overlay {
-                Text("都沒課")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color(.systemGreen))
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                    .padding(.horizontal, 2)
             }
     }
 
