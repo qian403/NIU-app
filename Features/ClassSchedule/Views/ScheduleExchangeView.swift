@@ -94,6 +94,8 @@ private struct MyFriendCodePanel: View {
         }
         .onChange(of: preferences) { _, _ in vm.regenerateCode() }
         .onChange(of: vm.shareTerm) { _, _ in vm.regenerateCode() }
+        // A first load or background refresh finishing while this is open must not leave an old code.
+        .onChange(of: vm.schedule?.fetchedAt) { _, _ in vm.regenerateCode() }
         .onChange(of: vm.qrText) { _, _ in shareImage = renderShareImage() }
         .onChange(of: nicknameDraft) { _, value in
             let capped = String(value.prefix(ScheduleSharePayload.maxNicknameLength))
@@ -212,7 +214,7 @@ private struct MyFriendCodePanel: View {
                 }
                 .buttonStyle(.bordered)
             }
-            Text("QR Code 24 小時內有效，拿到的人都能看到內容，只傳給想分享的同學。對方可以用「從照片選取」加入。")
+            Text("QR Code 只能在 24 小時內加入，但圖片會留在對方手上，拿到的人都能讀出內容，只傳給想分享的同學。對方可以用「從照片選取」加入。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

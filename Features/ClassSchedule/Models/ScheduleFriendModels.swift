@@ -71,7 +71,9 @@ extension ScheduleSharePayload {
     nonisolated func classBlocks(on day: Int) -> [ClassBlock] {
         var blocks: [ClassBlock] = []
         for entry in entries(on: day) {
-            if let last = blocks.last, last.name == entry.name, entry.period.start - last.end <= Self.maxCoveredBreak {
+            // A room change splits the block so the status never shows the previous period's room.
+            if let last = blocks.last, last.name == entry.name, last.room == entry.room,
+               entry.period.start - last.end <= Self.maxCoveredBreak {
                 blocks[blocks.count - 1].end = max(last.end, entry.period.end)
             } else {
                 blocks.append(ClassBlock(name: entry.name, room: entry.room, start: entry.period.start, end: entry.period.end))
@@ -109,6 +111,17 @@ extension ScheduleFreeTime {
         let days = base.days.sorted()
         let cells = grid(base: base, others: others, days: days)
         let order = base.periods.indices.sorted { base.periods[$0].start < base.periods[$1].start }
+        let participants = [base] + others
+        /// Someone's class may sit inside a break between two free periods when tables number periods differently.
+        func someoneBusy(day: Int, from start: Int, to end: Int) -> Bool {
+            participants.contains { payload in
+                payload.slots.contains { slot in
+                    guard slot.day == day else { return false }
+                    let period = payload.periods[slot.period]
+                    return period.start < end && start < period.end
+                }
+            }
+        }
         var result: [ScheduleFreeWindow] = []
         for (column, day) in days.enumerated() {
             var open: (start: Int, end: Int)?
@@ -119,7 +132,8 @@ extension ScheduleFreeTime {
                     open = nil
                     continue
                 }
-                if let window = open, period.start - window.end <= ScheduleSharePayload.maxCoveredBreak {
+                if let window = open, period.start - window.end <= ScheduleSharePayload.maxCoveredBreak,
+                   !someoneBusy(day: day, from: window.end, to: period.start) {
                     open = (window.start, max(window.end, period.end))
                 } else {
                     if let window = open { result.append(ScheduleFreeWindow(day: day, start: window.start, end: window.end)) }

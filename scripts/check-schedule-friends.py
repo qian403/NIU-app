@@ -71,7 +71,22 @@ func payload(_ classes: [(day: Int, row: Int, name: Int, room: Int?)], days: [In
         let gap = [ScheduleSharePayload.Period(id: "1", start: 490, end: 540), .init(id: "2", start: 600, end: 650)]
         require(ScheduleFreeTime.windows(base: payload([], custom: gap), others: []).filter { $0.day == 0 }.count == 2,
                 "a break longer than 20 minutes splits windows")
+        // A friend whose table has a 10:00–10:10 class inside my break must split my free stretch.
+        let offset = [ScheduleSharePayload.Period(id: "a", start: 550, end: 600), .init(id: "b", start: 600, end: 610),
+                      .init(id: "c", start: 610, end: 660)]
+        let breakClass = payload([(0, 1, 0, nil)], custom: offset)
+        let mineTwo = payload([], custom: [.init(id: "1", start: 550, end: 600), .init(id: "2", start: 610, end: 660)])
+        require(ScheduleFreeTime.windows(base: mineTwo, others: [breakClass]).filter { $0.day == 0 }.count == 2,
+                "a class inside the break is not merged over")
         print("PASS: common free windows merge short breaks, respect classes, coverage and long gaps")
+
+        // Same course, consecutive periods, different rooms: the second period shows its own room.
+        let moved = ScheduleSharePayload(shareID: UUID(), term: term, createdAt: taipei(0, 8, 0), nickname: "乙",
+                                         days: [0], periods: periods, names: ["實驗"], rooms: ["A101", "B202"], teachers: [],
+                                         slots: [.init(day: 0, period: 1, name: 0, room: 0, teacher: nil),
+                                                 .init(day: 0, period: 2, name: 0, room: 1, teacher: nil)])
+        require(moved.status(at: taipei(0, 10, 30)) == .inClass(course: "實驗", room: "B202", until: 660), "room change splits")
+        print("PASS: room change inside a double period")
 
         let all = ScheduleFreeTime.windows(base: me, others: [friend])
         let upcoming = ScheduleFreeTime.upcoming(all, at: taipei(0, 14, 30))
