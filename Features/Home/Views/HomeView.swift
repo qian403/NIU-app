@@ -153,7 +153,7 @@ struct HomeView: View {
         case .settings: SettingsView()
         case .moodle: MoodleView()
         case .classSchedule: ClassScheduleView()
-        case .scheduleExchange: ClassScheduleView(opensFriends: true)
+        case .scheduleExchange: ScheduleFriendsEntryView()
         case .library: LibraryCodeView()
         case .libraryEquipment: LibraryEquipmentView()
         case .academicCalendar: AcademicCalendarView()

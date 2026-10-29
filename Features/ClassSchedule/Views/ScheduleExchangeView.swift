@@ -6,15 +6,14 @@ import Vision
 
 // MARK: - Add friend
 
-/// One place to add a friend, like a messaging app: show your own code, or scan theirs.
-struct AddFriendSheet: View {
+/// One pushed page to add a friend, like a messaging app: scan theirs, or show your own code.
+struct AddFriendView: View {
     enum Tab: Hashable { case myCode, scan }
 
     @ObservedObject var vm: ScheduleExchangeViewModel
     @ObservedObject var store: ScheduleExchangeStore
     let onSaved: (_ id: UUID, _ name: String) -> Void
     @State private var tab: Tab
-    @Environment(\.dismiss) private var dismiss
 
     init(vm: ScheduleExchangeViewModel, store: ScheduleExchangeStore, initialTab: Tab,
          onSaved: @escaping (_ id: UUID, _ name: String) -> Void) {
@@ -25,33 +24,25 @@ struct AddFriendSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                Picker("加好友方式", selection: $tab) {
-                    Text("掃描 QR Code").tag(Tab.scan)
-                    Text("我的 QR Code").tag(Tab.myCode)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, Theme.Spacing.medium)
-                .padding(.bottom, Theme.Spacing.small)
-
-                switch tab {
-                case .scan:
-                    FriendScanPanel(vm: vm, onSaved: onSaved)
-                case .myCode:
-                    MyFriendCodePanel(vm: vm, store: store)
-                }
+        VStack(spacing: 0) {
+            Picker("加好友方式", selection: $tab) {
+                Text("掃描 QR Code").tag(Tab.scan)
+                Text("我的 QR Code").tag(Tab.myCode)
             }
-            .background(Theme.Colors.groupedBackground)
-            .navigationTitle("加好友")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, Theme.Spacing.medium)
+            .padding(.vertical, Theme.Spacing.small)
+
+            switch tab {
+            case .scan:
+                FriendScanPanel(vm: vm, onSaved: onSaved)
+            case .myCode:
+                MyFriendCodePanel(vm: vm, store: store)
             }
         }
-        .presentationDetents([.large])
+        .background(Theme.Colors.groupedBackground)
+        .navigationTitle("加好友")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -62,7 +53,6 @@ private struct MyFriendCodePanel: View {
     @ObservedObject var store: ScheduleExchangeStore
     @State private var nicknameDraft = ""
     @State private var isEditingName = false
-    @State private var isConfirmingReset = false
     @State private var shareImage: UIImage?
     @FocusState private var nameFocused: Bool
 
@@ -77,17 +67,11 @@ private struct MyFriendCodePanel: View {
                 } else {
                     card
                     actions
-                    settings
                 }
             }
             .padding(Theme.Spacing.medium)
         }
         .scrollDismissesKeyboard(.interactively)
-        .confirmationDialog("重設分享識別碼？", isPresented: $isConfirmingReset, titleVisibility: .visible) {
-            Button("重設", role: .destructive) { store.resetShareID() }
-        } message: {
-            Text("同學之後掃描你的新 QR Code 時，會變成新的一位好友，而不是更新舊的。")
-        }
         .onAppear {
             nicknameDraft = preferences.customNickname
             vm.regenerateCode()
@@ -184,7 +168,7 @@ private struct MyFriendCodePanel: View {
                 }
             }
             .frame(maxWidth: 280)
-            Text("請同學打開「課表好友」→「加好友」掃描")
+            Text("請同學打開「課表好友」，點右上角加好友掃描")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -214,6 +198,21 @@ private struct MyFriendCodePanel: View {
                 }
                 .buttonStyle(.bordered)
             }
+            NavigationLink {
+                ScheduleShareSettingsView(vm: vm, store: store)
+            } label: {
+                HStack {
+                    Label("分享設定", systemImage: "slider.horizontal.3")
+                    Spacer()
+                    Text(sharedSummary).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .frame(minHeight: 44)
+                .padding(.horizontal, Theme.Spacing.medium)
+                .background(Color(.secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous))
+            }
+            .buttonStyle(.plain)
             Text("QR Code 只能在 24 小時內加入，但圖片會留在對方手上，拿到的人都能讀出內容，只傳給想分享的同學。對方可以用「從照片選取」加入。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -222,49 +221,11 @@ private struct MyFriendCodePanel: View {
         .frame(maxWidth: 360)
     }
 
-    private var settings: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
-            Text("分享內容")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, Theme.Spacing.xsmall)
-            VStack(spacing: 0) {
-                LabeledContent("上課時間與課名", value: "一律包含")
-                    .frame(minHeight: 44)
-                Divider()
-                Toggle("教室", isOn: Binding(
-                    get: { preferences.includeRooms },
-                    set: { value in store.updatePreferences { $0.includeRooms = value } }
-                ))
-                .frame(minHeight: 44)
-                Divider()
-                Toggle("授課教師", isOn: Binding(
-                    get: { preferences.includeTeachers },
-                    set: { value in store.updatePreferences { $0.includeTeachers = value } }
-                ))
-                .frame(minHeight: 44)
-                Divider()
-                LabeledContent("學期") {
-                    Picker("學期", selection: $vm.shareTerm) {
-                        ForEach(vm.shareTermOptions, id: \.self) { Text($0.title).tag($0) }
-                    }
-                    .labelsHidden()
-                }
-                .frame(minHeight: 44)
-            }
-            .padding(.horizontal, Theme.Spacing.medium)
-            .background(Color(.secondarySystemGroupedBackground),
-                        in: RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous))
-            Text("分享教室後，好友會看到你上課中在哪間教室。自訂課程不會分享；學期結束後，好友那邊的課表會自動過期。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, Theme.Spacing.xsmall)
-            Button("重設分享識別碼", role: .destructive) { isConfirmingReset = true }
-                .font(.footnote)
-                .frame(minHeight: 44)
-                .padding(.leading, Theme.Spacing.xsmall)
-        }
-        .frame(maxWidth: 360)
+    private var sharedSummary: String {
+        var fields = ["課名"]
+        if preferences.includeRooms { fields.append("教室") }
+        if preferences.includeTeachers { fields.append("教師") }
+        return fields.joined(separator: "、")
     }
 
     /// A white card with a quiet zone, so the code still scans from a photo or a chat thumbnail.
@@ -283,6 +244,48 @@ private struct MyFriendCodePanel: View {
         )
         renderer.scale = 3
         return renderer.uiImage
+    }
+}
+
+// MARK: - Share settings
+
+/// What goes into the user's code; pushed from「我的 QR Code」.
+private struct ScheduleShareSettingsView: View {
+    @ObservedObject var vm: ScheduleExchangeViewModel
+    @ObservedObject var store: ScheduleExchangeStore
+    @State private var isConfirmingReset = false
+
+    private var preferences: ScheduleSharePreferences { store.preferences }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("上課時間與課名", value: "一律包含")
+                Toggle("教室", isOn: Binding(
+                    get: { preferences.includeRooms },
+                    set: { value in store.updatePreferences { $0.includeRooms = value } }
+                ))
+                Toggle("授課教師", isOn: Binding(
+                    get: { preferences.includeTeachers },
+                    set: { value in store.updatePreferences { $0.includeTeachers = value } }
+                ))
+                Picker("學期", selection: $vm.shareTerm) {
+                    ForEach(vm.shareTermOptions, id: \.self) { Text($0.title).tag($0) }
+                }
+            } footer: {
+                Text("分享教室後，好友會看到你上課中在哪間教室。自訂課程不會分享；學期結束後，好友那邊的課表會自動過期。")
+            }
+            Section {
+                Button("重設分享識別碼", role: .destructive) { isConfirmingReset = true }
+            } footer: {
+                Text("重設後，同學再掃你的 QR Code 會變成新的一位好友，而不是更新舊的。")
+            }
+        }
+        .navigationTitle("分享設定")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("重設分享識別碼？", isPresented: $isConfirmingReset, titleVisibility: .visible) {
+            Button("重設", role: .destructive) { store.resetShareID() }
+        }
     }
 }
 

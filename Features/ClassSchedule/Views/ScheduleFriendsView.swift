@@ -31,21 +31,49 @@ enum ScheduleFriendsComparison {
     static func timeRange(_ start: Int, _ end: Int) -> String {
         "\(ScheduleSharePayload.clockText(start))–\(ScheduleSharePayload.clockText(end))"
     }
+
+    /// The first stretch from now on when the user and everyone in `others` are free.
+    static func nextWindow(mine: ScheduleSharePayload?, others: [ScheduleSharePayload], now: Date) -> ScheduleFreeWindow? {
+        guard let mine else { return nil }
+        return ScheduleFreeTime.upcoming(ScheduleFreeTime.windows(base: mine, others: others), at: now).first
+    }
+
+    static func isNow(_ window: ScheduleFreeWindow, at now: Date) -> Bool {
+        let (day, minute) = ScheduleSharePayload.clockPosition(of: now)
+        return window.day == day && window.start <= minute
+    }
+
+    /// "現在到 12:00" or "明天 12:10".
+    static func whenText(_ window: ScheduleFreeWindow, at now: Date) -> String {
+        isNow(window, at: now) ? "現在到 \(ScheduleSharePayload.clockText(window.end))"
+            : "\(dayLabel(window.day, now: now)) \(ScheduleSharePayload.clockText(window.start))"
+    }
+
+    /// "我的第 2 節", "下課時間"… for the header of the friends page.
+    static func myMoment(_ mine: ScheduleSharePayload?, at now: Date) -> String {
+        guard let mine else { return "課表還沒載入" }
+        switch mine.status(at: now) {
+        case .inClass(let course, _, let until): return "你在上\(course)，到 \(ScheduleSharePayload.clockText(until))"
+        case .free(let until): return "你 \(ScheduleSharePayload.clockText(until)) 才有課"
+        case .doneForToday: return "你今天的課上完了"
+        default: return "你今天沒課"
+        }
+    }
 }
 
-/// Initial-letter avatar with a stable per-friend colour and an optional presence dot, like a game friend list.
+/// Initial-letter avatar with a stable per-friend colour; the ring shows their status like a game friend list.
 struct FriendAvatar: View {
     let name: String
     /// nil is the user themself, drawn in the accent colour.
     let seed: String?
     var size: CGFloat = 44
-    var status: ScheduleFriendStatus? = nil
+    var ring: Color? = nil
 
     private static let palette: [Color] = [.blue, .teal, .orange, .pink, .green, .indigo, .purple, .brown]
 
-    private var colour: Color {
+    static func colour(for seed: String?) -> Color {
         guard let seed else { return Theme.Colors.accent }
-        return Self.palette[ClassScheduleWeekLayout.stableColourIndex(for: seed, paletteCount: Self.palette.count)]
+        return palette[ClassScheduleWeekLayout.stableColourIndex(for: seed, paletteCount: palette.count)]
     }
 
     var body: some View {
@@ -53,14 +81,10 @@ struct FriendAvatar: View {
             .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(colour.gradient, in: Circle())
-            .overlay(alignment: .bottomTrailing) {
-                if let status {
-                    Circle()
-                        .fill(status.tint)
-                        .frame(width: size * 0.3, height: size * 0.3)
-                        .overlay { Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: max(2, size * 0.05)) }
-                }
+            .background(Self.colour(for: seed).gradient, in: Circle())
+            .padding(ring == nil ? 0 : 3)
+            .overlay {
+                if let ring { Circle().strokeBorder(ring, lineWidth: 2.5) }
             }
             .accessibilityHidden(true)
     }
@@ -75,111 +99,104 @@ extension ScheduleFriendStatus {
         }
     }
 
-    var symbol: String {
-        switch self {
-        case .free, .doneForToday, .noClassToday: "circle.fill"
-        case .inClass: "book.closed.fill"
-        case .notCovered: "questionmark.circle.fill"
-        case .expired, .upcomingTerm: "clock.fill"
-        }
-    }
-
-    var headline: String {
+    var title: String {
         switch self {
         case .free, .doneForToday, .noClassToday: "有空"
-        case .inClass(let course, _, _): "上課中・\(course)"
+        case .inClass: "上課中"
         case .notCovered: "不確定"
         case .expired: "課表已過期"
         case .upcomingTerm: "下學期的課表"
         }
     }
 
-    var detail: String? {
+    var line: String {
         switch self {
-        case .free(let until): "\(ScheduleSharePayload.clockText(until)) 有課"
+        case .free(let until): "\(ScheduleSharePayload.clockText(until)) 才有課"
         case .doneForToday: "今天的課上完了"
         case .noClassToday: "今天沒課"
-        case .inClass(_, let room, let until):
-            ["到 \(ScheduleSharePayload.clockText(until))", room].compactMap { $0 }.joined(separator: "・")
+        case .inClass(let course, let room, let until):
+            [course, "到 \(ScheduleSharePayload.clockText(until))", room].compactMap { $0 }.joined(separator: " · ")
         case .notCovered: "對方的課表沒有今天"
         case .expired: "請對方重新分享"
-        case .upcomingTerm: "開學後會顯示狀態"
+        case .upcomingTerm: "開學後才會顯示狀態"
         }
     }
 }
 
-private struct StatusLine: View {
+/// Status word in its colour, then the detail in grey, wrapping instead of truncating.
+private struct StatusText: View {
     let status: ScheduleFriendStatus
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Image(systemName: status.symbol)
-                .font(.system(size: status.isAvailable ? 7 : 11))
-                .foregroundStyle(status.tint)
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-            Text("\(Text(status.headline).fontWeight(.medium).foregroundStyle(status.isAvailable ? Color(.systemGreen) : Theme.Colors.label))\(Text(status.detail.map { "・\($0)" } ?? "").foregroundStyle(Theme.Colors.secondaryLabel))")
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.subheadline)
+        Text("\(Text(status.title).fontWeight(.semibold).foregroundStyle(status.tint))\(Text(" · \(status.line)").foregroundStyle(Theme.Colors.secondaryLabel))")
+            .font(.subheadline)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-private struct FreeWindowRow: View {
-    let window: ScheduleFreeWindow
-    let now: Date
-
+private struct DurationChip: View {
+    let text: String
     var body: some View {
-        HStack(spacing: Theme.Spacing.small) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(ScheduleFriendsComparison.dayLabel(window.day, now: now))
-                    .font(.subheadline.weight(.semibold))
-                Text(ScheduleFriendsComparison.timeRange(window.start, window.end))
-                    .font(.body.monospacedDigit())
-            }
-            Spacer(minLength: Theme.Spacing.xsmall)
-            Text(window.durationText)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color(.systemGreen))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(.systemGreen).opacity(0.14), in: Capsule())
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color(.systemGreen))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(.systemGreen).opacity(0.14), in: Capsule())
+    }
+}
+
+/// Wraps chips onto as many lines as needed.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
         }
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
+        return CGSize(width: min(widest, width), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; y += rowHeight + spacing; rowHeight = 0 }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 
 // MARK: - Friends
 
-/// Classmates added by QR code, each with a live status worked out on this device.
+/// Classmates added by QR code. Opens with who is free now; every screen is pushed, never presented.
 struct ScheduleFriendsView: View {
     @ObservedObject var exchange: ScheduleExchangeViewModel
     @ObservedObject var store: ScheduleExchangeStore
     /// The user's displayed timetable, custom courses included, for local comparison only.
     let mySchedule: ClassSchedule?
 
-    @State private var addFriend: AddFriendRequest?
-    @State private var openedFriend: UUID?
-    @State private var pendingOpen: UUID?
-    @State private var groupRequest: GroupRequest?
+    enum Route: Hashable {
+        case add(AddFriendView.Tab)
+        case friend(UUID)
+        case group(Set<UUID>)
+    }
+
+    @State private var route: Route?
     @State private var pendingDelete: ExchangedSchedule?
     @State private var isConfirmingReset = false
-    @State private var toast: String?
     @State private var appliedFixture = false
 
-    private struct AddFriendRequest: Identifiable {
-        let id = UUID()
-        let tab: AddFriendSheet.Tab
-    }
-
-    struct GroupRequest: Hashable, Identifiable {
-        let id = UUID()
-        let selected: Set<UUID>
-    }
-
     private var term: ScheduleShareTerm { exchange.currentTerm }
-    private var canCompare: Bool { ScheduleFriendsComparison.myPayload(mySchedule, term: term) != nil }
 
     var body: some View {
         TimelineView(.everyMinute) { context in
@@ -187,15 +204,7 @@ struct ScheduleFriendsView: View {
             List {
                 switch store.status {
                 case .ready:
-                    profileSection(now: now)
-                    if store.schedules.isEmpty {
-                        emptySection
-                    } else {
-                        friendSections(now: now)
-                    }
-                    #if DEBUG
-                    sampleSection
-                    #endif
+                    content(now: now)
                 case .locked:
                     Section {
                         Label("裝置已鎖定，解鎖後才能讀取好友的課表。", systemImage: "lock")
@@ -219,7 +228,7 @@ struct ScheduleFriendsView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    addFriend = AddFriendRequest(tab: .scan)
+                    route = .add(.scan)
                 } label: {
                     Image(systemName: "person.badge.plus")
                         .frame(minWidth: 44, minHeight: 44)
@@ -228,21 +237,19 @@ struct ScheduleFriendsView: View {
                 .disabled(store.status != .ready)
             }
         }
-        .sheet(item: $addFriend, onDismiss: {
-            if let pendingOpen { openedFriend = pendingOpen }
-            pendingOpen = nil
-        }) { request in
-            AddFriendSheet(vm: exchange, store: store, initialTab: request.tab) { id, name in
-                pendingOpen = id
-                toast = "已加入好友「\(name)」"
-                addFriend = nil
+        .navigationDestination(item: $route) { route in
+            switch route {
+            case .add(let tab):
+                // Saving replaces this page with the new friend's page, so Back returns to the list.
+                AddFriendView(vm: exchange, store: store, initialTab: tab) { id, name in
+                    UIAccessibility.post(notification: .announcement, argument: "已加入好友「\(name)」")
+                    self.route = .friend(id)
+                }
+            case .friend(let id):
+                FriendDetailView(id: id, store: store, mySchedule: mySchedule, term: term)
+            case .group(let selected):
+                GroupFreeTimeView(store: store, mySchedule: mySchedule, term: term, initial: selected)
             }
-        }
-        .navigationDestination(item: $openedFriend) { id in
-            FriendDetailView(id: id, store: store, mySchedule: mySchedule, term: term)
-        }
-        .navigationDestination(item: $groupRequest) { request in
-            GroupFreeTimeView(store: store, mySchedule: mySchedule, term: term, initial: request.selected)
         }
         .confirmationDialog(
             "刪除好友「\(pendingDelete?.displayName ?? "")」？",
@@ -267,89 +274,120 @@ struct ScheduleFriendsView: View {
         } message: {
             Text(store.errorMessage ?? "")
         }
-        .overlay(alignment: .bottom) {
-            if let toast {
-                Label(toast, systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, Theme.Spacing.medium)
-                    .padding(.vertical, Theme.Spacing.small)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom, Theme.Spacing.large)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .onAppear { UIAccessibility.post(notification: .announcement, argument: toast) }
-            }
-        }
-        .animation(Theme.Animation.standard, value: toast)
-        .task(id: toast) {
-            guard toast != nil else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            toast = nil
-        }
         .onAppear {
             store.reload()
             applyFixtureScenario()
         }
     }
 
-    // MARK: Sections
+    @ViewBuilder
+    private func content(now: Date) -> some View {
+        let mine = ScheduleFriendsComparison.myPayload(mySchedule, term: term)
+        let rows = store.schedules
+            .map { (entry: $0, status: $0.payload.status(at: now)) }
+            .sorted { ($0.status.sortRank, $0.entry.displayName) < ($1.status.sortRank, $1.entry.displayName) }
+        let current = rows.filter { $0.status.isCurrentTerm }
+        let others = rows.filter { !$0.status.isCurrentTerm }
 
-    private func profileSection(now: Date) -> some View {
-        let name = ScheduleSharePayload.cleanNickname(exchange.nickname)
-        let current = store.schedules.filter { $0.payload.term == term }.count
-        return Section {
-            VStack(spacing: Theme.Spacing.medium) {
-                HStack(spacing: Theme.Spacing.small) {
-                    FriendAvatar(name: name.isEmpty ? "我" : name, seed: nil, size: 56)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(name.isEmpty ? "我" : name)
-                            .font(.title3.weight(.bold))
-                            .lineLimit(1)
-                        Text(term.title)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("\(current) 位好友")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+        if store.schedules.isEmpty {
+            emptySection
+        } else {
+            nowSection(current.filter { $0.status.isAvailable }.map(\.entry), mine: mine, now: now)
+            if !current.isEmpty {
+                Section {
+                    ForEach(current, id: \.entry.id) { row in
+                        friendRow(row.entry, status: row.status,
+                                  next: ScheduleFriendsComparison.nextWindow(mine: mine, others: [row.entry.payload], now: now),
+                                  showsNext: mine != nil, now: now)
                     }
-                    Spacer(minLength: 0)
-                    Button {
-                        addFriend = AddFriendRequest(tab: .myCode)
-                    } label: {
-                        Image(systemName: "qrcode")
-                            .font(.title2)
-                            .frame(width: 44, height: 44)
+                } header: {
+                    HStack {
+                        Text("好友 \(current.count)")
+                        Spacer()
+                        if mine != nil { Text("你們下次都有空") }
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(exchange.schedule == nil)
-                    .accessibilityLabel("我的 QR Code")
                 }
-                HStack(spacing: Theme.Spacing.small) {
+            }
+            if !others.isEmpty {
+                Section {
+                    ForEach(others, id: \.entry.id) { row in
+                        friendRow(row.entry, status: row.status, next: nil, showsNext: false, now: now)
+                    }
+                } header: {
+                    Text("其他學期")
+                } footer: {
+                    Text("過期的課表會在學期結束 30 天後自動刪除。")
+                }
+            }
+        }
+        Section {
+            Button {
+                route = .add(.myCode)
+            } label: {
+                Label("出示我的 QR Code", systemImage: "qrcode")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .disabled(exchange.schedule == nil)
+        } footer: {
+            if exchange.schedule == nil {
+                Text("你的課表載入後，才能產生 QR Code 和找共同空堂。")
+            } else {
+                Text("好友的課表只加密存在這台裝置，不會上傳。")
+            }
+        }
+        #if DEBUG
+        sampleSection
+        #endif
+    }
+
+    private func nowSection(_ free: [ExchangedSchedule], mine: ScheduleSharePayload?, now: Date) -> some View {
+        let day = ScheduleSharePayload.clockPosition(of: now).day
+        return Section {
+            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(ScheduleFreeTime.weekdayNames[day]) \(now.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute())) · \(ScheduleFriendsComparison.myMoment(mine, at: now))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text(free.isEmpty ? "好友現在都沒空" : "\(free.count) 位好友現在有空")
+                        .font(.title2.weight(.bold))
+                }
+                .accessibilityElement(children: .combine)
+                if !free.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: Theme.Spacing.small) {
+                            ForEach(free) { entry in
+                                Button {
+                                    route = .friend(entry.id)
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        FriendAvatar(name: entry.displayName, seed: entry.payload.shareID.uuidString,
+                                                     size: 48, ring: Color(.systemGreen))
+                                        Text(entry.displayName)
+                                            .font(.caption)
+                                            .foregroundStyle(Theme.Colors.label)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(width: 64)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(entry.displayName)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
                     Button {
-                        addFriend = AddFriendRequest(tab: .scan)
+                        route = .group(Set(free.map(\.id)))
                     } label: {
-                        Label("加好友", systemImage: "person.badge.plus")
+                        Label("找他們的共同空堂", systemImage: "person.3.fill")
                             .labelStyle(.titleAndIcon)
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.borderedProminent)
-                    Button {
-                        groupRequest = GroupRequest(selected: [])
-                    } label: {
-                        Label("揪團找空堂", systemImage: "person.3.fill")
-                            .labelStyle(.titleAndIcon)
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!canCompare || current == 0)
+                    .disabled(mine == nil)
                 }
             }
             .padding(.vertical, Theme.Spacing.xsmall)
-        } footer: {
-            if exchange.schedule == nil {
-                Text("你的課表載入後，才能產生 QR Code 和找共同空堂。")
-            }
         }
     }
 
@@ -362,76 +400,69 @@ struct ScheduleFriendsView: View {
                     .padding(.top, Theme.Spacing.small)
                 Text("還沒有好友")
                     .font(.headline)
-                VStack(alignment: .leading, spacing: Theme.Spacing.xsmall) {
-                    Label("請同學也打開「課表好友」，按「加好友」", systemImage: "1.circle.fill")
-                    Label("一人切到「我的 QR Code」，另一人掃描", systemImage: "2.circle.fill")
-                    Label("加入後就能看到對方現在有沒有空", systemImage: "3.circle.fill")
+                Text("請同學也打開「課表好友」。一人點「出示我的 QR Code」，另一人點右上角加好友掃描。加入後就能看到對方現在有沒有空。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    route = .add(.scan)
+                } label: {
+                    Label("掃描同學的 QR Code", systemImage: "qrcode.viewfinder")
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, Theme.Spacing.xsmall)
+                .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, Theme.Spacing.xsmall)
-        } footer: {
-            Text("好友的課表只加密存在這台裝置，不會上傳。")
         }
     }
 
-    @ViewBuilder
-    private func friendSections(now: Date) -> some View {
-        let entries = store.schedules
-            .map { (entry: $0, status: $0.payload.status(at: now)) }
-            .sorted { ($0.status.sortRank, $0.entry.displayName) < ($1.status.sortRank, $1.entry.displayName) }
-        let groups: [(title: String, rows: [(entry: ExchangedSchedule, status: ScheduleFriendStatus)])] = [
-            ("有空", entries.filter { $0.status.isAvailable }),
-            ("上課中", entries.filter { if case .inClass = $0.status { true } else { false } }),
-            ("不確定", entries.filter { $0.status == .notCovered }),
-            ("其他學期", entries.filter { !$0.status.isCurrentTerm }),
-        ]
-        ForEach(groups.filter { !$0.rows.isEmpty }, id: \.title) { group in
-            Section {
-                ForEach(group.rows, id: \.entry.id) { row in
-                    friendRow(row.entry, status: row.status)
-                }
-            } header: {
-                Text("\(group.title)・\(group.rows.count)")
-            } footer: {
-                if group.title == "其他學期" { Text("過期的課表會在學期結束 30 天後自動刪除。") }
-            }
-        }
-    }
-
-    private func friendRow(_ entry: ExchangedSchedule, status: ScheduleFriendStatus) -> some View {
+    private func friendRow(_ entry: ExchangedSchedule, status: ScheduleFriendStatus, next: ScheduleFreeWindow?,
+                           showsNext: Bool, now: Date) -> some View {
         Button {
-            openedFriend = entry.id
+            route = .friend(entry.id)
         } label: {
             HStack(spacing: Theme.Spacing.small) {
-                FriendAvatar(name: entry.displayName, seed: entry.payload.shareID.uuidString, size: 46, status: status)
+                FriendAvatar(name: entry.displayName, seed: entry.payload.shareID.uuidString, size: 44, ring: status.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.displayName)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.Colors.label)
                         .lineLimit(1)
                     if status.isCurrentTerm {
-                        StatusLine(status: status)
+                        StatusText(status: status)
                     } else {
-                        Text("\(entry.payload.term.title)・\(status.headline)")
+                        Text("\(entry.payload.term.title) · \(status.title)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
                     }
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                Spacer(minLength: Theme.Spacing.xsmall)
+                if showsNext {
+                    if let next {
+                        let isNow = ScheduleFriendsComparison.isNow(next, at: now)
+                        Text(isNow ? "現在" : ScheduleFriendsComparison.whenText(next, at: now))
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(isNow ? Color(.systemGreen) : Theme.Colors.label)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(isNow ? Color(.systemGreen).opacity(0.14) : Theme.Colors.tertiaryFill,
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .fixedSize()
+                    } else {
+                        Text("這週沒有")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize()
+                    }
+                }
             }
             .padding(.vertical, 2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(entry.displayName)，\(status.headline)\(status.detail.map { "，\($0)" } ?? "")")
+        .accessibilityLabel("\(entry.displayName)，\(status.title)，\(status.line)"
+                            + (next.map { "，你們\(ScheduleFriendsComparison.whenText($0, at: now))有空" } ?? ""))
         .accessibilityHint("查看好友")
         .swipeActions {
             Button("刪除", role: .destructive) { pendingDelete = entry }
@@ -465,10 +496,10 @@ struct ScheduleFriendsView: View {
         appliedFixture = true
         let friends = store.schedules.filter { $0.payload.term == term }.sorted { $0.displayName < $1.displayName }
         switch ClassScheduleUIFixture.scenario {
-        case "exchange-share": addFriend = AddFriendRequest(tab: .myCode)
-        case "exchange-scan": addFriend = AddFriendRequest(tab: .scan)
-        case "exchange-friend": openedFriend = friends.first?.id
-        case "exchange-group": groupRequest = GroupRequest(selected: Set(friends.prefix(3).map(\.id)))
+        case "exchange-share": route = .add(.myCode)
+        case "exchange-scan": route = .add(.scan)
+        case "exchange-friend": route = friends.first.map { .friend($0.id) }
+        case "exchange-group": route = .group(Set(friends.prefix(3).map(\.id)))
         default: break
         }
         #endif
@@ -483,7 +514,6 @@ struct FriendDetailView: View {
     let mySchedule: ClassSchedule?
     let term: ScheduleShareTerm
     @State private var isConfirmingDelete = false
-    @State private var showsAllWindows = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -493,6 +523,17 @@ struct FriendDetailView: View {
             }
             .navigationTitle(entry.displayName)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("刪除好友", systemImage: "trash", role: .destructive) { isConfirmingDelete = true }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("更多")
+                }
+            }
             .confirmationDialog("刪除好友「\(entry.displayName)」？", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
                     if store.delete(id: entry.id) { dismiss() }
@@ -508,141 +549,152 @@ struct FriendDetailView: View {
     private func content(_ entry: ExchangedSchedule, now: Date) -> some View {
         let payload = entry.payload
         let status = payload.status(at: now)
-        let mine = ScheduleFriendsComparison.myPayload(mySchedule, term: term)
+        let mine = status.isCurrentTerm ? ScheduleFriendsComparison.myPayload(mySchedule, term: term) : nil
+        let windows = mine.map { ScheduleFreeTime.windows(base: $0, others: [payload]) } ?? []
+        let next = mine.flatMap { _ in ScheduleFreeTime.upcoming(windows, at: now).first }
         return List {
             Section {
-                VStack(spacing: Theme.Spacing.xsmall) {
-                    FriendAvatar(name: entry.displayName, seed: payload.shareID.uuidString, size: 76, status: status)
-                    Text(entry.displayName)
-                        .font(.title2.weight(.bold))
-                    Text(payload.term.title)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if status.isCurrentTerm {
-                        StatusLine(status: status)
-                            .padding(.horizontal, Theme.Spacing.small)
-                            .padding(.vertical, 6)
-                            .background(status.tint.opacity(0.12), in: Capsule())
-                            .padding(.top, 2)
+                HStack(spacing: Theme.Spacing.medium) {
+                    FriendAvatar(name: entry.displayName, seed: payload.shareID.uuidString, size: 64, ring: status.tint)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(entry.displayName)
+                            .font(.title2.weight(.bold))
+                            .lineLimit(2)
+                        Text(status.isCurrentTerm ? status.title : payload.term.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(status.tint)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(status.tint.opacity(0.14), in: Capsule())
+                        Text(status.line)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 .accessibilityElement(children: .combine)
             }
 
-            if status.isCurrentTerm {
-                todaySection(payload, status: status, now: now)
-                freeSection(payload, mine: mine, now: now)
-            } else {
+            if !status.isCurrentTerm {
                 Section {
                     Text(status == .expired ? "這份課表的學期已經結束。想繼續看對方的課表，請對方重新分享。"
                                             : "這是下學期的課表，開學後才會顯示對方的狀態和共同空堂。")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+            } else if let mine {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("你們下次都有空")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if let next {
+                            let isNow = ScheduleFriendsComparison.isNow(next, at: now)
+                            Text("\(isNow ? "現在" : ScheduleFriendsComparison.dayLabel(next.day, now: now)) \(ScheduleFriendsComparison.timeRange(next.start, next.end))")
+                                .font(.title2.weight(.bold).monospacedDigit())
+                            Text(isNow ? "現在就可以約" : "共 \(next.durationText)")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color(.systemGreen))
+                        } else {
+                            Text("這週沒有").font(.title2.weight(.bold))
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
+                }
+                todaySection(entry, mine: mine, windows: windows, status: status, now: now)
+                weekSection(mine: mine, windows: windows, now: now)
+            } else {
+                Section {
+                    Text("你的課表載入後，才能找你們的共同空堂。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
-                NavigationLink {
-                    FriendTimetableView(entry: entry, mySchedule: mySchedule, term: term)
-                } label: {
-                    Label("查看完整課表", systemImage: "calendar")
-                        .frame(minHeight: 44)
-                }
                 if status.isCurrentTerm, mine != nil {
                     NavigationLink {
                         GroupFreeTimeView(store: store, mySchedule: mySchedule, term: term, initial: [entry.id])
                     } label: {
-                        Label("找更多人一起揪團", systemImage: "person.3.fill")
+                        Label("加人揪團", systemImage: "person.3.fill")
                             .frame(minHeight: 44)
                     }
                 }
+                NavigationLink {
+                    FriendTimetableView(entry: entry, mySchedule: mySchedule, term: term)
+                } label: {
+                    Label("完整課表", systemImage: "calendar")
+                        .frame(minHeight: 44)
+                }
             } footer: {
                 Text("對方分享了：\(sharedFields(payload))。加入於 \(entry.importedAt.formatted(.dateTime.month().day()))。")
-            }
-
-            Section {
-                Button("刪除好友", role: .destructive) { isConfirmingDelete = true }
-                    .frame(minHeight: 44)
             }
         }
         .listStyle(.insetGrouped)
     }
 
-    private func todaySection(_ payload: ScheduleSharePayload, status: ScheduleFriendStatus, now: Date) -> some View {
+    @ViewBuilder
+    private func todaySection(_ entry: ExchangedSchedule, mine: ScheduleSharePayload, windows: [ScheduleFreeWindow],
+                              status: ScheduleFriendStatus, now: Date) -> some View {
         let (day, minute) = ScheduleSharePayload.clockPosition(of: now)
-        let blocks = payload.classBlocks(on: day)
-        return Section("今天的課") {
-            if status == .notCovered {
+        Section {
+            if !mine.days.contains(day) {
+                Text("你的課表沒有\(ScheduleFreeTime.weekdayNames[day])。").font(.subheadline).foregroundStyle(.secondary)
+            } else if status == .notCovered {
                 Text("對方的課表沒有\(ScheduleFreeTime.weekdayNames[day])，不確定有沒有課。")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else if blocks.isEmpty {
-                Text("今天沒課")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(.secondary)
             } else {
-                ForEach(blocks, id: \.start) { block in
-                    let isNow = block.start <= minute && minute < block.end
-                    let isPast = block.end <= minute
-                    HStack(spacing: Theme.Spacing.small) {
-                        Text(ScheduleFriendsComparison.timeRange(block.start, block.end))
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(isNow ? Color(.systemOrange) : Theme.Colors.secondaryLabel)
-                            .frame(width: 104, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(block.name)
-                                .font(.body.weight(isNow ? .semibold : .regular))
-                            if let room = block.room {
-                                Text(room).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                        if isNow {
-                            Text("上課中")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color(.systemOrange))
-                        }
-                    }
-                    .opacity(isPast ? 0.45 : 1)
-                    .frame(minHeight: 44)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityValue(isNow ? "上課中" : (isPast ? "已結束" : ""))
-                }
+                DayLanes(lanes: [("我", Theme.Colors.accent, mine.classBlocks(on: day)),
+                                 (entry.displayName, FriendAvatar.colour(for: entry.payload.shareID.uuidString),
+                                  entry.payload.classBlocks(on: day))],
+                         shared: windows.filter { $0.day == day },
+                         periods: mine.periods, minute: minute)
+                    .padding(.vertical, 6)
+            }
+        } header: {
+            HStack {
+                Text("今天對照")
+                Spacer()
+                Text("綠色是你們都有空")
             }
         }
     }
 
-    @ViewBuilder
-    private func freeSection(_ payload: ScheduleSharePayload, mine: ScheduleSharePayload?, now: Date) -> some View {
-        Section {
-            if let mine {
-                let windows = ScheduleFreeTime.upcoming(ScheduleFreeTime.windows(base: mine, others: [payload]), at: now)
-                if windows.isEmpty {
-                    Text("這週找不到你們都有空的時段。")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(showsAllWindows ? windows : Array(windows.prefix(4))) { window in
-                        FreeWindowRow(window: window, now: now)
-                    }
-                    if windows.count > 4 {
-                        Button(showsAllWindows ? "收合" : "顯示全部 \(windows.count) 段") {
-                            withAnimation(Theme.Animation.standard) { showsAllWindows.toggle() }
+    private func weekSection(mine: ScheduleSharePayload, windows: [ScheduleFreeWindow], now: Date) -> some View {
+        let today = ScheduleSharePayload.clockPosition(of: now).day
+        return Section("這週的共同空堂") {
+            ForEach(mine.days.sorted(), id: \.self) { day in
+                let slots = windows.filter { $0.day == day }
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+                    Text(String(ScheduleFreeTime.weekdayNames[day].suffix(1)))
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(day == today ? Theme.Colors.accent : Theme.Colors.label)
+                        .frame(width: 24, alignment: .leading)
+                    if slots.isEmpty {
+                        Text("沒有").font(.subheadline).foregroundStyle(.secondary)
+                    } else {
+                        FlowLayout {
+                            ForEach(slots) { slot in
+                                Text(ScheduleFriendsComparison.timeRange(slot.start, slot.end))
+                                    .font(.subheadline.monospacedDigit())
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color(.systemGreen).opacity(0.16),
+                                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            }
                         }
-                        .frame(minHeight: 44)
                     }
                 }
-            } else {
-                Text("你的課表載入後，才能找你們的共同空堂。")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(ScheduleFreeTime.weekdayNames[day] + "，"
+                                    + (slots.isEmpty ? "沒有共同空堂"
+                                       : slots.map { ScheduleFriendsComparison.timeRange($0.start, $0.end) }.joined(separator: "、")))
             }
-        } header: {
-            Text("你們的共同空堂")
-        } footer: {
-            if mine != nil { Text("依你的課表（含自訂課程）和對方分享的課表計算；對方課表沒有的時段不算有空。") }
         }
     }
 
@@ -651,6 +703,81 @@ struct FriendDetailView: View {
         if payload.hasRooms { fields.append("教室") }
         if payload.hasTeachers { fields.append("教師") }
         return fields.joined(separator: "、")
+    }
+}
+
+/// Two people's classes for one day on a shared time axis, with the times both are free in green.
+private struct DayLanes: View {
+    let lanes: [(name: String, colour: Color, blocks: [ScheduleSharePayload.ClassBlock])]
+    let shared: [ScheduleFreeWindow]
+    let periods: [ScheduleSharePayload.Period]
+    let minute: Int
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var lower: Int { (periods.map(\.start).min() ?? 480) / 60 * 60 }
+    private var upper: Int { max(lower + 60, ((periods.map(\.end).max() ?? 1020) + 59) / 60 * 60) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(lanes.indices, id: \.self) { index in
+                let lane = lanes[index]
+                HStack(spacing: 8) {
+                    Text(lane.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .frame(width: 48, alignment: .leading)
+                    GeometryReader { geometry in
+                        let width = geometry.size.width
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 7).fill(Theme.Colors.tertiaryFill)
+                            ForEach(shared) { window in
+                                Rectangle()
+                                    .fill(Color(.systemGreen).opacity(colorScheme == .dark ? 0.3 : 0.2))
+                                    .frame(width: x(window.end, width) - x(window.start, width))
+                                    .offset(x: x(window.start, width))
+                            }
+                            ForEach(lane.blocks, id: \.start) { block in
+                                Text(block.name)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 4)
+                                    .frame(width: max(2, x(block.end, width) - x(block.start, width)), height: 26, alignment: .leading)
+                                    .background(lane.colour, in: RoundedRectangle(cornerRadius: 6))
+                                    .offset(x: x(block.start, width))
+                            }
+                            if (lower...upper).contains(minute) {
+                                Rectangle().fill(Theme.Colors.error)
+                                    .frame(width: 2, height: 30)
+                                    .offset(x: x(minute, width) - 1)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                    }
+                    .frame(height: 26)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(lane.name)今天的課：" + (lane.blocks.isEmpty ? "沒有"
+                    : lane.blocks.map { "\($0.name) \(ScheduleFriendsComparison.timeRange($0.start, $0.end))" }.joined(separator: "、")))
+            }
+            HStack(spacing: 8) {
+                Color.clear.frame(width: 48, height: 1)
+                HStack {
+                    ForEach(Array(stride(from: lower, through: upper, by: max(60, (upper - lower) / 3 / 60 * 60))), id: \.self) { mark in
+                        Text(String(format: "%02d", mark / 60))
+                        if mark < upper { Spacer(minLength: 0) }
+                    }
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+            }
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func x(_ minute: Int, _ width: CGFloat) -> CGFloat {
+        CGFloat(min(max(minute, lower), upper) - lower) / CGFloat(upper - lower) * width
     }
 }
 
@@ -702,13 +829,13 @@ private struct FriendTimetableView: View {
 
 // MARK: - Group
 
-/// Pick friends like inviting a party, then see when everyone is free.
+/// Pick friends like inviting a party; see when everyone is free, a week heat map, and slots one person short.
 struct GroupFreeTimeView: View {
     @ObservedObject var store: ScheduleExchangeStore
     let mySchedule: ClassSchedule?
     let term: ScheduleShareTerm
     @State private var selected: Set<UUID>
-    @State private var showsGrid = false
+    @State private var inspected: Int?
 
     init(store: ScheduleExchangeStore, mySchedule: ClassSchedule?, term: ScheduleShareTerm, initial: Set<UUID>) {
         self.store = store
@@ -726,33 +853,31 @@ struct GroupFreeTimeView: View {
         let chosen = friends.filter { selected.contains($0.id) }
         TimelineView(.everyMinute) { context in
             let now = ScheduleFriendsClock.now(context.date)
-            VStack(spacing: 0) {
-                partyBar
-                if mine != nil, !chosen.isEmpty {
-                    Picker("顯示方式", selection: $showsGrid) {
-                        Text("空堂時段").tag(false)
-                        Text("課表格子").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, Theme.Spacing.medium)
-                    .padding(.vertical, Theme.Spacing.xsmall)
+            List {
+                Section {
+                    partyBar
+                        .listRowInsets(EdgeInsets())
                 }
-                if let mine, let mySchedule {
+                if let mine {
                     if chosen.isEmpty {
-                        ContentUnavailableView("選幾位好友", systemImage: "person.3",
-                                               description: Text("點上面的頭像，選要一起約的人。"))
-                    } else if showsGrid {
-                        grid(schedule: mySchedule, mine: mine, others: chosen.map(\.payload))
+                        Section {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("點上面的頭像選人").font(.headline)
+                                Text("選好就會算出大家都有空的時段。").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
                     } else {
-                        windowList(mine: mine, others: chosen.map(\.payload), count: chosen.count + 1, now: now)
+                        results(mine: mine, others: chosen.map(\.payload), now: now)
                     }
                 } else {
-                    ContentUnavailableView("課表還沒載入", systemImage: "calendar.badge.exclamationmark",
-                                           description: Text("你的課表載入後，才能找共同空堂。"))
+                    Section {
+                        Text("你的課表載入後，才能找共同空堂。").font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
             }
+            .listStyle(.insetGrouped)
         }
-        .background(Theme.Colors.groupedBackground)
         .navigationTitle("揪團找空堂")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -760,6 +885,7 @@ struct GroupFreeTimeView: View {
                 Button(selected.count == friends.count ? "全不選" : "全選") {
                     withAnimation(Theme.Animation.fast) {
                         selected = selected.count == friends.count ? [] : Set(friends.map(\.id))
+                        inspected = nil
                     }
                 }
                 .disabled(friends.isEmpty)
@@ -771,17 +897,19 @@ struct GroupFreeTimeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: Theme.Spacing.small) {
                 member(name: "我", seed: nil, isSelected: true)
+                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel("我，一定會包含")
                 ForEach(friends) { friend in
                     let isOn = selected.contains(friend.id)
                     Button {
                         withAnimation(Theme.Animation.fast) {
                             if isOn { selected.remove(friend.id) } else { selected.insert(friend.id) }
+                            inspected = nil
                         }
                     } label: {
                         member(name: friend.displayName, seed: friend.payload.shareID.uuidString, isSelected: isOn)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
                     .accessibilityLabel(friend.displayName)
                     .accessibilityAddTraits(isOn ? .isSelected : [])
                 }
@@ -789,88 +917,248 @@ struct GroupFreeTimeView: View {
             .padding(.horizontal, Theme.Spacing.medium)
             .padding(.vertical, Theme.Spacing.small)
         }
-        .background(Color(.secondarySystemGroupedBackground))
     }
 
     private func member(name: String, seed: String?, isSelected: Bool) -> some View {
         VStack(spacing: 6) {
-            FriendAvatar(name: name, seed: seed, size: 52)
-                .padding(3)
-                .overlay {
-                    Circle().strokeBorder(isSelected ? Theme.Colors.accent : Color.clear, lineWidth: 2.5)
-                }
+            FriendAvatar(name: name, seed: seed, size: 50)
+                .opacity(isSelected ? 1 : 0.35)
                 .overlay(alignment: .topTrailing) {
                     if isSelected, seed != nil {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 18))
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, Theme.Colors.accent)
+                            .offset(x: 3, y: -3)
                     }
                 }
-                .opacity(isSelected ? 1 : 0.55)
             Text(name)
                 .font(.caption)
                 .foregroundStyle(isSelected ? Theme.Colors.label : Theme.Colors.secondaryLabel)
                 .lineLimit(1)
         }
-        .frame(width: 66)
+        .frame(width: 64)
         .contentShape(Rectangle())
     }
 
-    private func windowList(mine: ScheduleSharePayload, others: [ScheduleSharePayload], count: Int, now: Date) -> some View {
+    @ViewBuilder
+    private func results(mine: ScheduleSharePayload, others: [ScheduleSharePayload], now: Date) -> some View {
+        let total = others.count + 1
         let windows = ScheduleFreeTime.upcoming(ScheduleFreeTime.windows(base: mine, others: others), at: now)
-        let days = windows.reduce(into: [Int]()) { if $0.last != $1.day { $0.append($1.day) } }
-        return List {
+        let days = mine.days.sorted()
+        let cells = ScheduleFreeTime.grid(base: mine, others: others, days: days)
+        let rows = mine.periods.indices.sorted { mine.periods[$0].start < mine.periods[$1].start }
+
+        Section {
             if windows.isEmpty {
-                Section {
-                    Text("這週找不到 \(count) 人都有空的時段，試著少選幾個人。")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text("這週沒有 \(total) 人都有空的時段，看看下面「差一個人」。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             } else {
-                ForEach(days, id: \.self) { day in
-                    Section(ScheduleFriendsComparison.dayLabel(day, now: now)) {
-                        ForEach(windows.filter { $0.day == day }) { window in
-                            HStack {
-                                Text(ScheduleFriendsComparison.timeRange(window.start, window.end))
-                                    .font(.body.monospacedDigit())
-                                Spacer()
-                                Text(window.durationText)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color(.systemGreen))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color(.systemGreen).opacity(0.14), in: Capsule())
+                ForEach(windows.prefix(5)) { window in
+                    HStack(spacing: Theme.Spacing.small) {
+                        Text(ScheduleFriendsComparison.dayLabel(window.day, now: now))
+                            .font(.body.weight(.semibold))
+                            .frame(width: 56, alignment: .leading)
+                        Text(ScheduleFriendsComparison.timeRange(window.start, window.end))
+                            .font(.body.monospacedDigit())
+                        Spacer(minLength: Theme.Spacing.xsmall)
+                        DurationChip(text: window.durationText)
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        } header: {
+            HStack {
+                Text("\(total) 人都有空")
+                Spacer()
+                Text("從現在起")
+            }
+        }
+
+        Section {
+            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                Grid(horizontalSpacing: 3, verticalSpacing: 3) {
+                    GridRow {
+                        Color.clear.frame(width: 36, height: 1)
+                        ForEach(days, id: \.self) { day in
+                            Text(String(ScheduleFreeTime.weekdayNames[day].suffix(1)))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    ForEach(rows, id: \.self) { row in
+                        GridRow {
+                            VStack(alignment: .trailing, spacing: 0) {
+                                Text(mine.periods[row].id).font(.caption2.weight(.semibold))
+                                Text(ScheduleSharePayload.clockText(mine.periods[row].start)).font(.system(size: 9).monospacedDigit())
                             }
-                            .frame(minHeight: 44)
-                            .accessibilityElement(children: .combine)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, alignment: .trailing)
+                            ForEach(days.indices, id: \.self) { column in
+                                heatCell(cells[row][column], total: total, key: days[column] * 100 + row,
+                                         label: "\(ScheduleFreeTime.weekdayNames[days[column]]) 第\(mine.periods[row].id)節")
+                            }
                         }
                     }
                 }
+                HStack(spacing: 6) {
+                    legend(Theme.Colors.tertiaryFill, "沒人有空")
+                    legend(Color(.systemGreen).opacity(0.35), "部分有空")
+                    legend(Color(.systemGreen), "全部有空")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                Text(inspectedText(mine: mine, cells: cells, days: days, total: total))
+                    .font(.footnote)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Theme.Colors.groupedBackground, in: RoundedRectangle(cornerRadius: 10))
             }
-            Section {
-            } footer: {
-                Text("\(count) 人都有空的時段，依你的課表（含自訂課程）計算。只比對\(term.title)；誰的課表沒有涵蓋的時段，不算有空。")
+            .padding(.vertical, 6)
+        } header: {
+            HStack {
+                Text("這週一覽")
+                Spacer()
+                Text("顏色越深越多人有空")
+            }
+        } footer: {
+            Text("依你的課表（含自訂課程）計算，只比對\(term.title)；誰的課表沒有涵蓋的時段，不算有空。")
+        }
+
+        let short = nearMisses(mine: mine, cells: cells, days: days, rows: rows)
+        if !short.isEmpty {
+            Section("差一個人") {
+                ForEach(short.prefix(3), id: \.key) { item in
+                    HStack(spacing: Theme.Spacing.small) {
+                        Text(String(ScheduleFreeTime.weekdayNames[item.day].suffix(1)))
+                            .font(.body.weight(.semibold))
+                            .frame(width: 24, alignment: .leading)
+                        Text(ScheduleFriendsComparison.timeRange(item.period.start, item.period.end))
+                            .font(.body.monospacedDigit())
+                        Spacer(minLength: Theme.Spacing.xsmall)
+                        Text("\(item.who) 有課")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color(.systemOrange))
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .combine)
+                }
             }
         }
-        .listStyle(.insetGrouped)
     }
 
-    private func grid(schedule: ClassSchedule, mine: ScheduleSharePayload, others: [ScheduleSharePayload]) -> some View {
-        // `mine` skips periods whose times did not parse, so map its rows back by period ID.
-        let rows = mine.periods.map { period in schedule.periods.firstIndex { $0.id == period.id } }
-        let slots = Set(mine.freeSlots(with: others).compactMap { key in rows[key % 100].map { key / 100 * 100 + $0 } })
-        let headers = CustomCourse.weekdayHeaders.enumerated()
-            .filter { $0.offset < 5 || schedule.dayHeaders.contains($0.element) }.map(\.element)
-        return ClassScheduleWeekView(
-            schedule: schedule,
-            displayDayHeaders: headers,
-            isRefreshing: false,
-            cacheAgeText: nil,
-            refresh: {},
-            editCustomCourse: { _ in },
-            isReadOnly: true,
-            freeSlots: slots
-        )
+    private func freeCount(_ cell: ScheduleFreeSlot, total: Int) -> Int {
+        switch cell {
+        case .free: total
+        case .busy(let names), .unknown(let names): max(0, total - names.count)
+        }
+    }
+
+    private func heatCell(_ cell: ScheduleFreeSlot, total: Int, key: Int, label: String) -> some View {
+        let count = freeCount(cell, total: total)
+        let all = count == total
+        return Button {
+            inspected = inspected == key ? nil : key
+        } label: {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(all ? Color(.systemGreen) : Color(.systemGreen).opacity(0.55 * Double(count) / Double(max(1, total))))
+                .background(Theme.Colors.tertiaryFill, in: RoundedRectangle(cornerRadius: 5))
+                .overlay {
+                    if all {
+                        Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.white)
+                    }
+                }
+                .overlay {
+                    if inspected == key {
+                        RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.Colors.label, lineWidth: 2)
+                    }
+                }
+                .frame(height: 28)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label)，\(count)/\(total) 人有空")
+        .accessibilityAddTraits(inspected == key ? .isSelected : [])
+    }
+
+    private func legend(_ colour: Color, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 3).fill(colour).frame(width: 14, height: 10)
+            Text(text)
+        }
+    }
+
+    private func inspectedText(mine: ScheduleSharePayload, cells: [[ScheduleFreeSlot]], days: [Int], total: Int) -> String {
+        guard let key = inspected, let column = days.firstIndex(of: key / 100), mine.periods.indices.contains(key % 100) else {
+            return "點格子看是誰有課。"
+        }
+        let period = mine.periods[key % 100]
+        let heading = "\(ScheduleFreeTime.weekdayNames[key / 100]) 第\(period.id)節 \(ScheduleFriendsComparison.timeRange(period.start, period.end))："
+        switch cells[key % 100][column] {
+        case .free: return heading + "\(total) 人都有空"
+        case .busy(let names): return heading + names.map { $0 == "我" ? "你" : $0 }.joined(separator: "、") + " 有課"
+        case .unknown(let names): return heading + names.joined(separator: "、") + " 的課表沒有這天"
+        }
+    }
+
+    private struct NearMiss {
+        let day: Int
+        let period: ScheduleSharePayload.Period
+        let who: String
+        var key: Int { day * 10_000 + period.start }
+    }
+
+    /// Periods only one friend is busy for; the user being busy is not something to negotiate.
+    private func nearMisses(mine: ScheduleSharePayload, cells: [[ScheduleFreeSlot]], days: [Int], rows: [Int]) -> [NearMiss] {
+        guard !cells.isEmpty, cells[0].count > 0 else { return [] }
+        var result: [NearMiss] = []
+        for (column, day) in days.enumerated() {
+            for row in rows {
+                if case .busy(let names) = cells[row][column], names.count == 1, names[0] != "我" {
+                    result.append(NearMiss(day: day, period: mine.periods[row], who: names[0]))
+                }
+            }
+        }
+        return result
+    }
+}
+
+// MARK: - Home entry
+
+/// The home-screen card opens this as an ordinary pushed page. It loads the user's own timetable
+/// itself (cache first, hidden school page only if there is none) so comparisons work without
+/// going through 我的課表 first.
+struct ScheduleFriendsEntryView: View {
+    @StateObject private var schedule = ClassScheduleViewModel()
+    @ObservedObject private var store: ScheduleExchangeStore
+    @StateObject private var exchange: ScheduleExchangeViewModel
+
+    init() {
+        let store = ScheduleExchangeStore.shared
+        self.store = store
+        _exchange = StateObject(wrappedValue: ScheduleExchangeViewModel(schedule: nil, store: store))
+    }
+
+    var body: some View {
+        ZStack {
+            ScheduleFriendsView(exchange: exchange, store: store, mySchedule: schedule.displaySchedule)
+            if schedule.showWebView {
+                let generation = schedule.loadGeneration
+                ClassScheduleWebView { result in
+                    schedule.handleWebResult(result, generation: generation)
+                }
+                .frame(width: 1, height: 1)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
+        .onAppear {
+            if schedule.loadState == .idle { schedule.loadSchedule() }
+        }
+        .task(id: schedule.schedule?.fetchedAt) { exchange.schedule = schedule.schedule }
     }
 }
