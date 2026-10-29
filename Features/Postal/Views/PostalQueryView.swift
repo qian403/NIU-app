@@ -18,7 +18,7 @@ struct PostalQueryView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.large) {
                 if let ownName = model.ownName {
                     personalHeader(name: ownName)
-                    PostalStatusSelector(selection: model.query.status) { model.selectOwnStatus($0) }
+                    PostalStatusSelector(model: model) { model.selectOwnStatus($0) }
                     PostalQueryResults(model: model, isPersonal: true)
                     Button { showsOtherQuery = true } label: {
                         HStack {
@@ -113,7 +113,7 @@ struct PostalQueryView: View {
                 .frame(minHeight: 44)
         }
         .tint(accent)
-        .disabled(model.isLoading)
+        .disabled(model.isSearching)
         .accessibilityIdentifier("postal.refresh")
     }
 
@@ -176,11 +176,6 @@ private struct PostalManualQueryContent: View {
                             in: RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("領取狀態").font(.subheadline.weight(.medium))
-                PostalStatusSelector(selection: model.query.status) { model.query.status = $0 }
-            }
-
             DisclosureGroup(isExpanded: $showMoreFilters) {
                 VStack(spacing: 12) {
                     extraField("手機號碼", placeholder: "輸入收件手機號碼", text: $model.query.phone, field: .phone)
@@ -202,12 +197,12 @@ private struct PostalManualQueryContent: View {
 
             Button(action: search) {
                 HStack(spacing: 8) {
-                    if model.isLoading {
+                    if model.isSearching {
                         ProgressView().tint(.white)
                     } else {
                         Image(systemName: "magnifyingglass")
                     }
-                    Text(model.isLoading ? "正在查詢…" : "查詢郵件與包裹")
+                    Text(model.isSearching ? "正在查詢…" : "查詢郵件與包裹")
                 }
                 .font(.headline)
                 .frame(maxWidth: .infinity, minHeight: 50)
@@ -216,7 +211,10 @@ private struct PostalManualQueryContent: View {
                             in: RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
             }
             .buttonStyle(.plain)
-            .disabled(!model.query.canSearch || model.isLoading)
+            .disabled(!model.query.canSearch || model.isSearching)
+            Text("會同時查詢未領取、已領取與退件，查完可直接切換。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(Theme.Spacing.medium)
         .background(Color(uiColor: .secondarySystemGroupedBackground),
@@ -246,8 +244,9 @@ private struct PostalManualQueryContent: View {
 
 private struct PostalStatusSelector: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    let selection: PostalStatus
+    @ObservedObject var model: PostalQueryViewModel
     let onSelect: (PostalStatus) -> Void
+    private var selection: PostalStatus { model.query.status }
     private let accent = Color.brown
 
     var body: some View {
@@ -264,11 +263,22 @@ private struct PostalStatusSelector: View {
 
     private var buttons: some View {
         ForEach(PostalStatus.allCases) { status in
+            let count = model.countText(for: status)
             Button {
                 onSelect(status)
             } label: {
-                Label(status.title, systemImage: status.symbol)
+                HStack(spacing: 5) {
+                    Image(systemName: status.symbol)
+                    Text(status.title)
+                    if model.isLoading(status) {
+                        ProgressView().controlSize(.mini)
+                    } else if let count {
+                        Text(count).monospacedDigit()
+                    }
+                }
                     .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity, minHeight: 46)
                     .foregroundStyle(selection == status ? accent : Color.secondary)
                     .background(selection == status ? accent.opacity(0.13) : Color(uiColor: .tertiarySystemGroupedBackground),
@@ -281,6 +291,8 @@ private struct PostalStatusSelector: View {
                     }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(status.title)
+            .accessibilityValue(model.isLoading(status) ? "查詢中" : count.map { "\($0) 筆" } ?? "")
             .accessibilityAddTraits(selection == status ? .isSelected : [])
         }
     }
@@ -293,6 +305,9 @@ private struct PostalQueryResults: View {
     private let accent = Color.brown
 
     @ViewBuilder var body: some View {
+        if !isPersonal, model.submitted != nil {
+            PostalStatusSelector(model: model) { model.query.status = $0 }
+        }
         if let message = model.errorMessage {
             VStack(alignment: .leading, spacing: 10) {
                 Label("查詢未完成", systemImage: "exclamationmark.triangle")
@@ -323,7 +338,7 @@ private struct PostalQueryResults: View {
                 }
                 if model.records.isEmpty {
                     stateCard(icon: "tray", title: isPersonal && submitted.status == .waiting ? "目前沒有待領郵件" : "查無\(submitted.status.title)郵件",
-                              description: isPersonal ? "可切換領取狀態查看其他紀錄，或稍後重新整理。" : "請確認查詢條件，或切換領取狀態再查詢。")
+                              description: isPersonal ? "可切換領取狀態查看其他紀錄，或稍後重新整理。" : "可切換上方的領取狀態，或修改查詢條件。")
                 } else {
                     LazyVStack(spacing: Theme.Spacing.medium) {
                         ForEach(model.records) { record in PostalRecordCard(record: record) }
@@ -348,7 +363,7 @@ private struct PostalQueryResults: View {
         } else if model.errorMessage == nil {
             stateCard(icon: model.isLoading ? "ellipsis.circle" : "tray.and.arrow.down",
                       title: model.isLoading ? "正在向校方查詢" : "查詢收件紀錄",
-                      description: model.isLoading ? "正在取得最新資料，請稍候。" : "填寫查詢條件，查看是否有待領的郵件與包裹。")
+                      description: model.isLoading ? "正在取得最新資料，請稍候。" : "填寫查詢條件，一次查看未領取、已領取與退件紀錄。")
         }
     }
 

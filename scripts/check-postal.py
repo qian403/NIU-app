@@ -31,15 +31,26 @@ actor ServiceGate {
         pending[index].resume(returning: service)
     }
 }
+/// Requests for the three statuses start concurrently, so tests release them by status or name, not by order.
 actor Gate {
     var pending: [(PostalQuery, CheckedContinuation<PostalPage, Error>)] = []
+    var started = 0
+    var statuses: [PostalStatus] = []
     func load(_ query: PostalQuery) async throws -> PostalPage {
-        try await withCheckedThrowingContinuation { pending.append((query, $0)) }
+        started += 1
+        statuses.append(query.status)
+        return try await withCheckedThrowingContinuation { pending.append((query, $0)) }
     }
-    var count: Int { pending.count }
-    func resolve(_ index: Int) throws {
-        let (query, continuation) = pending[index]
+    func resolve(_ status: PostalStatus) throws {
+        guard let index = pending.firstIndex(where: { $0.0.status == status }) else { preconditionFailure("No pending \(status)") }
+        let (query, continuation) = pending.remove(at: index)
         continuation.resume(returning: try PostalHTML.page(Checks.fixture(), query: query))
+    }
+    func resolveAll(name: String) throws {
+        for (query, continuation) in pending where query.name == name {
+            continuation.resume(returning: try PostalHTML.page(Checks.fixture(), query: query))
+        }
+        pending.removeAll { $0.0.name == name }
     }
 }
 actor PageGate {
@@ -114,117 +125,121 @@ actor PageGate {
         print("PASS: records, entities, explicit empty state, strict schema, form encoding, paging, input validation")
 
         let gate = Gate()
-        let service = StubPostalService(load: { query in try await gate.load(query) })
-        let model = PostalQueryViewModel(makeService: { service })
+        let model = PostalQueryViewModel(makeService: { StubPostalService(load: { query in try await gate.load(query) }) })
         model.query = query; model.search()
-        try await settle { await gate.count == 1 }
-        model.query.status = .collected; model.search()
-        try await settle { await gate.count == 2 }
-        try await gate.resolve(0)
+        try await settle { await gate.started == 3 }
+        let requested = await gate.statuses
+        precondition(Set(requested) == Set(PostalStatus.allCases))
+        precondition(model.isSearching && model.isLoading && model.resultQuery == nil)
+        try await gate.resolve(.collected)
+        try await settle { model.countText(for: .collected) == "1" }
+        precondition(model.resultQuery == nil && model.isLoading && model.isLoading(.waiting))
+        model.query.status = .collected
+        precondition(model.records.count == 1 && model.resultQuery?.status == .collected && !model.isLoading)
         try await Task.sleep(for: .milliseconds(30))
-        precondition(model.records.isEmpty && model.isLoading)
-        try await gate.resolve(1)
-        try await settle { !model.isLoading }
-        precondition(model.records.count == 1 && model.resultQuery?.status == .collected)
+        let started1 = await gate.started
+        precondition(started1 == 3)
         model.query.name = "新條件"
-        precondition(model.filtersChanged)
+        precondition(model.filtersChanged && !model.isSearching && model.records.count == 1)
         model.search()
-        try await settle { await gate.count == 3 }
+        try await settle { await gate.started == 6 }
+        try await gate.resolveAll(name: "測試同學")
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(model.records.isEmpty && model.isSearching)
+        try await gate.resolveAll(name: "新條件")
+        try await settle { !model.isSearching }
+        precondition(model.resultQuery == PostalQuery(name: "新條件", status: .collected) && model.countText(for: .waiting) == "1")
+        model.search()
+        try await settle { await gate.started == 9 }
         model.reset()
-        try await gate.resolve(2)
+        try await gate.resolveAll(name: "新條件")
         try await Task.sleep(for: .milliseconds(30))
-        precondition(model.records.isEmpty && model.resultQuery == nil && !model.query.canSearch)
-        model.query = query; model.search()
-        try await settle { await gate.count == 4 }
-        model.query.name = "編輯中"
-        try await gate.resolve(3)
-        try await Task.sleep(for: .milliseconds(30))
-        precondition(model.records.isEmpty && !model.isLoading)
-        let failing = PostalQueryViewModel(makeService: { StubPostalService(load: { _ in throw URLError(.notConnectedToInternet) }) })
+        precondition(model.records.isEmpty && model.resultQuery == nil && model.submitted == nil)
+        precondition(!model.query.canSearch && !model.isSearching && model.countText(for: .waiting) == nil)
+        let failing = PostalQueryViewModel(makeService: { StubPostalService(load: { query in
+            if query.status == .returned { throw URLError(.notConnectedToInternet) }
+            return try PostalHTML.page(fixture(), query: query)
+        }) })
         failing.query = query; failing.search()
-        try await settle { !failing.isLoading }
+        try await settle { !failing.isSearching }
+        precondition(failing.resultQuery?.status == .waiting && failing.errorMessage == nil)
+        failing.query.status = .returned
         precondition(failing.resultQuery == nil && failing.errorMessage?.contains("網路") == true)
+        precondition(failing.countText(for: .returned) == nil && failing.countText(for: .collected) == "1")
+        failing.query.name = ""
+        failing.search()
+        precondition(failing.errorMessage?.contains("其中一項") == true && !failing.isSearching)
         precondition(PostalQueryViewModel.message(for: PostalError.invalidResponse).contains("格式"))
-        print("PASS: stale requests, filter edits, reset/account cleanup, empty vs network/parse errors")
+        print("PASS: one search fetches all statuses, switching needs no request, stale/cancelled results ignored, per-status errors")
 
         let ownGate = Gate()
         let personal = PostalQueryViewModel(makeService: {
             StubPostalService(load: { query in try await ownGate.load(query) })
         })
         personal.prepare(account: " A001 ", name: " 測試同學 ")
-        try await settle { await ownGate.count == 1 }
+        try await settle { await ownGate.started == 3 }
         precondition(personal.query == PostalQuery(name: "測試同學") && personal.isLoading)
         personal.prepare(account: "a001", name: "測試同學")
-        try await ownGate.resolve(0)
-        try await settle { !personal.isLoading }
+        try await ownGate.resolveAll(name: "測試同學")
+        try await settle { !personal.isSearching }
         precondition(personal.resultQuery?.name == "測試同學")
-        let ownSearchCount = await ownGate.count
-        precondition(ownSearchCount == 1)
+        let started2 = await ownGate.started
+        precondition(started2 == 3)
+        personal.selectOwnStatus(.returned)
+        precondition(personal.resultQuery?.status == .returned && !personal.isLoading)
+        let started3 = await ownGate.started
+        precondition(started3 == 3)
+        personal.search()
+        try await settle { await ownGate.started == 6 }
+        try await ownGate.resolveAll(name: "測試同學")
+        try await settle { !personal.isSearching }
+        precondition(personal.resultQuery?.status == .returned)
         personal.query = PostalQuery(name: "其他同學", phone: "0912000000", trackingNumber: "OTHER", status: .returned)
         personal.searchOwnMail()
-        try await settle { await ownGate.count == 2 }
+        try await settle { await ownGate.started == 9 }
         precondition(personal.query == PostalQuery(name: "測試同學"))
         personal.prepare(account: "b002", name: "另一位同學")
-        try await settle { await ownGate.count == 3 }
-        try await ownGate.resolve(1)
+        try await settle { await ownGate.started == 12 }
+        try await ownGate.resolveAll(name: "測試同學")
         try await Task.sleep(for: .milliseconds(30))
         precondition(personal.records.isEmpty && personal.isLoading && personal.ownName == "另一位同學")
-        try await ownGate.resolve(2)
-        try await settle { !personal.isLoading }
+        try await ownGate.resolveAll(name: "另一位同學")
+        try await settle { !personal.isSearching }
         precondition(personal.resultQuery?.name == "另一位同學")
         personal.searchOwnMail()
-        try await settle { await ownGate.count == 4 }
+        try await settle { await ownGate.started == 15 }
         personal.prepare(account: nil, name: nil)
-        try await ownGate.resolve(3)
+        try await ownGate.resolveAll(name: "另一位同學")
         try await Task.sleep(for: .milliseconds(30))
-        precondition(personal.ownName == nil && personal.records.isEmpty && !personal.query.canSearch)
+        precondition(personal.ownName == nil && personal.records.isEmpty && !personal.query.canSearch && !personal.isSearching)
         personal.prepare(account: "b002", name: "另一位同學")
-        try await settle { await ownGate.count == 5 }
-        try await ownGate.resolve(4)
-        try await settle { !personal.isLoading }
-        precondition(personal.resultQuery?.name == "另一位同學")
-
-        personal.selectOwnStatus(.collected)
-        try await settle { await ownGate.count == 6 }
-        precondition(personal.isLoading && personal.query.status == .collected)
+        try await settle { await ownGate.started == 18 }
+        try await ownGate.resolveAll(name: "另一位同學")
+        try await settle { !personal.isSearching }
         personal.selectOwnStatus(.returned)
-        try await settle { await ownGate.count == 7 }
-        try await ownGate.resolve(5)
-        try await Task.sleep(for: .milliseconds(30))
-        precondition(personal.resultQuery == nil && personal.isLoading)
-        try await ownGate.resolve(6)
-        try await settle { !personal.isLoading }
-        precondition(personal.resultQuery?.status == .returned)
-        personal.selectOwnStatus(.returned)
-        precondition(!personal.isLoading)
-        personal.search()
-        try await settle { await ownGate.count == 8 }
-        try await ownGate.resolve(7)
-        try await settle { !personal.isLoading }
-        precondition(personal.resultQuery?.status == .returned)
         personal.prepare(account: "b002", name: "更新姓名")
-        try await settle { await ownGate.count == 9 }
-        try await ownGate.resolve(8)
-        try await settle { !personal.isLoading }
+        try await settle { await ownGate.started == 21 }
+        try await ownGate.resolveAll(name: "更新姓名")
+        try await settle { !personal.isSearching }
         precondition(personal.resultQuery == PostalQuery(name: "更新姓名", status: .returned))
         personal.prepare(account: "b002", name: "")
         precondition(personal.ownName == nil && personal.resultQuery == nil && personal.records.isEmpty)
-        print("PASS: status changes auto-search, rapid switches reject stale results, refresh retains status, profile changes refresh identity")
+        print("PASS: own mail fetches all statuses, switching is instant, refresh retains status, account/profile changes discard stale results")
 
         let fallback = PostalQueryViewModel(makeService: {
             StubPostalService(load: { query in try PostalHTML.page(fixture(), query: query) })
         })
         fallback.prepare(account: "a001", name: " \n ")
-        precondition(fallback.ownName == nil && !fallback.isLoading && !fallback.query.canSearch)
+        precondition(fallback.ownName == nil && !fallback.isSearching && !fallback.query.canSearch)
         fallback.prepare(account: "a001", name: "A001")
-        precondition(fallback.ownName == nil && !fallback.isLoading)
+        precondition(fallback.ownName == nil && !fallback.isSearching)
         fallback.query.name = "手動查詢"
         fallback.prepare(account: "a001", name: "測試同學")
-        precondition(fallback.ownName == "測試同學" && fallback.query.name == "手動查詢" && !fallback.isLoading)
+        precondition(fallback.ownName == "測試同學" && fallback.query.name == "手動查詢" && !fallback.isSearching)
         fallback.reset()
         fallback.prepare(account: "a001", name: nil)
         fallback.prepare(account: "a001", name: "測試同學")
-        try await settle { !fallback.isLoading }
+        try await settle { !fallback.isSearching }
         precondition(fallback.resultQuery?.name == "測試同學")
         print("PASS: automatic own-mail lookup, shortcut clears filters, account switch/logout discard stale results, reentry, missing/late profile")
 
@@ -237,25 +252,25 @@ actor PageGate {
         }, onInvalidate: { discarded.withLock { $0 += 1 } })
         let delayed = PostalQueryViewModel(makeService: { await factory.make() })
         delayed.query = query; delayed.search()
-        try await settle { await factory.count == 1 }
-        precondition(delayed.isLoading)
-        delayed.query.name = "新條件"; delayed.search()
-        try await settle { await factory.count == 2 }
-        await factory.resolve(0, with: delayedService)
-        try await settle { discarded.withLock { $0 == 1 } }
-        precondition(started.withLock { $0 == 0 } && delayed.isLoading)
-        await factory.resolve(1, with: delayedService)
-        try await settle { !delayed.isLoading }
-        precondition(delayed.resultQuery?.name == "新條件" && started.withLock { $0 == 1 })
-        delayed.search()
         try await settle { await factory.count == 3 }
+        precondition(delayed.isSearching)
+        delayed.query.name = "新條件"; delayed.search()
+        try await settle { await factory.count == 6 }
+        for index in 0..<3 { await factory.resolve(index, with: delayedService) }
+        try await settle { discarded.withLock { $0 == 3 } }
+        precondition(started.withLock { $0 == 0 } && delayed.isSearching)
+        for index in 3..<6 { await factory.resolve(index, with: delayedService) }
+        try await settle { !delayed.isSearching }
+        precondition(delayed.resultQuery?.name == "新條件" && started.withLock { $0 == 3 })
+        delayed.search()
+        try await settle { await factory.count == 9 }
+        precondition(discarded.withLock { $0 == 6 })
         delayed.reset()
-        let beforeResetReturn = discarded.withLock { $0 }
-        await factory.resolve(2, with: delayedService)
-        try await settle { discarded.withLock { $0 == beforeResetReturn + 1 } }
-        precondition(delayed.records.isEmpty && delayed.resultQuery == nil && !delayed.isLoading)
-        precondition(started.withLock { $0 == 1 })
-        print("PASS: asynchronous session setup, replaced/reset setup invalidated before network requests")
+        for index in 6..<9 { await factory.resolve(index, with: delayedService) }
+        try await settle { discarded.withLock { $0 == 9 } }
+        precondition(delayed.records.isEmpty && delayed.resultQuery == nil && !delayed.isSearching)
+        precondition(started.withLock { $0 == 3 })
+        print("PASS: asynchronous session setup, one session per status, replaced/reset setup and old results invalidated")
 
         let pageGate = PageGate()
         let paging = PostalQueryViewModel(makeService: {
@@ -265,7 +280,7 @@ actor PageGate {
             )
         })
         paging.query = query; paging.search()
-        try await settle { !paging.isLoading }
+        try await settle { !paging.isSearching }
         paging.loadMore()
         try await settle { await pageGate.count == 1 }
         await pageGate.fail(0)
@@ -276,17 +291,19 @@ actor PageGate {
         try await pageGate.resolve(1)
         try await settle { !paging.isLoading }
         precondition(paging.records.count == 2 && paging.page?.pageIndex == 1 && paging.errorMessage == nil)
+        paging.query.status = .returned
+        precondition(paging.records.count == 1 && paging.page?.pageIndex == 0)
+        precondition(paging.countText(for: .returned) == "1+" && paging.countText(for: .waiting) == "2")
         paging.search()
-        try await settle { !paging.isLoading }
+        try await settle { !paging.isSearching }
         paging.loadMore()
         try await settle { await pageGate.count == 3 }
-        paging.query.status = .returned
         paging.search()
-        try await settle { !paging.isLoading }
+        try await settle { !paging.isSearching }
         try await pageGate.resolve(2)
         try await Task.sleep(for: .milliseconds(30))
         precondition(paging.records.count == 1 && paging.resultQuery?.status == .returned && paging.page?.pageIndex == 0)
-        print("PASS: pagination append, failure preserving results, retry, cancellation during a new query")
+        print("PASS: pagination per status, failure preserving results, retry, other statuses untouched, cancellation during a new query")
         if CommandLine.arguments.contains("--live") {
             let live = PostalService()
             defer { live.invalidate() }

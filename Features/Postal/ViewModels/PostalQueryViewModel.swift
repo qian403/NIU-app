@@ -1,25 +1,35 @@
 import Foundation
 import Combine
 
+/// One search fetches every status at once, each on its own school session so paging stays
+/// independent; switching status afterwards only changes what is shown.
 @MainActor
 final class PostalQueryViewModel: ObservableObject {
     @Published var query = PostalQuery() {
         didSet {
-            if oldValue != query { criteriaChanged() }
+            if Self.criteria(oldValue) != Self.criteria(query) { criteriaChanged() }
         }
     }
-    @Published private(set) var records: [PostalRecord] = []
-    @Published private(set) var isLoading = false
-    @Published private(set) var errorMessage: String?
-    @Published private(set) var resultQuery: PostalQuery?
     @Published private(set) var updatedAt: Date?
-    @Published private(set) var page: PostalPage?
     @Published private(set) var ownName: String?
+    /// The criteria of the latest search, status left at its default; nil before any search.
+    @Published private(set) var submitted: PostalQuery?
+
+    private struct StatusResult {
+        var page: PostalPage
+        var records: [PostalRecord]
+    }
+
+    @Published private var results: [PostalStatus: StatusResult] = [:]
+    @Published private var failures: [PostalStatus: String] = [:]
+    @Published private var loading: Set<PostalStatus> = []
+    @Published private var validationMessage: String?
 
     private var account: String?
     private let makeService: @Sendable () async -> any PostalServing
-    private var service: (any PostalServing)?
-    private var work: Task<Void, Never>?
+    private var works: [PostalStatus: Task<Void, Never>] = [:]
+    /// The session behind each status's results; its next page must use the same session.
+    private var services: [PostalStatus: any PostalServing] = [:]
     private var generation = UUID()
 
     init(makeService: @escaping @Sendable () async -> any PostalServing = { await PostalService.make() }) {
@@ -27,11 +37,39 @@ final class PostalQueryViewModel: ObservableObject {
     }
 
     deinit {
-        work?.cancel()
-        service?.invalidate()
+        for work in works.values { work.cancel() }
+        for service in services.values { service.invalidate() }
     }
 
-    var filtersChanged: Bool { resultQuery.map { $0 != query.normalized } ?? false }
+    // MARK: - Shown status
+
+    var records: [PostalRecord] { results[query.status]?.records ?? [] }
+    var page: PostalPage? { results[query.status]?.page }
+    /// The shown status is still loading, from a search or a further page.
+    var isLoading: Bool { loading.contains(query.status) }
+    /// Any status of the current search is still loading.
+    var isSearching: Bool { !loading.isEmpty }
+    var errorMessage: String? { validationMessage ?? failures[query.status] }
+
+    /// The query the shown results answer; nil until this status has a result.
+    var resultQuery: PostalQuery? {
+        guard results[query.status] != nil, var value = submitted else { return nil }
+        value.status = query.status
+        return value
+    }
+
+    var filtersChanged: Bool { submitted.map { $0 != Self.criteria(query.normalized) } ?? false }
+
+    /// Badge for a status button: record count, "+" when the school has more pages.
+    func countText(for status: PostalStatus) -> String? {
+        guard let result = results[status] else { return nil }
+        let more = result.page.pageIndex + 1 < result.page.pageCount
+        return "\(result.records.count)\(more ? "+" : "")"
+    }
+
+    func isLoading(_ status: PostalStatus) -> Bool { loading.contains(status) }
+
+    // MARK: - Own mail
 
     func prepare(account: String?, name: String?) {
         let account = account?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
@@ -52,7 +90,7 @@ final class PostalQueryViewModel: ObservableObject {
         guard ownName != previousName else { return }
         if let previousName, query.normalized == PostalQuery(name: previousName, status: query.status) {
             searchOwnMail(status: query.status)
-        } else if query == PostalQuery(), resultQuery == nil, !isLoading {
+        } else if query == PostalQuery(), submitted == nil, !isSearching {
             searchOwnMail()
         }
     }
@@ -63,103 +101,125 @@ final class PostalQueryViewModel: ObservableObject {
         search()
     }
 
+    /// Shows another status from the results already fetched; searches only if nothing was fetched yet.
     func selectOwnStatus(_ status: PostalStatus) {
         guard ownName != nil, query.status != status else { return }
-        searchOwnMail(status: status)
+        query.status = status
+        if submitted == nil, !isSearching { searchOwnMail(status: status) }
     }
+
+    // MARK: - Loading
 
     func search() {
         cancelWork()
         guard query.canSearch else {
-            errorMessage = "請填寫收件人、手機號碼或郵件號碼其中一項。"
+            validationMessage = "請填寫收件人、手機號碼或郵件號碼其中一項。"
             return
         }
-        service?.invalidate()
-        service = nil
-        let makeService = makeService
-        let submitted = query.normalized
-        records = []
-        page = nil
-        resultQuery = nil
+        discardResults()
+        validationMessage = nil
+        let base = Self.criteria(query.normalized)
+        submitted = base
         updatedAt = nil
-        isLoading = true
-        errorMessage = nil
+        loading = Set(PostalStatus.allCases)
+        let makeService = makeService
         let current = generation
-        work = Task { [weak self] in
-            // Session setup must not compete with keyboard dismissal on the main actor.
-            let client = await makeService()
-            guard !Task.isCancelled, self?.generation == current else {
-                client.invalidate()
-                return
-            }
-            self?.service = client
-            do {
-                let result = try await client.search(submitted)
-                guard !Task.isCancelled, let self, self.generation == current else { return }
-                self.records = result.records
-                self.page = result
-                self.resultQuery = submitted
-                self.updatedAt = Date()
-                self.isLoading = false
-                self.work = nil
-            } catch {
-                guard !Task.isCancelled, let self, self.generation == current else { return }
-                self.errorMessage = Self.message(for: error)
-                self.isLoading = false
-                self.work = nil
+        for status in PostalStatus.allCases {
+            var request = base
+            request.status = status
+            works[status] = Task { [weak self] in
+                // Session setup must not compete with keyboard dismissal on the main actor.
+                let client = await makeService()
+                guard !Task.isCancelled, self?.generation == current else {
+                    client.invalidate()
+                    return
+                }
+                do {
+                    let result = try await client.search(request)
+                    guard !Task.isCancelled, let self, self.generation == current else {
+                        client.invalidate()
+                        return
+                    }
+                    self.services[status] = client
+                    self.results[status] = StatusResult(page: result, records: result.records)
+                    self.updatedAt = Date()
+                    self.finish(status)
+                } catch {
+                    client.invalidate()
+                    guard !Task.isCancelled, let self, self.generation == current else { return }
+                    self.failures[status] = Self.message(for: error)
+                    self.finish(status)
+                }
             }
         }
     }
 
     func loadMore() {
-        guard !isLoading, !filtersChanged, let page, page.nextForm != nil, let service else { return }
-        isLoading = true
-        errorMessage = nil
-        let current = generation
-        work = Task { [weak self] in
+        let status = query.status
+        guard !loading.contains(status), !filtersChanged, let result = results[status],
+              result.page.nextForm != nil, let service = services[status] else { return }
+        loading.insert(status)
+        failures[status] = nil
+        let current = generation, page = result.page
+        works[status] = Task { [weak self] in
             do {
-                let result = try await service.nextPage(after: page)
-                guard !Task.isCancelled, let self, self.generation == current else { return }
-                let known = Set(self.records.map(\.id))
-                self.records += result.records.filter { !known.contains($0.id) }
-                self.page = result
-                self.isLoading = false
-                self.work = nil
+                let next = try await service.nextPage(after: page)
+                guard !Task.isCancelled, let self, self.generation == current, var entry = self.results[status] else { return }
+                let known = Set(entry.records.map(\.id))
+                entry.records += next.records.filter { !known.contains($0.id) }
+                entry.page = next
+                self.results[status] = entry
+                self.finish(status)
             } catch {
                 guard !Task.isCancelled, let self, self.generation == current else { return }
-                self.errorMessage = Self.message(for: error)
-                self.isLoading = false
-                self.work = nil
+                self.failures[status] = Self.message(for: error)
+                self.finish(status)
             }
         }
     }
 
+    private func finish(_ status: PostalStatus) {
+        loading.remove(status)
+        works[status] = nil
+    }
+
     private func criteriaChanged() {
-        if isLoading {
+        if isSearching {
             cancelWork()
-            errorMessage = nil
+            failures = [:]
         }
+        validationMessage = nil
+    }
+
+    private func discardResults() {
+        for service in services.values { service.invalidate() }
+        services = [:]
+        results = [:]
+        failures = [:]
     }
 
     func reset() {
         cancelWork()
         account = nil
         ownName = nil
-        service?.invalidate()
-        service = nil
+        discardResults()
         query = PostalQuery()
-        records = []
-        page = nil
-        resultQuery = nil
+        submitted = nil
         updatedAt = nil
-        errorMessage = nil
+        validationMessage = nil
     }
 
     func cancelWork() {
         generation = UUID()
-        work?.cancel()
-        work = nil
-        isLoading = false
+        for work in works.values { work.cancel() }
+        works = [:]
+        loading = []
+    }
+
+    private static func criteria(_ query: PostalQuery) -> PostalQuery {
+        var value = query
+        value.status = .waiting
+        return value
     }
 
     static func message(for error: Error) -> String {
