@@ -64,10 +64,12 @@ nonisolated struct PostalPage: Sendable {
     let nextForm: [String: String]?
 }
 
-nonisolated enum PostalError: Error {
+nonisolated enum PostalError: Error, Equatable {
     case invalidResponse
     case unavailable
     case sessionExpired
+    /// HTTP 429 or 503; `retryAfter` is the server's Retry-After in seconds, when given.
+    case rateLimited(retryAfter: TimeInterval?)
 }
 
 /// A changed WebForms/Telerik contract is an error, never an empty result.

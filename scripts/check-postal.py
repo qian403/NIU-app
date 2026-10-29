@@ -66,6 +66,22 @@ actor PageGate {
         continuation.resume(returning: try PostalHTML.page(html, query: page.query))
     }
 }
+/// Answers every request with a fixed status code, so the real PostalService status mapping is exercised offline.
+final class StatusProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var status = 200
+    nonisolated(unsafe) static var retryAfter: String?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        var headers: [String: String] = [:]
+        if let value = Self.retryAfter { headers["Retry-After"] = value }
+        let response = HTTPURLResponse(url: request.url!, statusCode: Self.status, httpVersion: nil, headerFields: headers)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data())
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
 @main struct Checks {
     static func fixture(rows: String? = nil, pages: Int = 1, index: Int = 0, next: String = "") -> String {
         let headings = ["序號", "收件日期", "郵件號碼", "收件單位", "收件者", "類別", "數量", "是否簽收", "簽收(退件)日期", "備註"]
@@ -304,6 +320,81 @@ actor PageGate {
         try await Task.sleep(for: .milliseconds(30))
         precondition(paging.records.count == 1 && paging.resultQuery?.status == .returned && paging.page?.pageIndex == 0)
         print("PASS: pagination per status, failure preserving results, retry, other statuses untouched, cancellation during a new query")
+        PostalQueryViewModel.clearThrottle()
+        let calls = Mutex([PostalStatus: Int]())
+        let limitedOnce = Mutex(false)
+        let throttling = PostalQueryViewModel(makeService: {
+            StubPostalService(load: { query in
+                calls.withLock { $0[query.status, default: 0] += 1 }
+                if query.status == .collected, limitedOnce.withLock({ value in defer { value = true }; return !value }) {
+                    throw PostalError.rateLimited(retryAfter: 0)
+                }
+                return try PostalHTML.page(fixture(), query: query)
+            })
+        }, minimumRetryDelay: 0)
+        throttling.query = query; throttling.search()
+        try await settle { !throttling.isSearching }
+        precondition(PostalQueryViewModel.isThrottled)
+        precondition(throttling.countText(for: .waiting) == "1" && throttling.countText(for: .returned) == "1")
+        precondition(throttling.countText(for: .collected) == nil && throttling.errorMessage == nil)
+        throttling.selectStatus(.collected)
+        try await settle { !throttling.isSearching }
+        precondition(throttling.resultQuery?.status == .collected && calls.withLock { $0[.collected] } == 2)
+        throttling.search()
+        try await settle { !throttling.isSearching }
+        precondition(calls.withLock { $0[.collected] == 3 && $0[.waiting] == 1 && $0[.returned] == 1 })
+        throttling.selectStatus(.returned)
+        try await settle { !throttling.isSearching }
+        precondition(calls.withLock { $0[.returned] } == 2 && throttling.resultQuery?.status == .returned)
+        throttling.selectStatus(.collected)
+        precondition(calls.withLock { $0[.collected] } == 3 && throttling.resultQuery?.status == .collected)
+
+        let shownCalls = Mutex(0)
+        let stubborn = PostalQueryViewModel(makeService: { StubPostalService(load: { _ in
+            shownCalls.withLock { $0 += 1 }
+            throw PostalError.rateLimited(retryAfter: 0)
+        }) }, minimumRetryDelay: 0)
+        stubborn.query = query; stubborn.search()
+        try await settle { !stubborn.isSearching }
+        precondition(shownCalls.withLock { $0 } == 2 && stubborn.errorMessage?.contains("限制") == true)
+
+        let flaky = Mutex(0)
+        let recovering = PostalQueryViewModel(makeService: { StubPostalService(load: { query in
+            if flaky.withLock({ $0 += 1; return $0 == 1 }) { throw PostalError.rateLimited(retryAfter: 0) }
+            return try PostalHTML.page(fixture(), query: query)
+        }) }, minimumRetryDelay: 0)
+        recovering.query = query; recovering.search()
+        try await settle { !recovering.isSearching }
+        precondition(recovering.resultQuery?.status == .waiting && recovering.errorMessage == nil && flaky.withLock { $0 } == 2)
+
+        let waitCalls = Mutex(0)
+        let patient = PostalQueryViewModel(makeService: { StubPostalService(load: { _ in
+            waitCalls.withLock { $0 += 1 }
+            throw PostalError.rateLimited(retryAfter: 30)
+        }) }, minimumRetryDelay: 0)
+        patient.query = query; patient.search()
+        try await settle { waitCalls.withLock { $0 } == 1 }
+        try await Task.sleep(for: .milliseconds(30))
+        precondition(patient.isLoading)
+        patient.reset()
+        try await Task.sleep(for: .milliseconds(50))
+        precondition(waitCalls.withLock { $0 } == 1 && !patient.isSearching && patient.errorMessage == nil)
+        PostalQueryViewModel.clearThrottle()
+        precondition(PostalQueryViewModel.message(for: PostalError.rateLimited(retryAfter: nil)).contains("限制"))
+        for (status, header, expected) in [(429, "7", PostalError.rateLimited(retryAfter: 7)),
+                                           (503, nil, PostalError.rateLimited(retryAfter: nil)),
+                                           (429, "Wed, 21 Oct 2026 07:28:00 GMT", PostalError.rateLimited(retryAfter: nil)),
+                                           (500, nil, PostalError.unavailable)] as [(Int, String?, PostalError)] {
+            StatusProtocol.status = status
+            StatusProtocol.retryAfter = header
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [StatusProtocol.self]
+            let service = PostalService(configuration: configuration)
+            do { _ = try await service.search(query); preconditionFailure("HTTP \(status) accepted") }
+            catch let error as PostalError { precondition(error == expected, "HTTP \(status) mapped to \(error)") }
+            service.invalidate()
+        }
+        print("PASS: 429/503 fall back to on-demand loading, shown status retried once, cancellable wait, shared cooldown, HTTP 429/503 and Retry-After mapping")
         if CommandLine.arguments.contains("--live") {
             let live = PostalService()
             defer { live.invalidate() }

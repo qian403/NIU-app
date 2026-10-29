@@ -2,7 +2,8 @@ import Foundation
 import Combine
 
 /// One search fetches every status at once, each on its own school session so paging stays
-/// independent; switching status afterwards only changes what is shown.
+/// independent; switching status afterwards only changes what is shown. If the school rate-limits,
+/// searches fall back to fetching only the shown status, and other statuses load when selected.
 @MainActor
 final class PostalQueryViewModel: ObservableObject {
     @Published var query = PostalQuery() {
@@ -25,15 +26,25 @@ final class PostalQueryViewModel: ObservableObject {
     @Published private var loading: Set<PostalStatus> = []
     @Published private var validationMessage: String?
 
+    /// Shared by every postal screen: after a 429/503, stop sending parallel requests for a while.
+    private static var throttledUntil: Date?
+    static let throttleCooldown: TimeInterval = 10 * 60
+    static var isThrottled: Bool { (throttledUntil ?? .distantPast) > Date() }
+    static func clearThrottle() { throttledUntil = nil }
+
     private var account: String?
     private let makeService: @Sendable () async -> any PostalServing
+    /// Floor for the wait before retrying a rate-limited status; tests pass 0.
+    private let minimumRetryDelay: TimeInterval
     private var works: [PostalStatus: Task<Void, Never>] = [:]
     /// The session behind each status's results; its next page must use the same session.
     private var services: [PostalStatus: any PostalServing] = [:]
     private var generation = UUID()
 
-    init(makeService: @escaping @Sendable () async -> any PostalServing = { await PostalService.make() }) {
+    init(makeService: @escaping @Sendable () async -> any PostalServing = { await PostalService.make() },
+         minimumRetryDelay: TimeInterval = 2) {
         self.makeService = makeService
+        self.minimumRetryDelay = minimumRetryDelay
     }
 
     deinit {
@@ -104,8 +115,19 @@ final class PostalQueryViewModel: ObservableObject {
     /// Shows another status from the results already fetched; searches only if nothing was fetched yet.
     func selectOwnStatus(_ status: PostalStatus) {
         guard ownName != nil, query.status != status else { return }
+        if submitted == nil, !isSearching {
+            searchOwnMail(status: status)
+        } else {
+            selectStatus(status)
+        }
+    }
+
+    /// Switches the shown status. A status skipped because of rate limiting is fetched now.
+    func selectStatus(_ status: PostalStatus) {
         query.status = status
-        if submitted == nil, !isSearching { searchOwnMail(status: status) }
+        guard let base = submitted, !filtersChanged, results[status] == nil, failures[status] == nil,
+              !loading.contains(status) else { return }
+        fetch(status, base: base)
     }
 
     // MARK: - Loading
@@ -121,13 +143,23 @@ final class PostalQueryViewModel: ObservableObject {
         let base = Self.criteria(query.normalized)
         submitted = base
         updatedAt = nil
-        loading = Set(PostalStatus.allCases)
+        for status in Self.isThrottled ? [query.status] : PostalStatus.allCases {
+            fetch(status, base: base)
+        }
+    }
+
+    private func fetch(_ status: PostalStatus, base: PostalQuery) {
+        var request = base
+        request.status = status
+        loading.insert(status)
+        failures[status] = nil
         let makeService = makeService
         let current = generation
-        for status in PostalStatus.allCases {
-            var request = base
-            request.status = status
-            works[status] = Task { [weak self] in
+        let minimumDelay = minimumRetryDelay
+        works[status] = Task { [weak self] in
+            var attempt = 0
+            while true {
+                attempt += 1
                 // Session setup must not compete with keyboard dismissal on the main actor.
                 let client = await makeService()
                 guard !Task.isCancelled, self?.generation == current else {
@@ -144,11 +176,28 @@ final class PostalQueryViewModel: ObservableObject {
                     self.results[status] = StatusResult(page: result, records: result.records)
                     self.updatedAt = Date()
                     self.finish(status)
+                    return
                 } catch {
                     client.invalidate()
                     guard !Task.isCancelled, let self, self.generation == current else { return }
-                    self.failures[status] = Self.message(for: error)
-                    self.finish(status)
+                    guard case .rateLimited(let retryAfter)? = error as? PostalError else {
+                        self.failures[status] = Self.message(for: error)
+                        self.finish(status)
+                        return
+                    }
+                    Self.throttledUntil = Date().addingTimeInterval(Self.throttleCooldown)
+                    // Only the status on screen is retried, once; others wait until the user selects them.
+                    guard self.query.status == status else {
+                        self.finish(status)
+                        return
+                    }
+                    guard attempt < 2 else {
+                        self.failures[status] = Self.message(for: error)
+                        self.finish(status)
+                        return
+                    }
+                    let delay = min(max(retryAfter ?? 3, minimumDelay), 15)
+                    do { try await Task.sleep(for: .seconds(delay)) } catch { return }
                 }
             }
         }
@@ -172,6 +221,9 @@ final class PostalQueryViewModel: ObservableObject {
                 self.finish(status)
             } catch {
                 guard !Task.isCancelled, let self, self.generation == current else { return }
+                if case .rateLimited? = error as? PostalError {
+                    Self.throttledUntil = Date().addingTimeInterval(Self.throttleCooldown)
+                }
                 self.failures[status] = Self.message(for: error)
                 self.finish(status)
             }
@@ -227,6 +279,7 @@ final class PostalQueryViewModel: ObservableObject {
         case PostalError.invalidResponse: return "校方回傳的資料格式無法辨識，請稍後再試。"
         case PostalError.sessionExpired: return "校方查詢連線已失效，請重新查詢以取得新的連線。"
         case PostalError.unavailable: return "校方郵務系統暫時無法使用，請稍後再試。"
+        case PostalError.rateLimited: return "校方系統忙碌或暫時限制查詢次數，請稍後再試。"
         default:
             switch (error as? URLError)?.code {
             case .notConnectedToInternet, .networkConnectionLost: return "目前無法連上網路，請確認連線後再試。"

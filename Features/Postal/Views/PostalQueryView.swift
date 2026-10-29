@@ -306,7 +306,7 @@ private struct PostalQueryResults: View {
 
     @ViewBuilder var body: some View {
         if !isPersonal, model.submitted != nil {
-            PostalStatusSelector(model: model) { model.query.status = $0 }
+            PostalStatusSelector(model: model) { model.selectStatus($0) }
         }
         if let message = model.errorMessage {
             VStack(alignment: .leading, spacing: 10) {

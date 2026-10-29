@@ -66,6 +66,11 @@ nonisolated final class PostalService: PostalServing {
         if (300..<400).contains(response.statusCode) || [401, 403].contains(response.statusCode) {
             throw PostalError.sessionExpired
         }
+        if [429, 503].contains(response.statusCode) {
+            let seconds = response.value(forHTTPHeaderField: "Retry-After")
+                .flatMap { TimeInterval($0.trimmingCharacters(in: .whitespaces)) }
+            throw PostalError.rateLimited(retryAfter: seconds.flatMap { $0 >= 0 ? $0 : nil })
+        }
         guard response.statusCode == 200 else { throw PostalError.unavailable }
         guard data.count <= 4_000_000, let html = String(data: data, encoding: .utf8) else {
             throw PostalError.invalidResponse
