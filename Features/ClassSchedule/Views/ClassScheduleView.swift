@@ -13,15 +13,13 @@ struct ClassScheduleView: View {
     @ObservedObject private var exchangeStore: ScheduleExchangeStore
     @StateObject private var exchange: ScheduleExchangeViewModel
     @State private var showsFriends = false
-    /// Set by the home-screen shortcut; pushes the friends page once the timetable has appeared.
+    /// UI fixtures open the friends page directly.
     @State private var opensFriendsOnAppear = false
 
-    /// `opensFriends` pushes the friends page on arrival, for the home-screen shortcut.
-    init(opensFriends: Bool = false) {
+    init() {
         let store = ScheduleExchangeStore.shared
         exchangeStore = store
         _exchange = StateObject(wrappedValue: ScheduleExchangeViewModel(schedule: nil, store: store))
-        _opensFriendsOnAppear = State(initialValue: opensFriends)
     }
 
     #if DEBUG
@@ -85,16 +83,6 @@ struct ClassScheduleView: View {
         .navigationTitle("我的課表")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    showsFriends = true
-                } label: {
-                    Image(systemName: "person.2")
-                        .font(.system(size: 16, weight: .medium))
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .accessibilityLabel("課表好友")
-            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 if vm.schedule != nil {
                     Button {
@@ -244,6 +232,9 @@ struct ClassScheduleView: View {
 
     private func scheduleContent(schedule: ClassSchedule) -> some View {
         VStack(spacing: 0) {
+            friendsBar
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
             Picker("課表顯示方式", selection: $displayMode) {
                 Text("單日").tag("day")
                 Text("整週").tag("week")
@@ -290,6 +281,60 @@ struct ClassScheduleView: View {
         }
         .onChange(of: vm.displayDayHeaders.count) { _, _ in
             syncPagerSelection(with: vm.selectedDayIndex, animated: false)
+        }
+    }
+
+    /// Always-visible way into 課表好友, showing how many friends are free right now.
+    private var friendsBar: some View {
+        TimelineView(.everyMinute) { context in
+            let now = ScheduleFriendsClock.now(context.date)
+            let friends = exchangeStore.schedules
+                .map { (entry: $0, status: $0.payload.status(at: now)) }
+                .filter { $0.status.isCurrentTerm }
+            let free = friends.filter { $0.status.isAvailable }.map(\.entry)
+            let shown = Array((free.isEmpty ? friends.map(\.entry) : free).prefix(4))
+            let subtitle = friends.isEmpty ? "加好友，看誰現在有空" : free.isEmpty ? "好友現在都沒空" : "\(free.count) 位現在有空"
+            Button {
+                showsFriends = true
+            } label: {
+                HStack(spacing: Theme.Spacing.small) {
+                    if shown.isEmpty {
+                        Image(systemName: "person.2.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.Colors.accent)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.Colors.accentSoft, in: Circle())
+                    } else {
+                        HStack(spacing: -8) {
+                            ForEach(shown) { entry in
+                                FriendAvatar(name: entry.displayName, seed: entry.payload.shareID.uuidString, size: 28)
+                                    .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                            }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("課表好友")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.Colors.label)
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(free.isEmpty ? Theme.Colors.secondaryLabel : Color(.systemGreen))
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.forward")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, Theme.Spacing.small)
+                .frame(minHeight: 52)
+                .background(Color(.secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.medium, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("課表好友，\(subtitle)")
+            .accessibilityAddTraits(.isButton)
         }
     }
 
