@@ -49,7 +49,7 @@ actor ConnectionStatusService {
             configuration.httpShouldSetCookies = false
             configuration.urlCredentialStorage = nil
             configuration.urlCache = nil
-            self.session = URLSession(configuration: configuration)
+            self.session = URLSession(configuration: configuration, delegate: SchoolServerTrust.delegate, delegateQueue: nil)
         }
     }
 

@@ -46,7 +46,7 @@ enum SSOGUIDBridge {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request, delegate: SchoolServerTrust.delegate)
         try Task.checkCancellation()
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         if status == 401 {

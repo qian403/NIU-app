@@ -17,7 +17,7 @@ final class SSOTokenRenewer {
     private var inFlight: Task<Bool, Never>?
     private var generation = 0
 
-    init(transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }) {
+    init(transport: @escaping Transport = { try await URLSession.shared.data(for: $0, delegate: SchoolServerTrust.delegate) }) {
         self.transport = transport
     }
 

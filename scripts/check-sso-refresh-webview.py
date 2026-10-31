@@ -393,7 +393,8 @@ with tempfile.TemporaryDirectory(prefix="niu-sso-refresh-webview-") as directory
         path = folder / name
         path.write_text(contents)
         files.append(path)
-    files += [root / "NIU-LiveActivities/CampusNavigation.swift", root / "Shared/Theme/Theme.swift"]
+    files += [root / "NIU-LiveActivities/CampusNavigation.swift", root / "Shared/Theme/Theme.swift",
+              root / "Core/Services/SchoolServerTrust.swift"]
     (app / "Info.plist").write_bytes(plistlib.dumps(dict(
         CFBundleIdentifier=bundle, CFBundleName="SSORefreshChecks", CFBundleExecutable="SSORefreshChecks",
         CFBundlePackageType="APPL", CFBundleVersion="1", CFBundleShortVersionString="1.0",

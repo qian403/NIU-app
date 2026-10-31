@@ -295,6 +295,14 @@ public struct SSOLoginWebView: SSOViewRepresentable {
             }
         }
 
+        // ccsys1 缺少交叉憑證，系統無法驗證時改用學校根憑證；其他連線照系統預設。
+        public func webView(
+            _ webView: WKWebView,
+            respondTo challenge: URLAuthenticationChallenge
+        ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+            await SchoolServerTrust.respond(to: challenge)
+        }
+
         public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard !cancelled else { return }
             let urlStr = webView.url?.absoluteString ?? ""
@@ -875,7 +883,7 @@ public struct SSOLoginWebView: SSOViewRepresentable {
                 request.setValue(ssoModernLoginURLString, forHTTPHeaderField: "Referer")
 
                 do {
-                    let (data, response) = try await URLSession.shared.data(for: request)
+                    let (data, response) = try await URLSession.shared.data(for: request, delegate: SchoolServerTrust.delegate)
                     let status = (response as? HTTPURLResponse)?.statusCode ?? -1
                     guard status == 200 else {
                         self.trace("Authorization/info attempt=\(attempt) status=\(status)")
