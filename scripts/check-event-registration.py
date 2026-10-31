@@ -597,6 +597,7 @@ extension EventRegistrationClient {
             "-module-cache-path", str(folder / "ModuleCache"),
             str(root / "Features/EventRegistration/Models/EventRegistrationModels.swift"),
             str(client_source),
+            str(root / "Core/Services/SchoolServerTrust.swift"),
             str(source), "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True, timeout=180,

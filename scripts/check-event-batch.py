@@ -478,6 +478,7 @@ with tempfile.TemporaryDirectory(prefix="niu-event-batch-") as directory:
     subprocess.run(["xcrun", "swiftc", "-DDEBUG", "-swift-version", "5", "-parse-as-library",
                     "-module-cache-path", str(folder / "ModuleCache"),
                     *[str(root / "Features/EventRegistration" / p) for p in sources],
+                    str(root / "Core/Services/SchoolServerTrust.swift"),
                     str(source), "-o", str(binary)], check=True)
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()

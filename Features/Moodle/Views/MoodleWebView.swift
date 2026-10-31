@@ -1532,6 +1532,14 @@ final class MoodleWebManager: NSObject, ObservableObject, WKNavigationDelegate {
 
     // MARK: - WKNavigationDelegate
 
+    // ccsys1 缺少交叉憑證，系統無法驗證時改用學校根憑證；其他連線照系統預設。
+    func webView(
+        _ webView: WKWebView,
+        respondTo challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        await SchoolServerTrust.respond(to: challenge)
+    }
+
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         attendanceNavigationGeneration &+= 1
         webView.isUserInteractionEnabled = true

@@ -432,6 +432,6 @@ with tempfile.TemporaryDirectory(prefix='niu-enrollment-bridge-') as directory:
     checks.write_text(registration + bridge + bridge_fixture)
     binary = folder / 'checks'
     subprocess.run(['xcrun', 'swiftc', '-D', 'DEBUG', '-swift-version', '5', '-module-cache-path',
-                    str(folder / 'ModuleCache'), '-parse-as-library', str(models), str(checks),
+                    str(folder / 'ModuleCache'), '-parse-as-library', str(models), str(root / 'Core/Services/SchoolServerTrust.swift'), str(checks),
                     '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=10)

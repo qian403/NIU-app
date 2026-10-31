@@ -223,6 +223,7 @@ with tempfile.TemporaryDirectory(prefix="niu-lifetime-") as directory:
         str(feature / "Models/EventRegistrationModels.swift"),
         str(feature / "Stores/EventFavoritesStore.swift"),
         str(feature / "Services/EventRegistrationClient.swift"),
+        str(root / "Core/Services/SchoolServerTrust.swift"),
         str(feature / "ViewModels/EventRegistrationViewModel.swift"),
         str(feature / "ViewModels/EventRegistration_Tab1_ViewModel.swift"),
         str(feature / "ViewModels/EventRegistration_Tab2_ViewModel.swift"),

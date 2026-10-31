@@ -63,6 +63,6 @@ with tempfile.TemporaryDirectory(prefix='niu-enrollment-pdf-') as directory:
     checks = folder / 'Checks.swift'
     checks.write_text(source)
     binary = folder / 'checks'
-    files = [root / 'Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift', root / 'Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift']
+    files = [root / 'Features/EnrollmentCertificate/Models/EnrollmentCertificateModels.swift', root / 'Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift', root / 'Core/Services/SchoolServerTrust.swift']
     subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-parse-as-library', '-module-cache-path', str(folder / 'ModuleCache'), *map(str, files), str(checks), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=20)

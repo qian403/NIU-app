@@ -261,13 +261,14 @@ with tempfile.TemporaryDirectory(prefix="niu-event-favorites-") as directory:
                   feature / "Services/EventRegistrationClient.swift",
                   feature / "Stores/EventFavoritesStore.swift",
                   feature / "ViewModels/EventRegistrationViewModel.swift",
-                  feature / "ViewModels/EventRegistration_Tab1_ViewModel.swift"]
+                  feature / "ViewModels/EventRegistration_Tab1_ViewModel.swift",
+                  root / "Core/Services/SchoolServerTrust.swift"]
     subprocess.run(["xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",
                     "-default-isolation", "MainActor", "-module-cache-path", str(folder / "ModuleCache"),
                     *map(str, production), str(support), str(source), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=45)
     sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
-    ui = [*sorted(feature.rglob("*.swift")), root / "Shared/Theme/Theme.swift", support]
+    ui = [*sorted(feature.rglob("*.swift")), root / "Shared/Theme/Theme.swift", root / "Core/Services/SchoolServerTrust.swift", support]
     subprocess.run(["xcrun", "swiftc", "-swift-version", "5", "-typecheck", "-D", "DEBUG",
                     "-default-isolation", "MainActor", "-sdk", sdk, "-target", "arm64-apple-ios26.2-simulator",
                     "-module-cache-path", str(folder / "SimulatorModuleCache"), *map(str, ui)], check=True)
