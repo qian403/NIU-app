@@ -18,6 +18,21 @@
 	<false/>
 	<key>FirebaseAutomaticScreenReportingEnabled</key>
 	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- 暫時措施：ccsys1 沒有送出交叉憑證，系統信任失敗時 ATS 會在 SchoolServerTrust 之前中止連線。
+		     只對這台主機放行，改由 SchoolServerTrust 加上 TWCA CYBER Root CA 後驗證；學校補上交叉憑證後移除。 -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>ccsys1.niu.edu.tw</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+			</dict>
+		</dict>
+	</dict>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

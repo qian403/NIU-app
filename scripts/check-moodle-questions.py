@@ -470,6 +470,7 @@ with tempfile.TemporaryDirectory(prefix="niu-moodle-questions-") as directory:
         "Features/Moodle/Questions/MoodleQuestionActivity.swift",
         "Features/Moodle/Questions/MoodleQuestionsRepository.swift",
         "Features/Moodle/Questions/MoodleQuestionsViewModel.swift",
+        "Core/Services/SchoolServerTrust.swift",
     ]
     subprocess.run([
         "xcrun", "swiftc", "-parse-as-library", "-swift-version", "6",

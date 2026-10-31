@@ -3,6 +3,7 @@
 from pathlib import Path
 import base64
 import hashlib
+import plistlib
 import re
 import subprocess
 import tempfile
@@ -90,10 +91,25 @@ assert delegate in info, "Authorization/info must use the school trust"
 for path in ["Features/Authentication/Services/SSOLoginWebView.swift",
              "Features/GradeHistory/Views/GradeHistoryView.swift",
              "Features/ClassSchedule/Services/ClassScheduleWebView.swift",
-             "Features/LeaveApplication/LeaveApplicationService.swift"]:
+             "Features/LeaveApplication/LeaveApplicationService.swift",
+             # Std002.aspx and expired ccsys sessions redirect to ccsys1.
+             "Features/Moodle/Services/MoodleSessionManager.swift",
+             "Features/Moodle/Views/MoodleWebView.swift",
+             "Features/GraduationThreshold/Services/GraduationThresholdWebManager.swift",
+             "Features/EnrollmentCertificate/Services/EnrollmentCertificateService.swift",
+             "Features/EventRegistration/Services/EventRegistrationClient.swift"]:
     source = (root / path).read_text()
     assert "respondTo challenge: URLAuthenticationChallenge" in source, f"{path} must answer server trust"
     assert "await SchoolServerTrust.respond(to: challenge)" in source, path
+
+# ATS rejects a failed system trust before the delegate can add the root, so ccsys1
+# needs an exception; keep it to that one host.
+plist = plistlib.loads((root / "App/Info.plist").read_bytes())
+ats = plist["NSAppTransportSecurity"]
+assert set(ats) == {"NSExceptionDomains"}, "No global ATS relaxation"
+assert ats["NSExceptionDomains"] == {"ccsys1.niu.edu.tw": {
+    "NSExceptionAllowsInsecureHTTPLoads": True, "NSIncludesSubdomains": False}}, \
+    "ATS exception must only cover ccsys1"
 
 project = (root / "NIU-App.xcodeproj/project.pbxproj").read_text()
 assert project.count("SchoolServerTrust.swift in Sources") == 2, "Add SchoolServerTrust.swift to the app target"

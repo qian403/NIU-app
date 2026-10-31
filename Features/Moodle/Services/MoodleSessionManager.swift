@@ -127,6 +127,14 @@ private class SSOIDCoordinator: NSObject, WKNavigationDelegate {
         timeoutWork = nil
     }
 
+    // ccsys1 缺少交叉憑證，系統無法驗證時改用學校根憑證；其他連線照系統預設。
+    func webView(
+        _ webView: WKWebView,
+        respondTo challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        await SchoolServerTrust.respond(to: challenge)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard !isDone, let url = webView.url else { return }
         print("[MoodleSession] didFinish: \(url.path)")
