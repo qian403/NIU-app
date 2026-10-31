@@ -20,7 +20,9 @@ assert info['CFBundleDisplayName'] == 'NIU-Life'
 assert info['CFBundleShortVersionString'] == '$(MARKETING_VERSION)'
 assert info['CFBundleVersion'] == '$(CURRENT_PROJECT_VERSION)'
 assert info['ITSAppUsesNonExemptEncryption'] is False
-assert 'NSAppTransportSecurity' not in info  # No broad insecure-transport exception.
+# No broad insecure-transport exception; only the temporary ccsys1 one (see check-school-trust.py).
+assert info.get('NSAppTransportSecurity', {}) == {'NSExceptionDomains': {'ccsys1.niu.edu.tw': {
+    'NSExceptionAllowsInsecureHTTPLoads': True, 'NSIncludesSubdomains': False}}}
 for key in ['NSCameraUsageDescription', 'NSCalendarsWriteOnlyUsageDescription']:
     assert info.get(key, '').strip(), key
 # iPhone Duo resizes the app between its outer and inner displays.
