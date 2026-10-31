@@ -23,7 +23,9 @@ struct ReleaseNotes: Identifiable, Equatable {
             Item(icon: "calendar", title: "整週課表顯示第幾週",
                  detail: "整週課表上方會顯示目前的學年度、學期與第幾週，寒暑假和預備週也會標示。"),
             Item(icon: "shippingbox.fill", title: "包裹查詢一次查完",
-                 detail: "查詢時會同時取得未領取、已領取與退件紀錄，切換狀態不用再按一次查詢。")
+                 detail: "查詢時會同時取得未領取、已領取與退件紀錄，切換狀態不用再按一次查詢。"),
+            Item(icon: "person.badge.key.fill", title: "修正校務系統登入失敗",
+                 detail: "修正學校更換憑證後，登入校務系統出現「登入驗證未完成」或白畫面的問題；M 園區也能正常開啟。")
         ]),
         ReleaseNotes(version: "1.6.0", items: [
             Item(icon: "shippingbox.fill", title: "捷徑查詢郵件包裹",
