@@ -151,6 +151,7 @@ View 負責呈現與互動，ViewModel 管理畫面狀態，Service／Repository
 | Widget 與快捷            | `python3 scripts/check-widgets.py`                                        |
 | SSO 登入與儲存           | `node scripts/check-sso-login.js`、`python3 scripts/check-sso-storage.py` |
 | SSO 背景更新與取消       | `python3 scripts/check-sso-refresh.py`                                    |
+| 學校主機 TLS 信任（TWCA CYBER Root CA） | `python3 scripts/check-school-trust.py` |
 | SSO 背景／手動登入畫面（隔離模擬器） | `python3 scripts/check-sso-refresh-webview.py --device <UDID>`              |
 | 請假表單與送出保護       | `node scripts/check-leave-application.js` |
 | 活動分享文字與連結       | `python3 scripts/check-event-sharing.py` |

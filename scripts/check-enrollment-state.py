@@ -145,7 +145,7 @@ with tempfile.TemporaryDirectory(prefix='niu-enrollment-state-') as directory:
     stage = service.split('@MainActor\nfinal class EnrollmentRegistrationService', 1)[0]
     checks.write_text(stage + stubs)
     binary = folder / 'checks'
-    subprocess.run(['xcrun', 'swiftc', '-D', 'DEBUG', '-swift-version', '5', '-module-cache-path', str(folder / 'ModuleCache'), '-parse-as-library', str(models), str(viewmodel), str(root / 'Core/Services/SSOGUIDBridge.swift'), str(checks), '-o', str(binary)], check=True)
+    subprocess.run(['xcrun', 'swiftc', '-D', 'DEBUG', '-swift-version', '5', '-module-cache-path', str(folder / 'ModuleCache'), '-parse-as-library', str(models), str(viewmodel), str(root / 'Core/Services/SSOGUIDBridge.swift'), str(root / 'Core/Services/SchoolServerTrust.swift'), str(checks), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=20)
 
 # Run the actual registration state machine and GUID HTTP handling with fake WebKit
@@ -426,7 +426,7 @@ with tempfile.TemporaryDirectory(prefix='niu-enrollment-bridge-') as directory:
     registration = service.split('/// A per-request ephemeral session', 1)[0]
     registration = registration.replace('import WebKit\n', '').replace('import PDFKit\n', '')
     bridge = (root / 'Core/Services/SSOGUIDBridge.swift').read_text()
-    bridge = bridge.replace('URLSession.shared.data(for: request)', 'FixtureHTTP.data(for: request)')
+    bridge = bridge.replace('URLSession.shared.data(for: request, delegate: SchoolServerTrust.delegate)', 'FixtureHTTP.data(for: request)')
     assert 'URLSession.' not in bridge, 'Offline fixture must replace all live GUID transport'
     checks = folder / 'Checks.swift'
     checks.write_text(registration + bridge + bridge_fixture)

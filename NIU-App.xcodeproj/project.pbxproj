@@ -35,6 +35,7 @@
 		10A32DD0A0F4327A60009BB45 /* SSOTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */; };
 		10A32DD1A0F4327A60009BB45 /* SSOGUIDBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */; };
 		10A32DD2A0F4327A60009BB45 /* SSOTokenRenewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A32DD2FF4327A60009BB45 /* SSOTokenRenewer.swift */; };
+		DC067F76D6AC80535F5D8A83 /* SchoolServerTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A74EDAEC3D3F4615596050 /* SchoolServerTrust.swift */; };
 		10D1F8762F80C57900034946 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 10D1F8752F80C57900034946 /* WidgetKit.framework */; };
 		10D1F8782F80C57900034946 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 10D1F8772F80C57900034946 /* SwiftUI.framework */; };
 		10D1F8892F80C57A00034946 /* NIU-LiveActivitiesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -280,6 +281,7 @@
 		10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOTokenStore.swift; sourceTree = "<group>"; };
 		10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOGUIDBridge.swift; sourceTree = "<group>"; };
 		10A32DD2FF4327A60009BB45 /* SSOTokenRenewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOTokenRenewer.swift; sourceTree = "<group>"; };
+		E0A74EDAEC3D3F4615596050 /* SchoolServerTrust.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchoolServerTrust.swift; sourceTree = "<group>"; };
 		10D1F8732F80C57900034946 /* NIU-LiveActivitiesExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "NIU-LiveActivitiesExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		10D1F8752F80C57900034946 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		10D1F8772F80C57900034946 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -808,6 +810,7 @@
 				10A32DD0FF4327A60009BB45 /* SSOTokenStore.swift */,
 				10A32DD1FF4327A60009BB45 /* SSOGUIDBridge.swift */,
 				10A32DD2FF4327A60009BB45 /* SSOTokenRenewer.swift */,
+				E0A74EDAEC3D3F4615596050 /* SchoolServerTrust.swift */,
 				C0DE11020000000000000001 /* AppUpdateChecker.swift */,
 				C0DE13020000000000000001 /* WhatsNewStore.swift */,
 				C0DE10020000000000000001 /* UsageHeartbeatClient.swift */,
@@ -1257,6 +1260,7 @@
 				10A32DD0A0F4327A60009BB45 /* SSOTokenStore.swift in Sources */,
 				10A32DD1A0F4327A60009BB45 /* SSOGUIDBridge.swift in Sources */,
 				10A32DD2A0F4327A60009BB45 /* SSOTokenRenewer.swift in Sources */,
+				DC067F76D6AC80535F5D8A83 /* SchoolServerTrust.swift in Sources */,
 				10A32DB52F431F630009BB45 /* MinimalToast.swift in Sources */,
 				10A32DB62F431F630009BB45 /* MinimalTextField.swift in Sources */,
 				10A32DB72F431F630009BB45 /* NIUApp.swift in Sources */,

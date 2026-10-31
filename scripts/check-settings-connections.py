@@ -184,6 +184,7 @@ with tempfile.TemporaryDirectory(prefix="niu-settings-connections-") as director
     subprocess.run([
         "xcrun", "swiftc", "-parse-as-library", "-module-cache-path", str(directory / "ModuleCache"),
         str(ROOT / "Core/Services/ConnectionStatusService.swift"),
+        str(ROOT / "Core/Services/SchoolServerTrust.swift"),
         str(ROOT / "Features/Home/ViewModels/SettingsConnectionViewModel.swift"),
         str(fixture), "-o", str(binary),
     ], check=True)

@@ -255,5 +255,5 @@ with tempfile.TemporaryDirectory(prefix="niu-sso-renewal-") as directory:
                     "-enable-upcoming-feature", "NonisolatedNonsendingByDefault",
                     "-enable-upcoming-feature", "InferIsolatedConformances",
                     "-warnings-as-errors",
-                    "-module-cache-path", str(folder / "ModuleCache"), *files, "-o", str(binary)], check=True)
+                    "-module-cache-path", str(folder / "ModuleCache"), *files, str(root / "Core/Services/SchoolServerTrust.swift"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
