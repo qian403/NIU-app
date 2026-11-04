@@ -17,6 +17,10 @@ struct ReleaseNotes: Identifiable, Equatable {
 
     /// Newest first. Patch releases with nothing worth announcing need no entry.
     static let catalog: [ReleaseNotes] = [
+        ReleaseNotes(version: "1.7.1", items: [
+            Item(icon: "qrcode", title: "修正圖書館通行碼",
+                 detail: "配合學校更新流程，門禁 QR Code 與借書條碼可以正常顯示；登入過期時會自動重新登入。")
+        ]),
         ReleaseNotes(version: "1.7.0", items: [
             Item(icon: "person.2.fill", title: "課表好友",
                  detail: "掃 QR Code 加好友，看誰現在有空、誰在上課，還能揪團找出大家都有空的時段。"),
